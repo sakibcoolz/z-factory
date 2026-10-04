@@ -1,29 +1,35 @@
 # Events and Telemetry
 
+## State model
+Live state belongs to OpenPLC/device-simulator memory. PostgreSQL stores durable configuration/history and selected state snapshots.
+
+Do not persist every scan/simulation tick by default.
+
 ## Internal events
 Examples:
-- FACTORY_CREATED
-- FACTORY_START_REQUESTED
-- FACTORY_STARTED
-- FACTORY_STOPPED
-- DEVICE_CREATED
-- DEVICE_STARTING
-- DEVICE_RUNNING
-- DEVICE_FAULTED
+- FACTORY_CREATED / STARTED / STOPPED
+- DEVICE_CREATED / STARTING / RUNNING / STOPPED / FAULTED
 - CONTAINER_EXITED
-- TAG_VALUE_CHANGED
-- MODBUS_READ
-- MODBUS_WRITE
-- CONNECTION_UP
-- CONNECTION_DOWN
-- FAULT_INJECTED
+- PLC_PROGRAM_DEPLOYED
+- PLC_TAG_UPDATED
+- PLC_FEEDBACK_UPDATED
+- MODBUS_READ / MODBUS_WRITE
+- GATEWAY_COMMAND_RECEIVED
+- VFD_COMMAND_CHANGED / VFD_STATE_CHANGED
+- MOTOR_STATE_CHANGED
+- PUMP_STATE_CHANGED
+- VALVE_STATE_CHANGED
+- SENSOR_VALUE_CHANGED
+- CONNECTION_UP / CONNECTION_DOWN
+- FAULT_INJECTED / FAULT_CLEARED
+- ALARM_RAISED / ALARM_ACKNOWLEDGED / ALARM_CLEARED
 
 ## Event envelope
 ```json
 {
   "version": 1,
   "id": "uuid",
-  "type": "DEVICE_RUNNING",
+  "type": "VFD_STATE_CHANGED",
   "factoryId": "uuid",
   "deviceId": "uuid",
   "occurredAt": "ISO-8601",
@@ -32,7 +38,12 @@ Examples:
 ```
 
 ## UI delivery
-Start with SSE for server -> browser live updates unless bidirectional low-latency interaction requires WebSockets. Commands continue through normal server actions/route handlers.
+Start with SSE for server -> browser updates. Introduce WebSockets only when bidirectional low-latency behavior materially benefits the product. Commands still go through authenticated server endpoints/actions.
 
-## Persistence
-Persist important lifecycle/fault/audit events. High-frequency telemetry should have retention/downsampling rules rather than unbounded relational writes.
+## Persistence rules
+Always persist important lifecycle changes, commands, faults, alarms, acknowledgements and audit events.
+
+Telemetry persistence is configurable by tag/device. Use sampling, change thresholds, retention and downsampling. A future TimescaleDB extension is optional; PostgreSQL remains the primary relational store.
+
+## Quality
+Live values should carry quality/state such as GOOD, STALE, BAD, DISCONNECTED and a timestamp so the UI can distinguish a valid value from an old one.
