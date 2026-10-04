@@ -15,6 +15,11 @@ const serverEnvSchema = z.object({
     .string()
     .regex(/^[A-Za-z0-9._-]{1,64}$/, "use 1-64 letters, digits, dots, hyphens or underscores")
     .optional(),
+  /**
+   * Secret the per-container runtime API credentials are derived from. Optional outside
+   * production (a fixed development value is used); required in production.
+   */
+  RUNTIME_SECRET: z.string().min(32, "use at least 32 characters").optional(),
   /** Docker Engine endpoint: a unix socket or a TCP proxy. Never exposed to the browser. */
   DOCKER_HOST: z
     .string()

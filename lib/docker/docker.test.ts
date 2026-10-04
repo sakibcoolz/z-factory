@@ -9,7 +9,7 @@ import { toDockerDomainError } from "./errors";
 import { imageReference } from "./images";
 import { assertSubnetAvailable } from "./networks";
 import { DEFAULT_LIMITS, parsePortRange, type RuntimePolicy, runtimePolicyFromEnv } from "./policy";
-import { assertPortBindings } from "./ports";
+import { allocateHostPorts, assertPortBindings } from "./ports";
 import { RUNTIME_IMAGES } from "./runtime-images";
 import { buildContainerSpec, buildNetworkCreateOptions, containerNameFor } from "./spec";
 
@@ -66,8 +66,25 @@ describe("server-only boundary", () => {
 });
 
 describe("image allow-list", () => {
-  it("ships empty until the runtime tasks add their pinned images", () => {
-    expect(RUNTIME_IMAGES).toEqual([]);
+  it("pins every allow-listed image to a tag and a digest", () => {
+    expect(RUNTIME_IMAGES.map((image) => image.key)).toEqual(["openplc"]);
+    for (const image of RUNTIME_IMAGES) {
+      expect(image.reference).toMatch(/^[a-z0-9./-]+:[A-Za-z0-9._-]+$/);
+      expect(image.reference.endsWith(":latest")).toBe(false);
+      expect(image.digest).toMatch(/^sha256:[0-9a-f]{64}$/);
+      // No image gets a caller-supplied environment or command by default.
+      expect(image.allowedEnv).toEqual([]);
+    }
+  });
+
+  it("gives an image its own default limits, still capped by the policy", () => {
+    const heavy = { ...policy, images: [{ ...policy.images[0]!, defaultLimits: { memoryMb: 1024 } }] };
+    expect(buildContainerSpec(request(), heavy).options.HostConfig?.Memory).toBe(1024 * 1024 * 1024);
+    expect(buildContainerSpec(request({ limits: { memoryMb: 128 } }), heavy).options.HostConfig?.Memory).toBe(
+      128 * 1024 * 1024,
+    );
+    const tooHeavy = { ...policy, images: [{ ...policy.images[0]!, defaultLimits: { memoryMb: 4096 } }] };
+    expectDomainError(() => buildContainerSpec(request(), tooHeavy), "VALIDATION", "memory-limit");
   });
 
   it("runs only allow-listed images, selected by key", () => {
@@ -297,6 +314,16 @@ describe("port validation", () => {
     expect(() =>
       assertPortBindings([binding(15021)], [{ hostPort: 15021, bindAddress: "192.168.1.10" }], policy),
     ).not.toThrow();
+  });
+
+  it("allocates the lowest free ports in range and reports exhaustion", () => {
+    const taken = [
+      { hostPort: 15000, bindAddress: "127.0.0.1" },
+      { hostPort: 15002, bindAddress: "0.0.0.0" },
+    ];
+    expect(allocateHostPorts(3, taken, policy)).toEqual([15001, 15003, 15004]);
+    const tiny = { ...policy, portRange: { min: 15000, max: 15001 } };
+    expectDomainError(() => allocateHostPorts(2, taken, tiny), "CONFLICT", "host-ports-exhausted");
   });
 
   it("rejects the same host port twice in one request", () => {

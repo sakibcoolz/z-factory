@@ -21,6 +21,8 @@ export type RuntimeImage = {
   publishablePorts: readonly number[];
   /** Environment variable names a request may set. */
   allowedEnv: readonly string[];
+  /** Limits this image needs when the request names none; still capped by the policy maximum. */
+  defaultLimits?: { cpus?: number; memoryMb?: number };
 };
 
 export type RuntimeLimits = {

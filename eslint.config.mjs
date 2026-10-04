@@ -26,9 +26,9 @@ export default defineConfig([
     },
   },
   {
-    // A leading underscore marks a parameter that a signature requires but the body ignores.
+    // A leading underscore marks a parameter or binding that must exist but is deliberately unused.
     rules: {
-      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
+      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
     },
   },
   {
@@ -48,6 +48,8 @@ export default defineConfig([
                 "@/lib/docker/**",
                 "@/lib/runtimes",
                 "@/lib/runtimes/**",
+                "@/lib/protocols",
+                "@/lib/protocols/**",
                 "@/lib/auth",
                 "@/lib/auth/**",
                 "@/lib/services",

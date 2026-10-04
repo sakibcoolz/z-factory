@@ -97,9 +97,9 @@ function resolveEnv(env: Record<string, string>, image: RuntimeImage): string[] 
   });
 }
 
-function resolveLimits(limits: ContainerRequest["limits"], policy: RuntimePolicy) {
-  const cpus = limits.cpus ?? policy.limits.defaultCpus;
-  const memoryMb = limits.memoryMb ?? policy.limits.defaultMemoryMb;
+function resolveLimits(limits: ContainerRequest["limits"], image: RuntimeImage, policy: RuntimePolicy) {
+  const cpus = limits.cpus ?? image.defaultLimits?.cpus ?? policy.limits.defaultCpus;
+  const memoryMb = limits.memoryMb ?? image.defaultLimits?.memoryMb ?? policy.limits.defaultMemoryMb;
   if (cpus > policy.limits.maxCpus) {
     throw new DomainError("VALIDATION", `CPU limit cannot exceed ${policy.limits.maxCpus}.`, { rule: "cpu-limit" });
   }
@@ -118,7 +118,7 @@ export function containerNameFor(factoryId: string, serviceName: string): string
 export function buildContainerSpec(input: unknown, policy: RuntimePolicy): ContainerSpec {
   const request = parseInput(containerRequestSchema, input);
   const image = resolveImage(request.image, policy);
-  const { nanoCpus, memoryBytes } = resolveLimits(request.limits, policy);
+  const { nanoCpus, memoryBytes } = resolveLimits(request.limits, image, policy);
 
   const defaultBindAddress = policy.bindAddresses[0] ?? "127.0.0.1";
   const ports = request.ports.map((binding) => ({
