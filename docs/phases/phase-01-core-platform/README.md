@@ -6,7 +6,7 @@ Status: **IN PROGRESS**
 |---|---|
 | TASK-101 Bootstrap Next.js | DONE |
 | TASK-102 Prisma/domain foundation | DONE |
-| TASK-103 Factory CRUD | IN PROGRESS (implemented; closes when ADR-0007 is accepted) |
+| TASK-103 Factory CRUD | DONE |
 | TASK-104 UI shell & wireframe screens | IN PROGRESS |
 
 Scope includes PostgreSQL/Prisma entities for catalog definitions, factory-specific device instances, PLC I/O/tag mappings, device relationships, versions, commands, events/alarms and telemetry metadata.
