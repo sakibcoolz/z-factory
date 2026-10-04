@@ -12,6 +12,8 @@ Last architecture documentation update: 2026-10-05
 - Compact vs modular PLC model defined.
 - Factory-specific industrial device instance/catalog model separation defined.
 - Device simulation model defined for VFDs, motors, pumps, valves, sensors, switches and related devices.
+- Industrial intermediate/control-interface catalog scope expanded to include servo drives, soft starters, motion/process/temperature controllers, remote I/O, IO-Link masters, protocol converters, signal conditioners and gateways.
+- Intermediate devices are optional: direct PLC I/O remains supported.
 - Gateway command path defined: gateway -> PLC command/setpoint -> PLC logic -> device simulation.
 - Live-state vs persistence boundary defined.
 - PLC engineering export/print requirement defined.
@@ -24,11 +26,12 @@ Last architecture documentation update: 2026-10-05
 - Docker Engine integration implemented (TASK-201 done): server-only policy-checked network and container lifecycle with an image allow-list, tested against a real engine. No runtime image is allow-listed yet, so nothing can be started.
 - The remaining screens still read fixtures: OpenPLC, Modbus, device simulation and live data are NOT STARTED.
 - Post-MVP process-module architecture documented: generic devices remain catalog-backed, while process modules compose factory devices and allocate module-specific PLC I/O.
+- Phase 06 now includes TASK-605 for an authoritative module PLC I/O registry: logical required/optional signals are registered per module instance and bound to the existing PLC tag/I/O/register model without creating a parallel address space.
 - ADR-0008 accepted for a separate Go process-simulation service in Phase 06+ only; it does not alter current MVP Phase 02–05 implementation.
 - Phase 07 reserves boiler-specific I/O and multi-zone thermal simulation as the first reference process module.
 
 ## Planning gate
-Phase task Markdown remains the execution unit. Existing Linear Phase 00–05 items remain synchronized. Newly documented Phase 06–07 tasks must be mirrored to Linear before either phase becomes active. Phase 00 is closed.
+Phase task Markdown remains the execution unit. Existing Linear Phase 00–05 items remain synchronized. Newly documented Phase 06–07 tasks, including TASK-605, must be mirrored to Linear before either phase becomes active. Phase 00 is closed.
 
 ## Next technical gate
 Phase 02 is in progress. After TASK-201, TASK-202 (OpenPLC runtime adapter) adds the first allow-listed image and starts PLC containers; it needs a choice of OpenPLC image to pin.
