@@ -1,34 +1,51 @@
 # Z-Factory
 
-Z-Factory is a browser-first virtual industrial factory platform for creating, running, observing, and testing simulated PLC-based factories.
+Z-Factory is a browser-first virtual industrial factory platform for designing, executing, observing, testing, and exporting PLC-controlled factories.
 
-> Status: documentation-first bootstrap. Application development must not begin until Phase 0 documentation and architecture gates are complete.
+> Status: documentation-first bootstrap. Feature development remains gated by the phase/task workflow in `docs/phases/`.
 
-## MVP
-- Next.js full-stack application (SSR/server components where appropriate)
-- TypeScript-only application layer
-- OpenPLC as the first PLC runtime
-- Docker/Docker Compose orchestration from server-only Next.js code
+## MVP architecture
+- One Next.js TypeScript full-stack application
+- PostgreSQL + Prisma
+- OpenPLC as the first executable PLC runtime
+- Reusable Docker images orchestrated from server-only Next.js code
+- One isolated Docker network per factory
 - Modbus TCP as the first industrial protocol
 - Compact and modular PLC catalog/data model
-- React Flow network/topology designer
-- Three.js / React Three Fiber 3D factory visualization
-- Live device events and telemetry
-- External Raspberry Pi / edge-gateway connectivity through exposed host ports
+- Factory-specific device instances created from a reusable industrial device catalog
+- React Flow network/wiring/topology designer
+- Live tags, events, alarms, faults, and selected telemetry
+- Shared device-simulator runtime for VFDs, motors, pumps, valves, sensors, switches and other peripherals
+- External industrial edge/gateway connectivity
+- PLC engineering print/export (PDF-oriented report plus machine-readable CSV/JSON/config package)
+- Three.js / React Three Fiber 3D visualization in a later phase
+
+## Core control principle
+
+```text
+External UI / Edge Gateway
+          |
+       Modbus TCP
+          |
+   PLC command/setpoint tags
+          |
+      OpenPLC logic
+          |
+ VFD / Valve / Output commands
+          |
+ Device simulation
+          |
+ feedback/status/alarm tags
+          |
+ Gateway + live Z-Factory UI
+```
+
+PLC logic is the control authority. External systems do not directly mutate motor, pump, VFD, or valve state.
+
+## Runtime and persistence
+Live PLC/device values live in the runtime/simulator layer. PostgreSQL stores catalog data, factory configuration, mappings, commands, important current state, alarms/events/audit history, versions, and selected/downsampled telemetry.
 
 ## AI-assisted development
-This repository is intended to be developed by human maintainers together with Claude Code, GitHub Copilot, OpenAI Codex, Linear MCP, and Graphify.
+Human maintainers work with Claude Code, GitHub Copilot, OpenAI Codex, Linear MCP, and Graphify. Every coding agent must start with `AGENTS.md` and the active task.
 
-All coding agents **must read**:
-1. `AGENTS.md`
-2. `docs/rules.md`
-3. `docs/architecture.md`
-4. `docs/database.md`
-5. `docs/design.md`
-6. `docs/device-catalog.md`
-7. `docs/openplc-runtime.md`
-8. `docs/linear-workflow.md`
-9. the active phase file under `docs/phases/`
-10. the active task file under that phase's `tasks/`
-
-See `docs/README.md` for the documentation map and execution workflow.
+See `docs/README.md` for the complete documentation map.
