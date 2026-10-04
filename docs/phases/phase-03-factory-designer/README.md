@@ -1,4 +1,4 @@
-# Phase 03 — Factory Designer & Device Modeling
+# Phase 03 — Factory Designer, Device Modeling & PLC Export
 
 Status: **PLANNED**
 
@@ -7,5 +7,6 @@ Status: **PLANNED**
 | TASK-301 Device catalog & provenance | PLANNED |
 | TASK-302 Compact/modular PLC form | PLANNED |
 | TASK-303 React Flow topology | PLANNED |
+| TASK-304 PLC engineering export | PLANNED |
 
-Exit criteria: users can select catalog-backed devices, configure compact/modular PLC hardware correctly, connect devices visually, and persist the factory topology.
+Exit criteria: users can create factory-specific devices from catalog models, configure compact/modular PLCs, assign compatible free I/O/tag/protocol endpoints, connect devices visually, persist topology, and export a complete PLC engineering snapshot.
