@@ -36,6 +36,6 @@ Done:
 - Server-only convention: `server-only` in `lib/env.ts`, `lib/db/**`, `lib/services/**`; ESLint blocks `components/**` from importing them; Vitest stubs `server-only`.
 - Formatter: Prettier (`npm run format`, `npm run format:check`).
 - Local database: `compose.yaml` (PostgreSQL 17 on 127.0.0.1) with `npm run db:up`.
-- CI baseline: `.github/workflows/ci.yml` (format check, lint, typecheck, migrations, tests, build). Written to the specification; it has not run on GitHub yet because nothing is pushed.
+- CI baseline: `.github/workflows/ci.yml` (format check, lint, typecheck, migrations, tests, build). First run passed on PR #1 (format check, lint, typecheck, 2 migrations applied, 109 tests including the PostgreSQL integration tests, build).
 - Validation: `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test` (109 tests) and `npm run build` pass locally.
 - Graphify refreshed.
