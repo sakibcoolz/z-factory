@@ -1,6 +1,6 @@
 # TASK-103 — Factory CRUD
 
-Status: **IN PROGRESS**
+Status: **DONE**
 Linear: [ZFA-6](https://linear.app/recruit-verse/issue/ZFA-6)
 
 ## Objective
@@ -15,7 +15,7 @@ Implement factory list/create/view/edit/delete using SSR/server actions or route
 - Docker is not started by CRUD operations.
 
 ## Decision
-Owner identity: single-owner mode behind `requireActor()` — ADR-0007, status **Proposed**. It was the recommended option; the owner said to start without choosing explicitly, so the ADR and this task close when the owner accepts it (merging the change counts).
+Owner identity: single-owner mode behind `requireActor()` — ADR-0007, accepted by the owner on 2026-10-05.
 
 ## Evidence (2026-10-04)
 - Authorization boundary: `lib/auth/actor.ts`; every action and data-loading page calls `requireActor()` first. Production refuses all factory operations without `LOCAL_OWNER_ID`. Foreign factories read as not found.
@@ -26,7 +26,7 @@ Owner identity: single-owner mode behind `requireActor()` — ADR-0007, status *
 - Screens: `/factories` (list or welcome), `/factories/new`, `/factories/[factoryId]`, `/factories/[factoryId]/edit`. The fixture list and the `/welcome` route are removed; fixture screens stay reachable from the explorer's "Design fixtures" section.
 - Tests: 145 pass in total. Factory CRUD adds 13 PostgreSQL integration tests (service and server actions), 18 page/component tests and 12 unit tests (owner resolution, subnet arithmetic, form-state mapping).
 - End to end in headless Chromium against `next start`: empty state → create with an invalid subnet (field error, input kept) → create → overview → list → edit → delete with confirmation → empty state; no console errors.
-- `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run build` pass.
+- `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run build` pass locally and in CI on PR #2.
 
 ## Known limits
 - Single-owner mode does not authenticate the browser user (see ADR-0007 and `docs/security.md`).

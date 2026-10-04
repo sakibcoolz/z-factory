@@ -1,6 +1,6 @@
 # ADR 0007 — Single-Owner Mode Behind One Authorization Boundary
 
-Status: Proposed — 2026-10-04 (implemented with TASK-103; accepted when the owner merges it)
+Status: Accepted — 2026-10-05
 
 ## Context
 TASK-103 requires an authorization boundary for factory operations, and `docs/security.md` requires authenticated/authorized factory operations. No document names an authentication provider, and the MVP is a single-user development platform that drives Docker on the machine it runs on.
