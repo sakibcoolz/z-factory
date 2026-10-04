@@ -5,6 +5,8 @@ Normalize real industrial hardware metadata for UI rendering, compatibility vali
 
 Catalog definitions are reusable and are never the same object as factory-specific device instances.
 
+Process-specific assemblies such as a boiler are **not** generic hardware catalog models. They are ProcessModuleTypes that compose existing catalog-backed device instances. See `docs/process-modules.md`.
+
 ## Initial PLC targets
 - Siemens S7-1200 CPU 1214C DC/DC/DC
 - Siemens S7-1500 CPU 1511-1 PN
@@ -67,6 +69,12 @@ The factory designer filters peripherals using:
 
 ## Runtime mapping
 Hardware profiles may map to OpenPLC or generic device simulators only when semantics are explicitly defined. UI must disclose OpenPLC-backed simulation vs native vendor runtime.
+
+Generic device simulation stays device-centric. A process module may couple several devices and virtual/process values, but it must reference catalog-backed devices rather than invent process-specific vendor hardware facts.
+
+Examples:
+- VFD -> motor -> pump remains a device relationship.
+- A boiler module may assign heater, temperature sensors, level transmitter, pump and valves to process roles and then allocate its logical PLC I/O.
 
 ## Source policy
 Use manufacturer product pages/manuals as authoritative sources. Store normalized facts and URLs; do not ingest protected manuals/CAD/images unless licensing allows.
