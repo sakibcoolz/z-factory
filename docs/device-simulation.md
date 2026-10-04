@@ -6,6 +6,8 @@ Model industrial peripheral behavior around the PLC so Z-Factory can execute an 
 ## Runtime strategy
 Use a shared device-simulator engine/process for ordinary peripherals. It hosts many factory-specific device state machines. Do not create one container per simple device by default.
 
+Phases 02–05 keep this simulator inside the MVP architecture. Phase 06 may introduce the ADR-0008 Go service for coupled process modules; that service supplements rather than replaces the generic device runtime.
+
 ## Device behaviors
 
 ### Sensor
@@ -46,7 +48,23 @@ Pressure sensor
 ## State-update model
 Simulation runs at a configured tick interval. A tick updates in-memory state, emits meaningful events, and optionally updates selected runtime snapshots/telemetry.
 
+For advanced process modules, the same principle applies: the process model receives elapsed simulation time `dt`, current state and PLC-driven inputs, then deterministically computes the next state. Duration emerges from the model; do not fake physical response with a fixed timer unless the process recipe explicitly includes a timed stage.
+
 Do not persist every tick by default.
+
+## Process-module boundary
+Device models answer questions such as "how does this VFD/motor/valve react?" A process model answers "how do several devices affect the process together?"
+
+Canonical process loop:
+
+```text
+process model -> virtual/assigned sensor feedback -> PLC input/tag
+PLC logic -> command/setpoint -> device/process model -> next process state
+```
+
+The PLC owns control decisions. The simulator must not turn a heater, valve, pump or drive on merely because a target value was configured.
+
+Boiler-specific thermal zones, equations and I/O are deferred to Phase 07 and documented as a module, not as generic sensor behavior.
 
 ## Commands and feedback
 Command/setpoint values are distinct from actual feedback.
