@@ -90,7 +90,30 @@ simulated device -> PLC feedback/status/alarm -> Gateway/UI
 Never bypass PLC logic by writing gateway commands directly into motor/pump/VFD state.
 
 ## Device simulation architecture
-MVP uses a shared device-simulator runtime capable of hosting many factory-specific state machines. It may manage VFD, motor, pump, fan, conveyor, valve, sensor, switch and process-state instances. Avoid one container per simple peripheral unless isolation or protocol fidelity requires it.
+MVP uses a shared device-simulator runtime capable of hosting many factory-specific state machines. It may manage VFD, motor, pump, fan, conveyor, valve, sensor and switch instances. Avoid one container per simple peripheral unless isolation or protocol fidelity requires it.
+
+Generic device simulation and process simulation are separate concerns. Reusable PLCs/sensors/drives/motors/valves remain catalog-backed devices; a process module composes existing factory device instances into a process-specific unit and allocates its logical PLC I/O. See `docs/process-modules.md`.
+
+### Post-MVP process simulation
+Phase 06 may add the ADR-0008 Go process-simulation service behind explicit adapters. This is additive and must not rewrite the Phase 02–05 runtime contracts.
+
+```text
+Next.js / Z-Factory configuration
+          |
+          | versioned module/model config
+          v
+Go Process Simulation Service
+          |
+          | feedback/process values
+          v
+Modbus/runtime adapter <-> OpenPLC tags
+          ^
+          | PLC commands/setpoints
+          |
+      PLC control logic
+```
+
+The Go service computes process response; OpenPLC remains the control authority. Boiler-specific physics is deferred to Phase 07 rather than embedded in the generic device runtime.
 
 ## Live-state boundary
 - Runtime/OpenPLC/device simulator: authoritative live state.
@@ -105,4 +128,4 @@ Adapters support the relevant subset of:
 Docker socket/API access is privileged and MUST remain server-side. Production should use a constrained Docker API proxy or equivalent least-privilege boundary.
 
 ## Future split
-A separate orchestration/simulation service may be introduced only when scale, security or fidelity requires it and after an ADR.
+A separate simulation service is approved only for Phase 06+ by ADR-0008. The MVP remains the single Next.js application from ADR-0001. Any broader orchestration/backend split requires another ADR.
