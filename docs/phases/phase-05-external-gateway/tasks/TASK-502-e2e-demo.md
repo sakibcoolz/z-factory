@@ -4,12 +4,23 @@ Status: **PLANNED**
 Linear: pending
 
 ## Objective
-Demonstrate sensor -> OpenPLC -> VFD simulation -> motor/pump visualization plus external Raspberry Pi Modbus interaction.
+Demonstrate a complete PLC-authoritative industrial loop with external Modbus interaction.
+
+## Demo chain
+```text
+sensor/process value -> OpenPLC -> VFD setpoint -> motor -> pump/process
+                    -> feedback tags -> external gateway + Z-Factory UI
+```
 
 ## Acceptance criteria
 - Reproducible setup/runbook.
 - Factory start/stop lifecycle.
-- Live topology/tag/runtime data.
-- At least one fault scenario.
-- External Modbus read/write.
+- PLC code executes inside OpenPLC container.
+- Multiple factory devices are uniquely named and connected.
+- Live topology/tag/runtime state.
+- Gateway writes a PLC command/setpoint and reads resulting feedback.
+- Setpoint vs actual value is visible.
+- At least one interlock/fault scenario.
+- Events/alarms/history recorded according to persistence rules.
+- PLC engineering export produced for the demo PLC.
 - Test evidence and final docs.
