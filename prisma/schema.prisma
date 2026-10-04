@@ -1,0 +1,905 @@
+// Z-Factory database schema. Source of truth for its meaning: docs/database.md.
+// PostgreSQL stores catalog facts, factory configuration, mappings, versions, commands,
+// alarms/events and selected telemetry. It is NOT the live-state authority.
+//
+// Invariants Prisma cannot express (CHECK constraints, partial unique indexes) live in the
+// migration SQL and are listed in docs/database.md -> Database-enforced invariants.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ───────────────────────────── enums ─────────────────────────────
+
+enum PlcArchitecture {
+  COMPACT
+  MODULAR
+}
+
+enum RuntimeType {
+  OPENPLC
+  DEVICE_SIM
+  MODBUS_SIM
+  EXTERNAL
+  NONE
+}
+
+enum SimulatorType {
+  NONE
+  GENERIC
+  SENSOR
+  SWITCH
+  VALVE
+  VFD
+  MOTOR
+  PUMP
+  FAN
+  CONVEYOR
+  MIXER
+  COMPRESSOR
+  RELAY
+}
+
+enum DriveType {
+  VFD
+  SERVO
+  SOFT_STARTER
+  DIRECT_ON_LINE
+}
+
+enum LifecycleStatus {
+  ACTIVE
+  PHASED_OUT
+  DISCONTINUED
+  UNKNOWN
+}
+
+/// GENERIC marks a simulated profile that makes no vendor claim.
+enum VerificationStatus {
+  UNVERIFIED
+  VERIFIED
+  GENERIC
+}
+
+enum SupplyType {
+  AC
+  DC
+  AC_DC
+}
+
+enum IoDirection {
+  INPUT
+  OUTPUT
+}
+
+enum IoSignalClass {
+  DIGITAL
+  ANALOG
+}
+
+/// PLC point classes: digital/analog input/output.
+enum IoPointType {
+  DI
+  DO
+  AI
+  AO
+}
+
+enum ModuleType {
+  POWER_SUPPLY
+  DIGITAL_INPUT
+  DIGITAL_OUTPUT
+  DIGITAL_MIXED
+  ANALOG_INPUT
+  ANALOG_OUTPUT
+  ANALOG_MIXED
+  COMMUNICATION
+  OTHER
+}
+
+enum IoPointSource {
+  BUILT_IN
+  MODULE
+}
+
+enum IoPointStatus {
+  FREE
+  OCCUPIED
+  RESERVED
+  DISABLED
+}
+
+enum Protocol {
+  MODBUS_TCP
+}
+
+enum ModbusArea {
+  COIL
+  DISCRETE_INPUT
+  HOLDING_REGISTER
+  INPUT_REGISTER
+}
+
+enum TagDataType {
+  BOOL
+  INT16
+  UINT16
+  INT32
+  UINT32
+  FLOAT32
+}
+
+enum TagDirection {
+  INPUT
+  OUTPUT
+  INTERNAL
+}
+
+enum TagRole {
+  COMMAND
+  SETPOINT
+  FEEDBACK
+  STATUS
+  ALARM
+  PROCESS_VALUE
+}
+
+enum AccessMode {
+  READ_ONLY
+  READ_WRITE
+}
+
+enum ByteOrder {
+  BIG_ENDIAN
+  LITTLE_ENDIAN
+}
+
+enum WordOrder {
+  HIGH_WORD_FIRST
+  LOW_WORD_FIRST
+}
+
+enum TagQuality {
+  GOOD
+  STALE
+  BAD
+  DISCONNECTED
+}
+
+enum ConnectionRelationship {
+  CONTROLS
+  DRIVES
+  MECHANICALLY_DRIVES
+  MEASURES
+  FEEDS_BACK_TO
+  COMMUNICATES_WITH
+}
+
+enum EndpointType {
+  DEVICE
+  /// A peripheral terminal: references a DeviceIoDefinition of the device's model.
+  DEVICE_IO
+  PLC_IO_POINT
+  TAG
+  PROTOCOL_PORT
+}
+
+enum FactoryStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum RuntimeState {
+  STOPPED
+  STARTING
+  RUNNING
+  DEGRADED
+  FAULTED
+  STOPPING
+  DISCONNECTED
+}
+
+enum ProgramLanguage {
+  ST
+  LD
+}
+
+enum ProgramVersionStatus {
+  DRAFT
+  COMPILED
+  DEPLOYED
+  FAILED
+  ARCHIVED
+}
+
+enum ConfigurationScope {
+  FACTORY
+  PLC
+  IO_MAPPING
+  MODBUS_MAPPING
+}
+
+enum SimulationProfileKind {
+  CONSTANT
+  RAMP
+  SINE
+  RANDOM
+  SCRIPTED
+  STATE_MACHINE
+}
+
+enum CommandSource {
+  UI
+  GATEWAY
+  SYSTEM
+}
+
+enum CommandStatus {
+  REQUESTED
+  ACCEPTED
+  APPLIED
+  REJECTED
+  FAILED
+}
+
+enum Severity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum FaultResetBehavior {
+  AUTO
+  MANUAL
+}
+
+// ───────────────────────────── catalog ─────────────────────────────
+// Reusable definitions. Never the same object as a factory device instance.
+
+model Manufacturer {
+  id         String  @id @default(uuid(7)) @db.Uuid
+  name       String  @unique
+  websiteUrl String?
+
+  families DeviceFamily[]
+}
+
+model DeviceCategory {
+  id                 String        @id @default(uuid(7)) @db.Uuid
+  /// Stable code such as PLC, VFD, MOTOR, PUMP.
+  code               String        @unique
+  name               String
+  simulatorType      SimulatorType @default(NONE)
+  requiresMotor      Boolean       @default(false)
+  requiresDrive      Boolean       @default(false)
+  preferredDriveType DriveType?
+
+  families DeviceFamily[]
+}
+
+model DeviceFamily {
+  id               String @id @default(uuid(7)) @db.Uuid
+  manufacturerId   String @db.Uuid
+  deviceCategoryId String @db.Uuid
+  name             String
+
+  manufacturer Manufacturer   @relation(fields: [manufacturerId], references: [id], onDelete: Restrict)
+  category     DeviceCategory @relation(fields: [deviceCategoryId], references: [id], onDelete: Restrict)
+  models       DeviceModel[]
+  rackProfiles RackProfile[]
+  moduleModels ModuleModel[]
+
+  @@unique([manufacturerId, name])
+  @@index([deviceCategoryId])
+}
+
+model DeviceModel {
+  id                 String             @id @default(uuid(7)) @db.Uuid
+  familyId           String             @db.Uuid
+  modelName          String
+  sku                String?
+  /// Required for PLC models, null for every other category.
+  architectureType   PlcArchitecture?
+  runtimeSupport     RuntimeType        @default(NONE)
+  lifecycleStatus    LifecycleStatus    @default(UNKNOWN)
+  // Provenance (docs/references/plc-source-policy.md). Never fabricate vendor facts.
+  verificationStatus VerificationStatus @default(UNVERIFIED)
+  sourceUrl          String?
+  sourceTitle        String?
+  sourceRevision     String?
+  sourceRetrievedAt  DateTime?
+  verifiedAt         DateTime?
+  metadataJson       Json               @default("{}")
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  family               DeviceFamily                 @relation(fields: [familyId], references: [id], onDelete: Restrict)
+  electricalProfile    ElectricalProfile?
+  communicationPorts   CommunicationPort[]
+  ioDefinitions        DeviceIoDefinition[]
+  builtInIoChannels    BuiltInIoChannel[]
+  faultDefinitions     DeviceFaultDefinition[]
+  registerDefinitions  ProtocolRegisterDefinition[]
+  moduleCompatibility  ModuleCompatibility[]
+  simulationProfiles   SimulationProfile[]
+  instances            DeviceInstance[]
+
+  @@unique([familyId, modelName])
+  @@index([sku])
+}
+
+model ElectricalProfile {
+  deviceModelId  String      @id @db.Uuid
+  supplyType     SupplyType?
+  nominalVoltage Float?
+  voltageMin     Float?
+  voltageMax     Float?
+  currentRange   String?
+  powerRating    Float?
+  notes          String?
+
+  deviceModel DeviceModel @relation(fields: [deviceModelId], references: [id], onDelete: Cascade)
+}
+
+model CommunicationPort {
+  id            String     @id @default(uuid(7)) @db.Uuid
+  deviceModelId String     @db.Uuid
+  name          String
+  physicalType  String
+  protocols     Protocol[]
+  portCount     Int        @default(1)
+  notes         String?
+
+  deviceModel DeviceModel @relation(fields: [deviceModelId], references: [id], onDelete: Cascade)
+
+  @@unique([deviceModelId, name])
+}
+
+/// Reusable peripheral I/O requirement/capability, seen from the device.
+model DeviceIoDefinition {
+  id            String        @id @default(uuid(7)) @db.Uuid
+  deviceModelId String        @db.Uuid
+  direction     IoDirection
+  ioType        IoSignalClass
+  /// Normalized signal code, e.g. DC_24V, CURRENT_4_20MA, VOLTAGE_0_10V.
+  signalType    String
+  rangeMin      Float?
+  rangeMax      Float?
+  unit          String?
+  terminalLabel String?
+  notes         String?
+
+  deviceModel DeviceModel @relation(fields: [deviceModelId], references: [id], onDelete: Cascade)
+
+  @@index([deviceModelId])
+}
+
+/// Compact PLC channel definition.
+model BuiltInIoChannel {
+  id                   String      @id @default(uuid(7)) @db.Uuid
+  deviceModelId        String      @db.Uuid
+  ioType               IoPointType
+  channelIndex         Int
+  terminalLabel        String?
+  signalType           String
+  addressHint          String?
+  electricalLimitsJson Json        @default("{}")
+
+  deviceModel DeviceModel  @relation(fields: [deviceModelId], references: [id], onDelete: Cascade)
+  ioPoints    PlcIoPoint[]
+
+  @@unique([deviceModelId, ioType, channelIndex])
+}
+
+/// Rack/backplane a modular PLC family can be built on.
+model RackProfile {
+  id        String  @id @default(uuid(7)) @db.Uuid
+  familyId  String  @db.Uuid
+  name      String
+  slotCount Int
+  notes     String?
+
+  family       DeviceFamily  @relation(fields: [familyId], references: [id], onDelete: Restrict)
+  factoryRacks FactoryRack[]
+
+  @@unique([familyId, name])
+}
+
+model ModuleModel {
+  id                 String             @id @default(uuid(7)) @db.Uuid
+  familyId           String             @db.Uuid
+  modelName          String
+  sku                String?
+  moduleType         ModuleType
+  powerConsumption   Float?
+  verificationStatus VerificationStatus @default(UNVERIFIED)
+  sourceUrl          String?
+  sourceTitle        String?
+  sourceRevision     String?
+  sourceRetrievedAt  DateTime?
+  verifiedAt         DateTime?
+  metadataJson       Json               @default("{}")
+
+  family         DeviceFamily          @relation(fields: [familyId], references: [id], onDelete: Restrict)
+  channels       ModuleChannel[]
+  compatibility  ModuleCompatibility[]
+  factoryModules FactoryModule[]
+
+  @@unique([familyId, modelName])
+}
+
+/// A module may be installed with a given modular CPU model, optionally in a slot range.
+model ModuleCompatibility {
+  id            String  @id @default(uuid(7)) @db.Uuid
+  moduleModelId String  @db.Uuid
+  cpuModelId    String  @db.Uuid
+  minSlot       Int?
+  maxSlot       Int?
+  notes         String?
+
+  moduleModel ModuleModel @relation(fields: [moduleModelId], references: [id], onDelete: Cascade)
+  cpuModel    DeviceModel @relation(fields: [cpuModelId], references: [id], onDelete: Cascade)
+
+  @@unique([moduleModelId, cpuModelId])
+}
+
+model ModuleChannel {
+  id                   String      @id @default(uuid(7)) @db.Uuid
+  moduleModelId        String      @db.Uuid
+  ioType               IoPointType
+  channelIndex         Int
+  terminalLabel        String?
+  signalType           String
+  electricalLimitsJson Json        @default("{}")
+
+  moduleModel ModuleModel  @relation(fields: [moduleModelId], references: [id], onDelete: Cascade)
+  ioPoints    PlcIoPoint[]
+
+  @@unique([moduleModelId, ioType, channelIndex])
+}
+
+model DeviceFaultDefinition {
+  id            String             @id @default(uuid(7)) @db.Uuid
+  deviceModelId String             @db.Uuid
+  code          String
+  name          String
+  severity      Severity
+  description   String?
+  resetBehavior FaultResetBehavior @default(MANUAL)
+
+  deviceModel DeviceModel @relation(fields: [deviceModelId], references: [id], onDelete: Cascade)
+
+  @@unique([deviceModelId, code])
+}
+
+/// Optional model-level register definition for smart devices.
+model ProtocolRegisterDefinition {
+  id            String      @id @default(uuid(7)) @db.Uuid
+  deviceModelId String      @db.Uuid
+  protocol      Protocol
+  area          ModbusArea
+  /// Zero-based address within the area.
+  address       Int
+  dataType      TagDataType
+  wordCount     Int         @default(1)
+  byteOrder     ByteOrder   @default(BIG_ENDIAN)
+  wordOrder     WordOrder   @default(HIGH_WORD_FIRST)
+  access        AccessMode  @default(READ_ONLY)
+  scale         Float       @default(1)
+  unit          String?
+  semanticRole  TagRole?
+
+  deviceModel DeviceModel @relation(fields: [deviceModelId], references: [id], onDelete: Cascade)
+
+  @@unique([deviceModelId, protocol, area, address])
+}
+
+// ───────────────────────────── factory configuration ─────────────────────────────
+
+model Factory {
+  id                String        @id @default(uuid(7)) @db.Uuid
+  /// Opaque owner identity; the authentication provider is not decided yet.
+  ownerId           String
+  name              String
+  slug              String        @unique
+  description       String?
+  /// Desired/configuration status. Runtime state is tracked separately.
+  status            FactoryStatus @default(DRAFT)
+  /// Last persisted runtime state; the runtime layer is the live authority.
+  runtimeStatus     RuntimeState  @default(STOPPED)
+  dockerNetworkName String        @unique
+  subnetCidr        String        @unique
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  devices               DeviceInstance[]
+  connections           DeviceConnection[]
+  gateways              Gateway[]
+  configurationVersions ConfigurationVersion[]
+  commands              DeviceCommand[]
+  events                RuntimeEvent[]
+  alarms                AlarmEvent[]
+  telemetry             TelemetrySample[]
+
+  @@unique([ownerId, name])
+}
+
+/// A named device created inside one factory from a catalog model.
+model DeviceInstance {
+  id                String        @id @default(uuid(7)) @db.Uuid
+  factoryId         String        @db.Uuid
+  deviceModelId     String        @db.Uuid
+  name              String
+  role              String?
+  location          String?
+  runtimeType       RuntimeType   @default(NONE)
+  runtimeStatus     RuntimeState  @default(STOPPED)
+  simulatorType     SimulatorType @default(NONE)
+  /// Server-side only; never sent to the browser.
+  dockerContainerId String?
+  hostName          String?
+  configJson        Json          @default("{}")
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  factory             Factory               @relation(fields: [factoryId], references: [id], onDelete: Cascade)
+  deviceModel         DeviceModel           @relation(fields: [deviceModelId], references: [id], onDelete: Restrict)
+  plcProfile          PlcInstanceProfile?
+  gateway             Gateway?
+  runtimePorts        RuntimePort[]
+  simulationProfiles  SimulationProfile[]
+  runtimeSnapshot     DeviceRuntimeSnapshot?
+  sourcedTags         Tag[]                 @relation("TagSourceDevice")
+  outgoingConnections DeviceConnection[]    @relation("ConnectionSource")
+  incomingConnections DeviceConnection[]    @relation("ConnectionTarget")
+  commands            DeviceCommand[]
+  events              RuntimeEvent[]
+  alarms              AlarmEvent[]
+  telemetry           TelemetrySample[]
+
+  @@unique([factoryId, name])
+  @@index([deviceModelId])
+}
+
+/// PLC-specific instance configuration.
+model PlcInstanceProfile {
+  deviceInstanceId      String  @id @db.Uuid
+  /// Program version currently selected for deployment.
+  programVersionId      String? @unique @db.Uuid
+  ioMappingVersion      Int     @default(0)
+  modbusMappingVersion  Int     @default(0)
+  runtimeImage          String?
+  runtimeVersion        String?
+  imageDigest           String?
+
+  deviceInstance     DeviceInstance         @relation(fields: [deviceInstanceId], references: [id], onDelete: Cascade)
+  programVersion     ProgramVersion?        @relation("CurrentProgram", fields: [programVersionId], references: [id], onDelete: SetNull)
+  programVersions    ProgramVersion[]       @relation("PlcPrograms")
+  racks              FactoryRack[]
+  ioPoints           PlcIoPoint[]
+  tags               Tag[]
+  gatewayConnections GatewayPlcConnection[]
+  commands           DeviceCommand[]
+}
+
+/// Rack selected for a modular PLC instance.
+model FactoryRack {
+  id            String @id @default(uuid(7)) @db.Uuid
+  plcInstanceId String @db.Uuid
+  rackProfileId String @db.Uuid
+  rackIndex     Int    @default(0)
+
+  plc         PlcInstanceProfile @relation(fields: [plcInstanceId], references: [deviceInstanceId], onDelete: Cascade)
+  rackProfile RackProfile        @relation(fields: [rackProfileId], references: [id], onDelete: Restrict)
+  modules     FactoryModule[]
+
+  @@unique([plcInstanceId, rackIndex])
+}
+
+/// Module placed in a rack slot. One module per slot.
+model FactoryModule {
+  id            String @id @default(uuid(7)) @db.Uuid
+  factoryRackId String @db.Uuid
+  moduleModelId String @db.Uuid
+  slotIndex     Int
+
+  rack        FactoryRack  @relation(fields: [factoryRackId], references: [id], onDelete: Cascade)
+  moduleModel ModuleModel  @relation(fields: [moduleModelId], references: [id], onDelete: Restrict)
+  ioPoints    PlcIoPoint[]
+
+  @@unique([factoryRackId, slotIndex])
+}
+
+/// Resolved available/occupied PLC endpoint, from a built-in channel or an installed module channel.
+model PlcIoPoint {
+  id               String        @id @default(uuid(7)) @db.Uuid
+  plcInstanceId    String        @db.Uuid
+  sourceType       IoPointSource
+  builtInChannelId String?       @db.Uuid
+  factoryModuleId  String?       @db.Uuid
+  moduleChannelId  String?       @db.Uuid
+  /// IEC 61131-3 located address, e.g. %IW100.
+  logicalAddress   String
+  status           IoPointStatus @default(FREE)
+
+  plc            PlcInstanceProfile @relation(fields: [plcInstanceId], references: [deviceInstanceId], onDelete: Cascade)
+  builtInChannel BuiltInIoChannel?  @relation(fields: [builtInChannelId], references: [id], onDelete: Restrict)
+  factoryModule  FactoryModule?     @relation(fields: [factoryModuleId], references: [id], onDelete: Cascade)
+  moduleChannel  ModuleChannel?     @relation(fields: [moduleChannelId], references: [id], onDelete: Restrict)
+  tag            Tag?
+
+  @@unique([plcInstanceId, logicalAddress])
+  @@unique([plcInstanceId, builtInChannelId])
+  @@unique([factoryModuleId, moduleChannelId])
+}
+
+model Tag {
+  id                     String       @id @default(uuid(7)) @db.Uuid
+  plcInstanceId          String       @db.Uuid
+  name                   String
+  dataType               TagDataType
+  direction              TagDirection
+  role                   TagRole
+  logicalAddress         String?
+  /// I/O point the tag is bound to; an I/O point carries at most one tag.
+  plcIoPointId           String?      @unique @db.Uuid
+  protocol               Protocol?
+  protocolArea           ModbusArea?
+  /// Zero-based address within the area. Display notation (3xxxx/4xxxx) is derived.
+  protocolAddress        Int?
+  wordCount              Int          @default(1)
+  byteOrder              ByteOrder    @default(BIG_ENDIAN)
+  wordOrder              WordOrder    @default(HIGH_WORD_FIRST)
+  accessMode             AccessMode   @default(READ_ONLY)
+  scale                  Float        @default(1)
+  offset                 Float        @default(0)
+  unit                   String?
+  sourceDeviceInstanceId String?      @db.Uuid
+  /// Last persisted quality; live quality comes from the runtime.
+  quality                TagQuality?
+
+  plc              PlcInstanceProfile  @relation(fields: [plcInstanceId], references: [deviceInstanceId], onDelete: Cascade)
+  ioPoint          PlcIoPoint?         @relation(fields: [plcIoPointId], references: [id], onDelete: SetNull)
+  sourceDevice     DeviceInstance?     @relation("TagSourceDevice", fields: [sourceDeviceInstanceId], references: [id], onDelete: SetNull)
+  gatewayMappings  GatewayTagMapping[]
+  commands         DeviceCommand[]
+  alarms           AlarmEvent[]
+  telemetry        TelemetrySample[]
+
+  @@unique([plcInstanceId, name])
+  @@unique([plcInstanceId, protocol, protocolArea, protocolAddress])
+  @@index([sourceDeviceInstanceId])
+}
+
+/// Typed connection between explicit endpoints of two device instances.
+model DeviceConnection {
+  id                 String                 @id @default(uuid(7)) @db.Uuid
+  factoryId          String                 @db.Uuid
+  sourceDeviceId     String                 @db.Uuid
+  targetDeviceId     String                 @db.Uuid
+  sourceEndpointType EndpointType
+  /// Id of the referenced endpoint row; the device id itself for DEVICE endpoints.
+  sourceEndpointRef  String
+  targetEndpointType EndpointType
+  targetEndpointRef  String
+  relationship       ConnectionRelationship
+  protocol           Protocol?
+  metadataJson       Json                   @default("{}")
+  createdAt          DateTime               @default(now())
+
+  factory      Factory        @relation(fields: [factoryId], references: [id], onDelete: Cascade)
+  sourceDevice DeviceInstance @relation("ConnectionSource", fields: [sourceDeviceId], references: [id], onDelete: Cascade)
+  targetDevice DeviceInstance @relation("ConnectionTarget", fields: [targetDeviceId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceDeviceId, targetDeviceId, relationship, sourceEndpointRef, targetEndpointRef])
+  @@index([factoryId])
+  @@index([targetDeviceId])
+}
+
+model RuntimePort {
+  id               String   @id @default(uuid(7)) @db.Uuid
+  deviceInstanceId String   @db.Uuid
+  protocol         Protocol
+  containerPort    Int
+  /// Null while the port is not published to the host.
+  hostPort         Int?
+  bindAddress      String   @default("127.0.0.1")
+
+  deviceInstance DeviceInstance @relation(fields: [deviceInstanceId], references: [id], onDelete: Cascade)
+
+  @@unique([deviceInstanceId, protocol, containerPort])
+  @@unique([bindAddress, hostPort])
+}
+
+model Gateway {
+  id               String       @id @default(uuid(7)) @db.Uuid
+  factoryId        String       @db.Uuid
+  deviceInstanceId String       @unique @db.Uuid
+  name             String
+  status           RuntimeState @default(DISCONNECTED)
+  configJson       Json         @default("{}")
+
+  factory        Factory                @relation(fields: [factoryId], references: [id], onDelete: Cascade)
+  deviceInstance DeviceInstance         @relation(fields: [deviceInstanceId], references: [id], onDelete: Cascade)
+  plcConnections GatewayPlcConnection[]
+
+  @@unique([factoryId, name])
+}
+
+model GatewayPlcConnection {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  gatewayId      String   @db.Uuid
+  plcInstanceId  String   @db.Uuid
+  protocol       Protocol @default(MODBUS_TCP)
+  host           String
+  port           Int
+  unitId         Int      @default(1)
+  pollIntervalMs Int      @default(500)
+  enabled        Boolean  @default(true)
+
+  gateway     Gateway             @relation(fields: [gatewayId], references: [id], onDelete: Cascade)
+  plc         PlcInstanceProfile  @relation(fields: [plcInstanceId], references: [deviceInstanceId], onDelete: Cascade)
+  tagMappings GatewayTagMapping[]
+
+  @@unique([gatewayId, plcInstanceId, protocol])
+}
+
+model GatewayTagMapping {
+  id                     String     @id @default(uuid(7)) @db.Uuid
+  gatewayPlcConnectionId String     @db.Uuid
+  tagId                  String     @db.Uuid
+  externalName           String
+  accessMode             AccessMode @default(READ_ONLY)
+  scalingJson            Json       @default("{}")
+
+  connection GatewayPlcConnection @relation(fields: [gatewayPlcConnectionId], references: [id], onDelete: Cascade)
+  tag        Tag                  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([gatewayPlcConnectionId, tagId])
+  @@unique([gatewayPlcConnectionId, externalName])
+}
+
+model ProgramVersion {
+  id                  String               @id @default(uuid(7)) @db.Uuid
+  plcInstanceId       String               @db.Uuid
+  version             Int
+  language            ProgramLanguage      @default(ST)
+  sourceText          String
+  compiledArtifactRef String?
+  checksum            String
+  status              ProgramVersionStatus @default(DRAFT)
+  createdAt           DateTime             @default(now())
+
+  plc       PlcInstanceProfile  @relation("PlcPrograms", fields: [plcInstanceId], references: [deviceInstanceId], onDelete: Cascade)
+  currentOf PlcInstanceProfile? @relation("CurrentProgram")
+
+  @@unique([plcInstanceId, version])
+}
+
+/// Immutable configuration snapshot; exports reference these.
+model ConfigurationVersion {
+  id           String             @id @default(uuid(7)) @db.Uuid
+  factoryId    String             @db.Uuid
+  scopeType    ConfigurationScope
+  scopeId      String
+  version      Int
+  snapshotJson Json
+  createdAt    DateTime           @default(now())
+  createdBy    String
+
+  factory Factory @relation(fields: [factoryId], references: [id], onDelete: Cascade)
+
+  @@unique([factoryId, scopeType, scopeId, version])
+}
+
+// ───────────────────────────── simulation, state, history ─────────────────────────────
+
+/// Behavior configuration for exactly one of: a device model or a device instance.
+model SimulationProfile {
+  id               String                @id @default(uuid(7)) @db.Uuid
+  deviceModelId    String?               @db.Uuid
+  deviceInstanceId String?               @db.Uuid
+  kind             SimulationProfileKind
+  parametersJson   Json                  @default("{}")
+
+  deviceModel    DeviceModel?    @relation(fields: [deviceModelId], references: [id], onDelete: Cascade)
+  deviceInstance DeviceInstance? @relation(fields: [deviceInstanceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceModelId])
+  @@index([deviceInstanceId])
+}
+
+/// Latest persisted important state. A snapshot, never the control truth.
+model DeviceRuntimeSnapshot {
+  deviceInstanceId String       @id @db.Uuid
+  status           RuntimeState
+  valuesJson       Json         @default("{}")
+  quality          TagQuality   @default(GOOD)
+  capturedAt       DateTime
+
+  deviceInstance DeviceInstance @relation(fields: [deviceInstanceId], references: [id], onDelete: Cascade)
+}
+
+/// A requested write to a PLC command/setpoint tag. Requested is not the same as applied.
+model DeviceCommand {
+  id                 String        @id @default(uuid(7)) @db.Uuid
+  factoryId          String        @db.Uuid
+  targetDeviceId     String?       @db.Uuid
+  plcInstanceId      String        @db.Uuid
+  tagId              String        @db.Uuid
+  commandType        String
+  requestedValueJson Json
+  source             CommandSource
+  requestedAt        DateTime      @default(now())
+  appliedAt          DateTime?
+  status             CommandStatus @default(REQUESTED)
+
+  factory      Factory            @relation(fields: [factoryId], references: [id], onDelete: Cascade)
+  targetDevice DeviceInstance?    @relation(fields: [targetDeviceId], references: [id], onDelete: SetNull)
+  plc          PlcInstanceProfile @relation(fields: [plcInstanceId], references: [deviceInstanceId], onDelete: Cascade)
+  tag          Tag                @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@index([factoryId, requestedAt])
+}
+
+model RuntimeEvent {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  factoryId   String   @db.Uuid
+  deviceId    String?  @db.Uuid
+  type        String
+  severity    Severity @default(INFO)
+  /// Version of the payload shape (event payloads are versioned).
+  version     Int      @default(1)
+  payloadJson Json     @default("{}")
+  occurredAt  DateTime @default(now())
+
+  factory Factory         @relation(fields: [factoryId], references: [id], onDelete: Cascade)
+  device  DeviceInstance? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  @@index([factoryId, occurredAt])
+  @@index([deviceId, occurredAt])
+}
+
+model AlarmEvent {
+  id             String    @id @default(uuid(7)) @db.Uuid
+  factoryId      String    @db.Uuid
+  deviceId       String?   @db.Uuid
+  code           String
+  severity       Severity
+  message        String
+  sourceTagId    String?   @db.Uuid
+  startedAt      DateTime  @default(now())
+  clearedAt      DateTime?
+  acknowledgedAt DateTime?
+
+  factory   Factory         @relation(fields: [factoryId], references: [id], onDelete: Cascade)
+  device    DeviceInstance? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  sourceTag Tag?            @relation(fields: [sourceTagId], references: [id], onDelete: SetNull)
+
+  @@index([factoryId, startedAt])
+}
+
+/// Selected/downsampled telemetry. Never every PLC scan or simulator tick.
+model TelemetrySample {
+  id          BigInt     @id @default(autoincrement())
+  factoryId   String     @db.Uuid
+  deviceId    String?    @db.Uuid
+  tagId       String?    @db.Uuid
+  valueNumber Float?
+  valueJson   Json?
+  quality     TagQuality @default(GOOD)
+  sampledAt   DateTime
+
+  factory Factory         @relation(fields: [factoryId], references: [id], onDelete: Cascade)
+  device  DeviceInstance? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  tag     Tag?            @relation(fields: [tagId], references: [id], onDelete: SetNull)
+
+  @@index([tagId, sampledAt])
+  @@index([factoryId, sampledAt])
+}

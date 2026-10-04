@@ -1,0 +1,24 @@
+# Local development services only. Factory runtime containers are created by the
+# application through the Docker Engine API, never by this file.
+name: z-factory-dev
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      # Development-only credentials; the port is bound to localhost.
+      POSTGRES_USER: zfactory
+      POSTGRES_PASSWORD: zfactory
+      POSTGRES_DB: zfactory
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zfactory -d zfactory"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  postgres-data:

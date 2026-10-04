@@ -1,0 +1,163 @@
+@import "tailwindcss";
+@import "./shell.css";
+
+/*
+ * Design tokens — the single place colors, fonts, radii and shadows are defined.
+ * 1. Modernist design system tokens (Claude Design `_ds/modernist-…/styles.css`), names unchanged.
+ * 2. Dark-shell palette of the turn-2 wireframes (VS Code-style shell).
+ * UI code must reference these through var() or the generated theme utilities.
+ */
+@theme static {
+  --color-*: initial;
+
+  /* ── Modernist ─────────────────────────────────────────────── */
+  --color-bg: #f3f2f2;
+  --color-surface: #eae9e9;
+  --color-text: #201e1d;
+  --color-accent: #ec3013;
+  --color-accent-2: #e15b47;
+  --color-divider: color-mix(in srgb, #201e1d 40%, transparent);
+
+  --color-neutral-100: #f8f4f4;
+  --color-neutral-200: #eae7e7;
+  --color-neutral-300: #d7d3d3;
+  --color-neutral-400: #bab6b6;
+  --color-neutral-500: #9b9797;
+  --color-neutral-600: #7d7979;
+  --color-neutral-700: #605d5d;
+  --color-neutral-800: #444141;
+  --color-neutral-900: #2d2b2b;
+
+  --color-accent-100: #fff2ef;
+  --color-accent-200: #ffe0d9;
+  --color-accent-300: #ffc4b8;
+  --color-accent-400: #ff9783;
+  --color-accent-500: #ff563c;
+  --color-accent-600: #dd2b0f;
+  --color-accent-700: #ae1800;
+  --color-accent-800: #7c1405;
+  --color-accent-900: #4d170e;
+
+  --color-accent-2-100: #fff2ef;
+  --color-accent-2-200: #ffe0da;
+  --color-accent-2-300: #ffc4b9;
+  --color-accent-2-400: #ff9784;
+  --color-accent-2-500: #ef6853;
+  --color-accent-2-600: #c94b39;
+  --color-accent-2-700: #9e3526;
+  --color-accent-2-800: #71261b;
+  --color-accent-2-900: #471d16;
+
+  --font-heading: var(--font-archivo), "Archivo", system-ui, sans-serif;
+  --font-body: var(--font-archivo), "Archivo", system-ui, sans-serif;
+  --font-mono: ui-monospace, Menlo, monospace;
+
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+
+  --shadow-sm: 0 1px 2px color-mix(in srgb, #2d2b2b 14%, transparent);
+  --shadow-md: 0 3px 10px color-mix(in srgb, #2d2b2b 16%, transparent);
+  --shadow-lg: 0 12px 32px color-mix(in srgb, #2d2b2b 22%, transparent);
+
+  /* ── Dark shell: surfaces ──────────────────────────────────── */
+  --color-canvas: #161616;
+  --color-editor: #1e1e1e;
+  --color-side: #252526;
+  --color-section: #2b2b2b;
+  --color-tab: #2d2d2d;
+  --color-activity: #333333;
+  --color-chrome: #3c3c3c;
+  --color-row-active: #37373d;
+  --color-row-fault: #2a1f1f;
+  --color-line-active: #2a2d2e;
+  --color-scene: #262a30;
+
+  /* ── Dark shell: rules ─────────────────────────────────────── */
+  --color-line: #3c3c3c;
+  --color-line-subtle: #2a2a2a;
+  --color-line-strong: #4a4a4a;
+  --color-line-window: #454545;
+  --color-gridline: #232323;
+  --color-scene-grid: #2f3338;
+
+  /* ── Dark shell: text ──────────────────────────────────────── */
+  --color-fg: #cccccc;
+  --color-fg-strong: #ffffff;
+  --color-fg-bright: #e7e7e7;
+  --color-fg-soft: #bbbbbb;
+  --color-fg-muted: #a0a0a0;
+  --color-fg-tab: #969696;
+  --color-fg-dim: #858585;
+  --color-fg-faint: #5a5a5a;
+
+  /* ── Dark shell: state. Modernist red (--color-accent) is reserved for faults. ── */
+  --color-focus: #007acc;
+  --color-info: #3794ff;
+  --color-primary: #0e639c;
+  --color-primary-line: #1177bb;
+  --color-ok: #89d185;
+  --color-ok-line: #1f6f3d;
+  --color-warn: #cca700;
+  --color-warn-fg: #e5c07b;
+  --color-warn-line: #8a5a00;
+  --color-fault-fg: #ff7b65;
+  --color-ext: #c586c0;
+  --color-ext-line: #68217a;
+
+  /* ── Structured Text syntax ────────────────────────────────── */
+  --color-syn-var: #9cdcfe;
+  --color-syn-kw: #c586c0;
+  --color-syn-str: #ce9178;
+  --color-syn-num: #b5cea8;
+  --color-syn-type: #4ec9b0;
+  --color-syn-fn: #dcdcaa;
+  --color-syn-comment: #6a9955;
+
+  /* ── Type scale used by the shell ──────────────────────────── */
+  --text-2xs: 0.625rem;
+  --text-xs: 0.6875rem;
+  --text-sm: 0.75rem;
+  --text-stat: 1.125rem;
+  --text-title: 1.375rem;
+  --text-hero: 1.625rem;
+}
+
+:root {
+  --font-heading-weight: 800;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+}
+
+@layer base {
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    background: var(--color-canvas);
+    color: var(--color-fg);
+    font-family: var(--font-body);
+    font-size: var(--text-sm);
+    line-height: 1.4;
+  }
+
+  :focus {
+    outline: none;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--color-focus) 40%, transparent);
+  }
+}

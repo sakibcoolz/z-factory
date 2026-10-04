@@ -1,0 +1,11 @@
+.next/
+out/
+coverage/
+node_modules/
+graphify-out/
+lib/generated/
+prisma/migrations/
+package-lock.json
+next-env.d.ts
+# Engineering docs are hand-formatted Markdown
+*.md

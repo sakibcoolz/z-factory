@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [develop]
+  pull_request:
+    branches: [develop]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: zfactory
+          POSTGRES_PASSWORD: zfactory
+          POSTGRES_DB: zfactory_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U zfactory -d zfactory_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://zfactory:zfactory@localhost:5432/zfactory_test
+      TEST_DATABASE_URL: postgresql://zfactory:zfactory@localhost:5432/zfactory_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run db:deploy
+      - run: npm test
+      - run: npm run build
