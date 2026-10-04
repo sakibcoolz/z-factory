@@ -5,7 +5,7 @@ Normalize real industrial hardware metadata for UI rendering, compatibility vali
 
 Catalog definitions are reusable and are never the same object as factory-specific device instances.
 
-Process-specific assemblies such as a boiler are **not** generic hardware catalog models. They are ProcessModuleTypes that compose existing catalog-backed device instances. See `docs/process-modules.md`.
+Process-specific machines or assemblies are **not** generic hardware catalog models. They are ProcessModuleTypes that compose existing catalog-backed device instances. See `docs/process-modules.md`.
 
 ## Initial PLC targets
 - Siemens S7-1200 CPU 1214C DC/DC/DC
@@ -103,7 +103,7 @@ Examples:
 - PLC -> remote I/O -> sensors/valves is a valid distributed-I/O chain.
 - PLC -> temperature controller -> heater is a valid controller chain.
 - Sensor -> PLC direct I/O is valid and requires no intermediate device.
-- A boiler module may assign heater, temperature sensors, level transmitter, pump and valves to process roles and then allocate its logical PLC I/O.
+- A machine/process module may assign sensors, drives, actuators and controllers to process roles and then allocate its logical PLC I/O.
 
 ## Source policy
 Use manufacturer product pages/manuals as authoritative sources. Store normalized facts and URLs; do not ingest protected manuals/CAD/images unless licensing allows.
