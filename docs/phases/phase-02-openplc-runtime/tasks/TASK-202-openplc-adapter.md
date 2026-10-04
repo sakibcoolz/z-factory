@@ -1,7 +1,7 @@
 # TASK-202 — OpenPLC Runtime Adapter
 
 Status: **PLANNED**
-Linear: pending
+Linear: [ZFA-9](https://linear.app/recruit-verse/issue/ZFA-9)
 
 ## Objective
 Implement the OpenPLC runtime adapter using a reusable versioned image plus generated PLC-specific configuration, program, I/O/tag and Modbus mapping artifacts.

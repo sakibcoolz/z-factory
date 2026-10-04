@@ -1,7 +1,7 @@
 # TASK-301 — Device Catalog & Provenance
 
 Status: **PLANNED**
-Linear: pending
+Linear: [ZFA-12](https://linear.app/recruit-verse/issue/ZFA-12)
 
 ## Objective
 Populate normalized PLC and industrial peripheral profiles from authoritative sources and seed generic categories needed by the factory designer.

@@ -20,14 +20,15 @@ This file is mandatory reading for Claude Code, GitHub Copilot, OpenAI Codex, an
 15. `docs/events-telemetry.md`
 16. `docs/api-contract.md`
 17. `docs/coding-standards.md`
-18. `docs/security.md`
-19. `docs/testing.md`
-20. `docs/references/plc-source-policy.md`
-21. `docs/graphify.md`
-22. `docs/linear-workflow.md`
-23. Relevant ADRs under `docs/adr/`
-24. Active phase README and active task file under `docs/phases/`
-25. `docs/ai-agent-checklist.md`
+18. `docs/bootstrap.md`
+19. `docs/security.md`
+20. `docs/testing.md`
+21. `docs/references/plc-source-policy.md`
+22. `docs/graphify.md`
+23. `docs/linear-workflow.md`
+24. Relevant ADRs under `docs/adr/`
+25. Active phase README and active task file under `docs/phases/`
+26. `docs/ai-agent-checklist.md`
 
 ## Non-negotiable architecture rules
 - Documentation-first. Do not implement a task whose task file is missing or not Ready/In Progress.

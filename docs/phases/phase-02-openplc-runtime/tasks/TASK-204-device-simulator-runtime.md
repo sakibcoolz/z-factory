@@ -1,6 +1,7 @@
 # TASK-204 — Device Simulator Runtime
 
 Status: **PLANNED**
+Linear: [ZFA-11](https://linear.app/recruit-verse/issue/ZFA-11)
 
 ## Goal
 Implement the shared device-simulator runtime used by factory-specific VFD, motor, pump, valve, sensor and switch instances.

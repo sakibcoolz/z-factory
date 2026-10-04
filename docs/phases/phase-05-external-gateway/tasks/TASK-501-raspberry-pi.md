@@ -1,7 +1,7 @@
 # TASK-501 — Industrial Edge / Raspberry Pi Connectivity
 
 Status: **PLANNED**
-Linear: pending
+Linear: [ZFA-18](https://linear.app/recruit-verse/issue/ZFA-18)
 
 ## Objective
 Allow a physical industrial edge gateway/Raspberry Pi on the LAN to reach selected PLC endpoints through controlled Docker-host published ports.

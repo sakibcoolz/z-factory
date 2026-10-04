@@ -1,7 +1,7 @@
 # TASK-402 — Three.js Factory View
 
 Status: **PLANNED**
-Linear: pending
+Linear: [ZFA-17](https://linear.app/recruit-verse/issue/ZFA-17)
 
 ## Objective
 Implement React Three Fiber visualization driven by canonical Z-Factory state.

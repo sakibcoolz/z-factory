@@ -1,7 +1,7 @@
 # TASK-502 — End-to-End MVP Demo
 
 Status: **PLANNED**
-Linear: pending
+Linear: [ZFA-19](https://linear.app/recruit-verse/issue/ZFA-19)
 
 ## Objective
 Demonstrate a complete PLC-authoritative industrial loop with external Modbus interaction.
