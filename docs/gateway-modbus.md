@@ -84,3 +84,57 @@ UI/API should distinguish:
 - PLC command state
 - device actual state
 - fault/interlock state
+
+## Implementation (TASK-203)
+Code: `lib/protocols/modbus/` (client, codecs, located-address mapping), `lib/services/tag-service.ts`, `lib/services/plc-runtime-service.ts` (endpoint).
+
+### Tag registry
+A tag names one located variable of the PLC program. Creating a tag takes `name`, `dataType`, `role`, `logicalAddress` and optional `scale`, `offset`, `unit`, `sourceDeviceInstanceId`. Everything else is derived and cannot be supplied:
+
+| Derived | From |
+|---|---|
+| Modbus area, zero-based address, word count | the located address, by the runtime's fixed layout |
+| direction | `%I` → INPUT, `%Q` → OUTPUT, `%M` → INTERNAL |
+| access mode | `READ_WRITE` for `COMMAND` / `SETPOINT`, otherwise `READ_ONLY` |
+| byte order, word order | `BIG_ENDIAN`, `HIGH_WORD_FIRST` (fixed by the runtime) |
+
+Supported located addresses and data types:
+
+| Located | Data types | Modbus |
+|---|---|---|
+| `%QX<byte>.<bit>` | BOOL | coil `byte*8+bit` |
+| `%MX<byte>.<bit>` | BOOL | coil `8192 + byte*8+bit` |
+| `%IX<byte>.<bit>` | BOOL | discrete input `byte*8+bit` |
+| `%IW<n>` | INT16, UINT16 | input register `n` |
+| `%QW<n>` | INT16, UINT16 | holding register `n` |
+| `%MW<n>` | INT16, UINT16 | holding register `1024 + n` |
+| `%MD<n>` | INT32, UINT32, FLOAT32 | holding registers `2048 + 2n` and `+1` |
+
+32-bit values exist only in `%MD`; `%QD`, `%ID`, byte and 64-bit addresses are rejected. Indexes are limited to 1024 per segment (1024 bytes for bit areas).
+
+### Validation
+- Tag names are IEC identifiers, unique per PLC.
+- The data type must fit the address size.
+- A `COMMAND` or `SETPOINT` tag must sit on a writable address (`%Q` or `%M`).
+- Two tags may not overlap in the same area, counting every word of a multi-word value.
+- The source device must be an instance of the same factory.
+- The database repeats the role/access and area/access rules as CHECK constraints.
+
+Every create or delete bumps `PlcInstanceProfile.modbusMappingVersion`. Each program deployment stores the tag map in its `ConfigurationVersion` snapshot.
+
+### Modbus map contract
+`getModbusMap` returns what the PLC inspector shows and the engineering export contains: the mapping version, the conventions (`zero-based`, `BIG_ENDIAN`, `HIGH_WORD_FIRST`), the host endpoint, and one row per tag with name, role, data type, direction, located address, area, zero-based address, word count, access mode, orders, scale, offset, unit and source device. `displayAddress` (`40001`, `42049`, …) is derived for people and never stored.
+
+### Typed values
+Engineering value = raw × scale + offset. `readTag` / `readTags` decode register words into numbers or booleans and report a quality: `GOOD`, or `DISCONNECTED` / `BAD` with no value when the PLC cannot be read. `writeTag` encodes and range-checks the value (single coil, single register, or function 16 for two-word values).
+
+### Write permissions and command records
+`writeTag` refuses any tag that is not `COMMAND` or `SETPOINT` before anything is sent. An allowed write is stored as a `DeviceCommand` (`WRITE_TAG`, requested value, source) with status `ACCEPTED` once the PLC took the value, or `FAILED`. `appliedAt` stays empty: whether the device acted is decided by PLC logic and read back from feedback tags.
+
+### External endpoint
+Each PLC's Modbus server is published on one host endpoint, stored as a `RuntimePort`. By default a free loopback port from `RUNTIME_PORT_RANGE` is allocated on first start. `configureModbusEndpoint` sets an explicit bind address and port, validated against the allowed addresses, the port range and every port already published or reserved; it applies on the next start and is refused while a container exists. Inside the factory network other containers use `<service-name>:502`; containers on other networks cannot resolve or reach it.
+
+### Limits
+- The runtime's Modbus server does not enforce per-register permissions; see `docs/security.md`.
+- The tag registry is not yet checked against the located variables a program declares.
+- Gateway tag mappings (`GatewayTagMapping`) belong to Phase 05 and PLC-to-PLC mappings to Phase 07; both reuse the codecs and rules above.

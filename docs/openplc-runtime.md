@@ -72,8 +72,9 @@ ProgramVersion (ST source, immutable, checksum)
 | `deployProgramVersion` | compiles, uploads and runs a version in the existing container; marks it `DEPLOYED`, the previous one `COMPILED`; records a `ConfigurationVersion` snapshot and `PLC_PROGRAM_DEPLOYED` |
 | `refreshPlcState` | reads container and program state and stores it as the last known state |
 | `restartPlc` | restarts the container; the runtime reloads and runs the program it had |
-| `stopPlc` / `removePlcRuntime` | stops the container / removes it and releases its ports; program versions are kept |
-| `readPlcRegisters` / `writePlcRegister` | raw Modbus access to the running program (typed tags arrive with TASK-203) |
+| `stopPlc` / `removePlcRuntime` | stops the container / removes it and releases its management port; program versions and the Modbus endpoint are kept |
+| `configureModbusEndpoint` | sets the host address and port the Modbus server is published on; only while no container exists |
+| `readPlcRegisters` / `writePlcRegister` | raw Modbus access to the running program; typed, permission-checked access is in the tag service (`docs/gateway-modbus.md`) |
 
 Every function takes the `Actor` and treats a PLC of another owner as not found.
 
@@ -94,4 +95,4 @@ Every function takes the `Actor` and treats a PLC of another owner as not found.
 The hardware profile (manufacturer, family, model) stays on the catalog model of the device instance. The runtime identity is recorded separately as `OpenPLC Runtime <version>` plus the image digest. Nothing claims vendor firmware, vendor timing or real-time behavior: in the container the runtime uses default scheduling.
 
 ### Not yet wired
-No screen calls these services yet; the Program, PLC overview and Runtime screens still render fixtures. Generated I/O, tag and Modbus maps (and their versions beyond the recorded counters) arrive with TASK-203.
+No screen calls these services yet; the Program, PLC overview and Runtime screens still render fixtures. The tag registry and its Modbus map exist (TASK-203); generating tags and I/O points from the PLC configuration form is TASK-302.

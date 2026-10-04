@@ -96,7 +96,7 @@ Not privileged; all capabilities dropped; `no-new-privileges`; no binds, mounts 
 `ensureFactoryNetwork` creates a bridge network named `zfactory_<factoryId>` on the factory subnet, labelled `zfactory.managed=true` and `zfactory.factory-id`. It is idempotent, refuses a subnet that overlaps any existing Docker network on the host, and refuses to reuse a name held by a different network. `removeFactoryNetwork` only removes managed networks with no containers attached.
 
 ### Ports
-A published port must use an allowed bind address (`RUNTIME_BIND_ADDRESSES`, default `127.0.0.1`), fall inside `RUNTIME_PORT_RANGE` (default `15000-15999`), be a port the image declares publishable, and not collide with a port already published by any running container or reserved by a not-yet-started Z-Factory container. Persisted `RuntimePort` rows and the per-factory mapping arrive with TASK-203.
+A published port must use an allowed bind address (`RUNTIME_BIND_ADDRESSES`, default `127.0.0.1`), fall inside `RUNTIME_PORT_RANGE` (default `15000-15999`), be a port the image declares publishable, and not collide with a port already published by any running container or reserved by a not-yet-started Z-Factory container. `RUNTIME_BIND_ADDRESSES` must include `127.0.0.1`: runtime management APIs are always published on loopback. A PLC's Modbus endpoint is persisted as a `RuntimePort` row and is stable configuration: ports reserved in the database count as taken when allocating, and the endpoint survives removing the container.
 
 ### Managed-only rule
 Start, stop, restart, remove and inspect first check the `zfactory.managed` label and refuse anything else, so other containers and networks on the host are never touched.

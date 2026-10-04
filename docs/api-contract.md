@@ -95,3 +95,15 @@ Every action and data-loading page calls `requireActor()` and passes the Actor t
 
 ### `factories` (TASK-103)
 Factory CRUD is owner-scoped and database-backed. Runtime/network/container side effects remain separate from configuration CRUD.
+
+### `tags` and the Modbus map (TASK-203)
+Services in `lib/services/tag-service.ts`; every function takes the `Actor` and treats a PLC of another owner as not found.
+
+| Operation | Entry point | Rules |
+|---|---|---|
+| create tag | `createTag(db, actor, plcId, input)` | strict input; mapping and access mode derived; overlap rejected; bumps the mapping version |
+| delete tag | `deleteTag(db, actor, plcId, name)` | bumps the mapping version |
+| register map | `getModbusMap(db, actor, plcId)` | the inspector/export contract described in `docs/gateway-modbus.md` |
+| live snapshot | `readTags(deps, actor, plcId)`, `readTag(…, name)` | engineering values with quality and timestamp |
+| write command/setpoint | `writeTag(deps, actor, plcId, name, value, source)` | only `COMMAND` / `SETPOINT`; recorded as a `DeviceCommand` |
+| Modbus endpoint | `configureModbusEndpoint(deps, actor, plcId, { bindAddress, hostPort })` | validated against policy and reservations; requires the runtime to be removed |
