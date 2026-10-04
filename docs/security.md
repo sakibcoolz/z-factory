@@ -1,18 +1,26 @@
 # Security Model
 
-Z-Factory controls Docker and therefore crosses a privileged host boundary.
+Z-Factory controls Docker and industrial command paths, so it crosses privileged host and control boundaries.
 
 ## Mandatory controls
 - Docker interaction is server-only.
-- Never expose Docker socket or daemon credentials to browser code or Raspberry Pi clients.
+- Never expose Docker socket/daemon credentials to browser or external gateway clients.
 - Allow-list container images and runtime capabilities.
-- Reject arbitrary command, entrypoint, volume, device, capability, privileged-mode and host-network settings from users.
+- Reject arbitrary command, entrypoint, volume, device, capability, privileged-mode and host-network settings.
 - Validate IP/subnet/port inputs and detect collisions.
 - Use authenticated/authorized factory operations.
 - Apply CPU/memory/process limits where supported.
-- Keep secrets outside Git; use environment/secret management.
-- Treat imported PLC code/configuration as untrusted input.
+- Keep secrets outside Git.
+- Treat imported PLC code/configuration and exported/imported configuration packages as untrusted input.
 - Escape/sanitize logs and rendered metadata.
+- Validate PLC tag/register write permissions and data types.
+- External gateway writes are restricted to explicitly writable PLC command/setpoint mappings.
+- Gateway/API paths must never directly mutate downstream motor/pump/VFD/valve simulator state.
+- Force-input/fault-injection/debug operations require explicit authorization and audit events.
+- Do not expose host paths, Docker socket details, credentials or secrets in PLC exports.
+
+## Industrial-control warning
+Z-Factory is a simulation/development platform. It must not claim safety-rated behavior or be used as the sole safety-control layer for physical machinery.
 
 ## Production note
-Directly mounting `/var/run/docker.sock` gives the application broad host control. Local development may use it with awareness; production should introduce a constrained Docker API boundary/proxy or equivalent isolation.
+Directly mounting `/var/run/docker.sock` gives broad host control. Local development may use it knowingly; production should introduce a constrained Docker API proxy/boundary or equivalent isolation.
