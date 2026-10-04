@@ -1,6 +1,6 @@
 # Project Status
 
-Last architecture documentation update: 2026-10-04
+Last architecture documentation update: 2026-10-05
 
 ## Current state
 - Repository initialized on `develop`.
@@ -23,9 +23,12 @@ Last architecture documentation update: 2026-10-04
 - Factory CRUD implemented (TASK-103 done; single-owner mode per ADR-0007): the Factories, Create Factory, overview and edit screens read and write the database behind the `requireActor()` boundary.
 - Docker Engine integration implemented (TASK-201 done): server-only policy-checked network and container lifecycle with an image allow-list, tested against a real engine. No runtime image is allow-listed yet, so nothing can be started.
 - The remaining screens still read fixtures: OpenPLC, Modbus, device simulation and live data are NOT STARTED.
+- Post-MVP process-module architecture documented: generic devices remain catalog-backed, while process modules compose factory devices and allocate module-specific PLC I/O.
+- ADR-0008 accepted for a separate Go process-simulation service in Phase 06+ only; it does not alter current MVP Phase 02–05 implementation.
+- Phase 07 reserves boiler-specific I/O and multi-zone thermal simulation as the first reference process module.
 
 ## Planning gate
-Phase task Markdown remains the execution unit. Linear is synchronized: team `z-factory` (ZFA), project Z-Factory, one milestone per phase and one issue per task (ZFA-1 … ZFA-19). Phase 00 is closed.
+Phase task Markdown remains the execution unit. Existing Linear Phase 00–05 items remain synchronized. Newly documented Phase 06–07 tasks must be mirrored to Linear before either phase becomes active. Phase 00 is closed.
 
 ## Next technical gate
 Phase 02 is in progress. After TASK-201, TASK-202 (OpenPLC runtime adapter) adds the first allow-listed image and starts PLC containers; it needs a choice of OpenPLC image to pin.
