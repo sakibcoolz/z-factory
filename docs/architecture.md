@@ -39,7 +39,7 @@ PostgreSQL                 Docker Engine
 - `lib/db/`: Prisma client, repositories and database-error translation; server-only.
 - `lib/docker/`: Docker Engine integration (dockerode): policy and image allow-list, hardened container specs, factory networks, port validation, lifecycle; server-only. See `docs/docker-runtime.md` → Implementation.
 - `lib/runtimes/`: runtime adapters; `openplc/` holds the OpenPLC Runtime v4 adapter, its REST client, the STruC++ compile worker and the bundle composer (ADR-0009); the device-simulator adapter follows with TASK-204; server-only.
-- `lib/protocols/`: Modbus abstractions; the Modbus TCP client exists today, register codecs, gateway mappings and PLC-to-PLC mappings follow (TASK-203, Phase 07); server-only.
+- `lib/protocols/`: Modbus abstractions: TCP client, typed register codecs and the located-address → Modbus mapping of the OpenPLC runtime; gateway and PLC-to-PLC mappings follow (Phase 05, Phase 07); server-only.
 - `lib/events/`: internal event bus and SSE/WebSocket transport.
 - `lib/catalog/`: normalized PLC/peripheral catalog access.
 - `lib/validation/`: Zod schemas for untrusted input plus pure compatibility, I/O occupancy and domain invariants.

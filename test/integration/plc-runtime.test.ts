@@ -292,10 +292,13 @@ describeRuntime("PLC runtime service with PostgreSQL and a real Docker Engine", 
     expect((await device()).runtimeStatus).toBe("STOPPED");
     expect((await db.factory.findUniqueOrThrow({ where: { id: factoryId } })).runtimeStatus).toBe("STOPPED");
 
+    const modbusPort = (await device()).runtimePorts[0]?.hostPort;
     await removePlcRuntime(deps, alice, plcId);
     const plc = await device();
-    expect(plc).toMatchObject({ dockerContainerId: null, runtimeStatus: "STOPPED", runtimePorts: [] });
+    expect(plc).toMatchObject({ dockerContainerId: null, runtimeStatus: "STOPPED" });
     expect(plc.plcProfile?.apiHostPort).toBeNull();
+    // The Modbus endpoint is configuration: it survives so external clients keep their address.
+    expect(plc.runtimePorts).toEqual([expect.objectContaining({ protocol: "MODBUS_TCP", hostPort: modbusPort })]);
     // Program history survives removing the container.
     expect(await listProgramVersions(db, alice, plcId)).toHaveLength(3);
     expect(await docker.listContainers({ all: true, filters: { label: [`${RUN_LABEL}=${runId}`] } })).toEqual([]);

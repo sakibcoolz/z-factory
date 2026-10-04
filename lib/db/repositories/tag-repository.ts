@@ -1,0 +1,49 @@
+import "server-only";
+import type { Db } from "@/lib/db/client";
+import { withDomainErrors } from "@/lib/db/errors";
+import type { Prisma, Tag } from "@/lib/generated/prisma/client";
+
+export const tagRepository = {
+  listByPlc(db: Db, plcInstanceId: string): Promise<Tag[]> {
+    return db.tag.findMany({
+      where: { plcInstanceId },
+      orderBy: [{ protocolArea: "asc" }, { protocolAddress: "asc" }],
+    });
+  },
+
+  findByName(db: Db, plcInstanceId: string, name: string): Promise<Tag | null> {
+    return db.tag.findUnique({ where: { plcInstanceId_name: { plcInstanceId, name } } });
+  },
+
+  create(db: Db, data: Prisma.TagUncheckedCreateInput): Promise<Tag> {
+    return withDomainErrors(() => db.tag.create({ data }));
+  },
+
+  async delete(db: Db, plcInstanceId: string, name: string): Promise<number> {
+    const result = await db.tag.deleteMany({ where: { plcInstanceId, name } });
+    return result.count;
+  },
+
+  /** True when the device is an instance of the given factory. */
+  async deviceInFactory(db: Db, deviceId: string, factoryId: string): Promise<boolean> {
+    return (await db.deviceInstance.count({ where: { id: deviceId, factoryId } })) > 0;
+  },
+
+  recordCommand(
+    db: Db,
+    command: {
+      factoryId: string;
+      plcInstanceId: string;
+      tagId: string;
+      targetDeviceId: string | null;
+      requestedValueJson: Prisma.InputJsonValue;
+      source: "UI" | "GATEWAY" | "SYSTEM";
+    },
+  ) {
+    return db.deviceCommand.create({ data: { ...command, commandType: "WRITE_TAG" } });
+  },
+
+  setCommandStatus(db: Db, commandId: string, status: "ACCEPTED" | "FAILED" | "REJECTED") {
+    return db.deviceCommand.update({ where: { id: commandId }, data: { status } });
+  },
+};

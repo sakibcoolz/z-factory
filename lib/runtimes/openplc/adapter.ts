@@ -8,12 +8,12 @@ import {
   startRuntimeContainer,
   stopRuntimeContainer,
 } from "@/lib/docker/containers";
-import type { RuntimePolicy } from "@/lib/docker/policy";
+import { LOOPBACK_ADDRESS, type RuntimePolicy } from "@/lib/docker/policy";
 import { OPENPLC_IMAGE_KEY } from "@/lib/docker/runtime-images";
 import { DomainError } from "@/lib/domain/errors";
 import type { RuntimeState } from "@/lib/domain/runtime-state";
 import type { ModbusArea } from "@/lib/domain/tag";
-import { readModbus, writeModbus } from "@/lib/protocols/modbus/client";
+import { type ModbusEndpoint, readModbus, writeModbus } from "@/lib/protocols/modbus/client";
 import { API_CONTAINER_PORT, composeProgramBundle, MODBUS_CONTAINER_PORT, zipBundle } from "./bundle";
 import { OpenPlcClient, type PlcStatus } from "./client";
 import { type CompileDiagnostic, compileStructuredText } from "./compiler";
@@ -36,11 +36,17 @@ export type OpenPlcTarget = {
   networkName: string;
   /** DNS name of the PLC inside the factory network. */
   serviceName: string;
-  /** Loopback host ports the API and the Modbus server are published on. */
+  /** Loopback host port of the runtime's management API. */
   apiHostPort: number;
+  /** Host endpoint the Modbus TCP server is published on; may be a LAN address for gateways. */
   modbusHostPort: number;
-  bindAddress: string;
+  modbusBindAddress: string;
 };
+
+/** Address the server itself uses to reach a published port. */
+function connectHost(bindAddress: string): string {
+  return bindAddress === "0.0.0.0" ? LOOPBACK_ADDRESS : bindAddress;
+}
 
 export type DeployResult = {
   md5: string;
@@ -74,7 +80,7 @@ async function poll<T>(
 
 export function openPlcClient(target: OpenPlcTarget, runtimeSecret: string): OpenPlcClient {
   return new OpenPlcClient(
-    { host: target.bindAddress, port: target.apiHostPort },
+    { host: LOOPBACK_ADDRESS, port: target.apiHostPort },
     runtimeCredentials(runtimeSecret, target.deviceId),
   );
 }
@@ -90,8 +96,12 @@ export function createOpenPlcContainer(docker: Docker, policy: RuntimePolicy, ta
       serviceName: target.serviceName,
       image: OPENPLC_IMAGE_KEY,
       ports: [
-        { containerPort: API_CONTAINER_PORT, hostPort: target.apiHostPort, bindAddress: target.bindAddress },
-        { containerPort: MODBUS_CONTAINER_PORT, hostPort: target.modbusHostPort, bindAddress: target.bindAddress },
+        { containerPort: API_CONTAINER_PORT, hostPort: target.apiHostPort, bindAddress: LOOPBACK_ADDRESS },
+        {
+          containerPort: MODBUS_CONTAINER_PORT,
+          hostPort: target.modbusHostPort,
+          bindAddress: target.modbusBindAddress,
+        },
       ],
     },
     policy,
@@ -215,12 +225,17 @@ export function removeOpenPlc(docker: Docker, containerId: string): Promise<bool
   return removeRuntimeContainer(docker, containerId);
 }
 
+/** Modbus endpoint of the running program as seen from the server. */
+export function modbusEndpoint(target: OpenPlcTarget): ModbusEndpoint {
+  return { host: connectHost(target.modbusBindAddress), port: target.modbusHostPort };
+}
+
 /** Reads raw Modbus values of the running program through its published port. */
 export function readPlcValues(target: OpenPlcTarget, area: ModbusArea, address: number, count = 1) {
-  return readModbus({ host: target.bindAddress, port: target.modbusHostPort }, area, address, count);
+  return readModbus(modbusEndpoint(target), area, address, count);
 }
 
 /** Writes one coil or holding register of the running program. */
 export function writePlcValue(target: OpenPlcTarget, area: ModbusArea, address: number, value: number | boolean) {
-  return writeModbus({ host: target.bindAddress, port: target.modbusHostPort }, area, address, value);
+  return writeModbus(modbusEndpoint(target), area, address, value);
 }

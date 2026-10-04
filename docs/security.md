@@ -27,7 +27,8 @@ The MVP identifies one owner through `LOCAL_OWNER_ID` and does not authenticate 
 - The runtime uses a self-signed certificate generated at start; the client does not verify it and therefore refuses any non-loopback address.
 - API credentials are derived per device from `RUNTIME_SECRET` and never stored. Production must set the secret; changing it requires recreating the containers.
 - Program source is untrusted input: it is size-limited, compiled in a separate process with a time and memory cap, and built inside the runtime container, never on the host.
-- Raw Modbus writes go only to coils and holding registers; read-only areas are refused before anything is sent. Restricting writes to command/setpoint tags is enforced with the tag mapping of TASK-203.
+- Writes through Z-Factory go by tag: only `COMMAND` and `SETPOINT` tags are writable, values are type- and range-checked, and each write is recorded as a `DeviceCommand`. Raw Modbus access refuses read-only areas before anything is sent.
+- **Limit:** the runtime's Modbus server itself has no per-register permissions. A client that reaches the published Modbus port directly can write any coil or holding register, including ones Z-Factory treats as read-only. Publish that port only where the client is trusted (default: loopback), and let PLC logic overwrite feedback values every scan. Enforcing tag permissions for external gateways needs a filtering proxy, which belongs to Phase 05.
 
 ## Industrial-control warning
 Z-Factory is a simulation/development platform. It must not claim safety-rated behavior or be used as the sole safety-control layer for physical machinery.

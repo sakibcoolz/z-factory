@@ -110,7 +110,7 @@ describeDocker("OpenPLC runtime adapter against a real engine", () => {
       serviceName: "plc-01",
       apiHostPort,
       modbusHostPort,
-      bindAddress: "127.0.0.1",
+      modbusBindAddress: "127.0.0.1",
     };
     client = openPlcClient(target, RUNTIME_SECRET);
   }, 120_000);

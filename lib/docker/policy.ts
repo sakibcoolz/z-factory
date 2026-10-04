@@ -43,6 +43,9 @@ export type RuntimePolicy = {
   labels?: Readonly<Record<string, string>>;
 };
 
+/** Address the server reaches runtime containers on; management APIs never bind elsewhere. */
+export const LOOPBACK_ADDRESS = "127.0.0.1";
+
 export const DEFAULT_LIMITS: RuntimeLimits = {
   defaultCpus: 1,
   maxCpus: 2,
@@ -65,10 +68,17 @@ export function parsePortRange(range: string): { min: number; max: number } {
 export function runtimePolicyFromEnv(
   env: Pick<ServerEnv, "RUNTIME_PORT_RANGE" | "RUNTIME_BIND_ADDRESSES">,
 ): RuntimePolicy {
+  const bindAddresses = env.RUNTIME_BIND_ADDRESSES.split(",");
+  // Runtime management APIs are always published on loopback, so it must be allowed.
+  if (!bindAddresses.includes(LOOPBACK_ADDRESS)) {
+    throw new DomainError("VALIDATION", "RUNTIME_BIND_ADDRESSES must include 127.0.0.1.", {
+      rule: "loopback-required",
+    });
+  }
   return {
     images: RUNTIME_IMAGES,
     portRange: parsePortRange(env.RUNTIME_PORT_RANGE),
-    bindAddresses: env.RUNTIME_BIND_ADDRESSES.split(","),
+    bindAddresses,
     limits: DEFAULT_LIMITS,
   };
 }
