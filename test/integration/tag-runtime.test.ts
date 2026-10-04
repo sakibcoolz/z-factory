@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type Docker from "dockerode";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDockerClient } from "@/lib/docker/client";
+import { ensureImage } from "@/lib/docker/images";
 import { DEFAULT_LIMITS } from "@/lib/docker/policy";
 import { RUNTIME_IMAGES } from "@/lib/docker/runtime-images";
 import { DomainError, type DomainErrorCode } from "@/lib/domain/errors";
@@ -94,6 +95,8 @@ async function freeSubnet(docker: Docker): Promise<string> {
   throw new Error("no free test subnet");
 }
 
+const PROBE_IMAGE = "busybox:1.37";
+
 describeRuntime("typed tags and the external Modbus endpoint on a real runtime", () => {
   let db: PrismaClient;
   let docker: Docker;
@@ -106,8 +109,10 @@ describeRuntime("typed tags and the external Modbus endpoint on a real runtime",
 
   /** Runs `nc` in a throwaway busybox container on the given network; true when the TCP connect succeeds. */
   async function canConnectFrom(network: string, host: string, port: number): Promise<boolean> {
+    // Not pulled by anything else in this file, and test files may run in any order.
+    await ensureImage(docker, { key: "probe", reference: PROBE_IMAGE, publishablePorts: [], allowedEnv: [] });
     const container = await docker.createContainer({
-      Image: "busybox:1.37",
+      Image: PROBE_IMAGE,
       Cmd: ["sh", "-c", `nc -w 3 ${host} ${port} </dev/null`],
       Labels: { [RUN_LABEL]: runId },
       HostConfig: { NetworkMode: network },
