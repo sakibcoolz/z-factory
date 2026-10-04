@@ -17,8 +17,9 @@ Deliverable of TASK-003. It fixes the toolchain so that a coding agent can boots
 | PostgreSQL | 17 | local development through `compose.yaml` |
 | Prisma | 7.10 | `prisma`, `@prisma/client`, `@prisma/adapter-pg`; pinned because npm `latest` currently points at an 8.0 release candidate |
 | Zod | 4 | validation at every untrusted boundary |
+| dockerode | 5 | Docker Engine API client; server-only (`lib/docker/`) |
 
-Planned, added by their owning tasks: dockerode (TASK-201), React Flow (TASK-303), Three.js + React Three Fiber (TASK-402).
+Planned, added by their owning tasks: React Flow (TASK-303), Three.js + React Three Fiber (TASK-402).
 
 ## Directory skeleton
 ```text
@@ -62,6 +63,10 @@ All variables are read through `lib/env.ts`, which validates them with Zod and f
 | `DATABASE_URL` | yes | Prisma CLI, `lib/db` | PostgreSQL connection string |
 | `TEST_DATABASE_URL` | no | integration tests | Database the integration tests may reset; tests are skipped when unset |
 | `LOCAL_OWNER_ID` | production: yes | `lib/auth/actor.ts` | Owner every factory operation is scoped to (ADR-0007); defaults to `local-owner` outside production |
+| `DOCKER_HOST` | no | `lib/docker/client.ts` | Docker Engine endpoint: `unix:///path` or `tcp://host:port` (default `unix:///var/run/docker.sock`) |
+| `RUNTIME_PORT_RANGE` | no | `lib/docker/policy.ts` | Host ports runtime containers may publish, `min-max` within 1024–65535 (default `15000-15999`) |
+| `RUNTIME_BIND_ADDRESSES` | no | `lib/docker/policy.ts` | Comma-separated IPv4 addresses runtime ports may bind to (default `127.0.0.1`) |
+| `TEST_DOCKER` | no | integration tests | `1` runs the Docker lifecycle tests against the engine; they are skipped otherwise |
 | `POSTGRES_PORT` | no | `compose.yaml` | Host port for the local database (default 5432) |
 
 A task that introduces a variable adds it to this table, to `.env.example` and to `lib/env.ts` in the same change. Variables are never exposed to the browser unless explicitly prefixed `NEXT_PUBLIC_` and documented here.
@@ -74,7 +79,7 @@ A task that introduces a variable adds it to this table, to `.env.example` and t
 | `npm run lint` | ESLint, including the design-token adherence rule |
 | `npm run format` / `npm run format:check` | Prettier write / check |
 | `npm run typecheck` | `tsc --noEmit` |
-| `npm test` | unit and component tests; integration tests when `TEST_DATABASE_URL` is set |
+| `npm test` | unit and component tests; database integration tests when `TEST_DATABASE_URL` is set; Docker lifecycle tests when `TEST_DOCKER=1` |
 | `npm run db:up` / `npm run db:down` | start / stop the local PostgreSQL container |
 | `npm run db:generate` | generate the Prisma client (also runs on `npm install`) |
 | `npm run db:migrate` | create/apply migrations in development |
@@ -84,7 +89,8 @@ A task that introduces a variable adds it to this table, to `.env.example` and t
 ## Docker development prerequisites
 - Docker Engine with the Compose plugin; the developer's user can reach the Docker daemon.
 - Local database: `npm run db:up` starts PostgreSQL 17 from `compose.yaml`, bound to `127.0.0.1` only, with development-only credentials.
-- From Phase 02 on, the Next.js server talks to the Docker Engine API. Local development may use the Docker socket knowingly; it is never mounted into, or reachable from, browser code (see `docs/security.md`).
+- The Next.js server talks to the Docker Engine API through `DOCKER_HOST`. Local development may use the Docker socket knowingly; it is never mounted into, or reachable from, browser code (see `docs/security.md`).
+- The Docker lifecycle tests (`TEST_DOCKER=1`) pull `busybox:1.37` and create a labelled test network and containers, which they remove afterwards.
 - Factory runtime containers are created by the application, not by `compose.yaml`.
 
 ## CI baseline
@@ -94,10 +100,10 @@ GitHub Actions workflow `.github/workflows/ci.yml`, on pushes and pull requests 
 3. `npm run lint`
 4. `npm run typecheck`
 5. `npm run db:deploy` against a PostgreSQL 17 service container
-6. `npm test` with `TEST_DATABASE_URL` set
+6. `npm test` with `TEST_DATABASE_URL` and `TEST_DOCKER=1` set (the runner's Docker Engine)
 7. `npm run build`
 
-Docker/OpenPLC integration tests join the pipeline with Phase 02.
+OpenPLC integration tests join the pipeline with TASK-202.
 
 ## Graphify
 1. Install the CLI: `pipx install graphifyy` (provides the `graphify` command).
