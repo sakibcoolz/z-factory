@@ -130,12 +130,60 @@ MVP invariant: one VFD instance has at most one primary motor relationship.
 ### ConfigurationVersion
 `id, factoryId, scopeType, scopeId, version, snapshotJson, createdAt, createdBy`
 
+## Process modules
+
+Process modules compose existing factory devices and allocate process-specific logical PLC I/O. They do not redefine catalog hardware.
+
+### ProcessModuleType
+Reusable process template such as BOILER, PUMP_HOUSE, TANK, CONVEYOR_CELL, HVAC_LOOP.
+
+`id, code, name, version, description, simulatorModelType, configSchemaJson, createdAt, updatedAt`
+
+Unique: `(code, version)`.
+
+### ModuleSignalDefinition
+Reusable logical I/O contract for a process-module type.
+
+`id, processModuleTypeId, key, name, direction, dataType, role, unit, signalType, required, rangeMin, rangeMax, metadataJson`
+
+`direction = INPUT | OUTPUT | INTERNAL | ALARM` from the PLC/control-program perspective. Unique: `(processModuleTypeId, key)`.
+
+### ProcessModuleInstance
+One factory-specific module.
+
+`id, factoryId, processModuleTypeId, name, location, status, configJson, createdAt, updatedAt`
+
+Unique: `(factoryId, name)`.
+
+### ModuleDevice
+Assigns an existing factory `DeviceInstance` to a process-specific role.
+
+`id, processModuleInstanceId, deviceInstanceId, roleKey, required, metadataJson`
+
+A device must belong to the same factory as the module. Unique: `(processModuleInstanceId, roleKey, deviceInstanceId)`.
+
+### ModulePlcIoMapping
+Binds one logical module signal to the normal PLC/tag/I/O model.
+
+`id, processModuleInstanceId, moduleSignalDefinitionId, plcInstanceId, tagId, plcIoPointId, metadataJson`
+
+The mapping reuses existing tag/I/O compatibility, occupancy, access-mode, protocol-address and register-overlap rules; it never creates a parallel PLC address space.
+
+### ModuleInterlock
+Process-specific interlock/validation metadata.
+
+`id, processModuleInstanceId, code, name, expressionJson, severity, description, enabled`
+
+This is configuration/test metadata. Safety-rated behavior is explicitly out of scope.
+
 ## Simulation/state/history
 
 ### SimulationProfile
 Behavior configuration for a device model/instance: constant, ramp, sine, random, scripted, or domain-specific state machine.
 
 `id, deviceModelId, deviceInstanceId, kind, parametersJson` — exactly one of `deviceModelId` / `deviceInstanceId` is set. `kind = CONSTANT | RAMP | SINE | RANDOM | SCRIPTED | STATE_MACHINE`.
+
+Advanced coupled process-model configuration belongs to `ProcessModuleType/ProcessModuleInstance` rather than overloading a single device profile. Phase 06 implementation will introduce the schema through TASK-601; this section documents the approved target model, not current migration state.
 
 ### DeviceRuntimeSnapshot
 Latest persisted important state; not the live authority.
@@ -188,4 +236,6 @@ Prisma cannot express CHECK or EXCLUDE constraints, so these live as hand-writte
 | `Factory_subnet_no_overlap` | no two factories have overlapping subnets (GiST exclusion on `subnetCidr::inet`), across owners — Docker networks share the host's address space |
 | `AlarmEvent_cleared_after_started_check`, `TelemetrySample_value_check` | history sanity |
 
-Rules that span tables are enforced in the service layer (`lib/services/`, `lib/validation/`): compact vs modular I/O sources, module/CPU/slot compatibility, signal/point-type compatibility, I/O point ownership and availability, drive → motor categories, and multi-word register overlap. `lib/db/errors.ts` turns constraint failures into typed domain errors without leaking driver messages.
+Rules that span tables are enforced in the service layer (`lib/services/`, `lib/validation/`): compact vs modular I/O sources, module/CPU/slot compatibility, signal/point-type compatibility, I/O point ownership and availability, drive → motor categories, multi-word register overlap, process-module same-factory device assignment, required module roles/signals, and module-to-PLC mapping compatibility. `lib/db/errors.ts` turns constraint failures into typed domain errors without leaking driver messages.
+
+The process-module tables above are **planned Phase 06 schema**, not yet present in the current Prisma migration. TASK-601 owns their implementation and database constraints.
