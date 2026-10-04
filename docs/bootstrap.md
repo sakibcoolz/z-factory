@@ -28,6 +28,8 @@ lib/domain/             pure domain types and rules
 lib/validation/         Zod schemas and domain invariants
 lib/db/                 Prisma client and repositories (server-only)
 lib/services/           domain services over validation + repositories (server-only)
+lib/auth/               authorization boundary `requireActor()` (server-only)
+lib/factories/          factory form state and formatting shared by actions and components
 lib/generated/prisma/   generated Prisma client (git-ignored)
 lib/env.ts              environment contract (server-only)
 lib/navigation/         route builders
@@ -47,7 +49,7 @@ docs/                   engineering documentation
 ```
 
 ## Server-only convention
-- Every module under `lib/db/`, `lib/services/`, `lib/docker/`, `lib/runtimes/` and `lib/env.ts` starts with `import "server-only";`.
+- Every module under `lib/db/`, `lib/services/`, `lib/auth/`, `lib/docker/`, `lib/runtimes/` and `lib/env.ts` starts with `import "server-only";`.
 - `components/**` may not import those paths; ESLint enforces it (`no-restricted-imports`).
 - Client components are opt-in (`"use client"`) and receive plain serializable props from server components.
 - Vitest aliases `server-only` to an empty module so server modules stay testable.
@@ -59,6 +61,7 @@ All variables are read through `lib/env.ts`, which validates them with Zod and f
 |---|---|---|---|
 | `DATABASE_URL` | yes | Prisma CLI, `lib/db` | PostgreSQL connection string |
 | `TEST_DATABASE_URL` | no | integration tests | Database the integration tests may reset; tests are skipped when unset |
+| `LOCAL_OWNER_ID` | production: yes | `lib/auth/actor.ts` | Owner every factory operation is scoped to (ADR-0007); defaults to `local-owner` outside production |
 | `POSTGRES_PORT` | no | `compose.yaml` | Host port for the local database (default 5432) |
 
 A task that introduces a variable adds it to this table, to `.env.example` and to `lib/env.ts` in the same change. Variables are never exposed to the browser unless explicitly prefixed `NEXT_PUBLIC_` and documented here.
