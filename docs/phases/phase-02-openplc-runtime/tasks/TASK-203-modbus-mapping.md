@@ -4,12 +4,14 @@ Status: **PLANNED**
 Linear: pending
 
 ## Objective
-Map persisted tags/I/O to Modbus areas/addresses and expose controlled host ports.
+Map persisted PLC tags/I/O to Modbus areas/addresses, encode/decode typed values, and expose controlled external host ports.
 
 ## Acceptance criteria
-- Deterministic Modbus mapping.
+- Deterministic mapping with explicit area/address convention.
 - Address collision/range validation.
-- Read/write verification.
-- Host-port collision validation.
+- BOOL/UINT/INT/FLOAT32 mapping support with word count, scaling, byte order and word order metadata.
+- Command/setpoint tags are distinguishable from feedback/status/alarm/process-value tags.
+- Read/write permissions enforced.
+- Host-port collision/bind validation.
 - External-client connectivity test.
-- Mapping is visible in PLC/device inspector UI contract.
+- Mapping visible in PLC inspector/export contract.
