@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { type DockerHostStatus, dockerStatusLabel } from "@/components/factories/factory-explorer";
 import { SectionRule } from "@/components/ui/primitives";
 import { StatePill, type Tone } from "@/components/ui/state-pill";
 import { DEMO_FACTORY_ID } from "@/lib/fixtures/factories";
@@ -10,14 +11,18 @@ const START_ACTIONS: ReadonlyArray<{ label: string; href: string }> = [
   { label: "Open the Pump House Demo design fixture", href: routes.designer(DEMO_FACTORY_ID) },
 ];
 
-const HOST_CHECKS: ReadonlyArray<{ label: string; tone: Tone; status: string }> = [
-  { label: "PostgreSQL", tone: "run", status: "connected" },
-  { label: "Docker Engine", tone: "off", status: "phase 02" },
-  { label: "OpenPLC image", tone: "off", status: "phase 02" },
-];
+type WelcomeProps = {
+  docker: DockerHostStatus;
+};
 
 /** 2b — first run: shown in place of the factory list while the owner has no factories. */
-export function Welcome() {
+export function Welcome({ docker }: WelcomeProps) {
+  const hostChecks: ReadonlyArray<{ label: string; tone: Tone; status: string }> = [
+    { label: "PostgreSQL", tone: "run", status: "connected" },
+    { label: "Docker Engine", tone: docker.reachable ? "run" : "flt", status: dockerStatusLabel(docker) },
+    { label: "OpenPLC image", tone: "off", status: "TASK-202" },
+  ];
+
   return (
     <>
       <div>
@@ -44,7 +49,7 @@ export function Welcome() {
         <span className="zf-k">Host checks</span>
       </SectionRule>
       <div className="grid max-w-180 grid-cols-3 gap-2">
-        {HOST_CHECKS.map((check) => (
+        {hostChecks.map((check) => (
           <div key={check.label} className="zf-cell">
             <span className="zf-k">{check.label}</span>
             <StatePill tone={check.tone}>{check.status}</StatePill>

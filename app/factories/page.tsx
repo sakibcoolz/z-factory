@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { RuntimeStatePill } from "@/components/ui/state-pill";
 import { requireActor } from "@/lib/auth/actor";
 import { getDb } from "@/lib/db/client";
+import { getDocker } from "@/lib/docker/client";
+import { getDockerEngineStatus } from "@/lib/docker/status";
 import { RUNTIME_STATES, type RuntimeState, runtimeStateLabel } from "@/lib/domain/runtime-state";
 import { formatUtc } from "@/lib/factories/format";
 import { routes } from "@/lib/navigation/routes";
@@ -22,7 +24,7 @@ const SUMMARY_STATES: readonly RuntimeState[] = ["RUNNING", "DEGRADED", "FAULTED
 /** 2a — Factories: explorer + factory list. 2b — first run, when the owner has no factories. */
 export default async function FactoriesPage() {
   const actor = await requireActor();
-  const factories = await listFactories(getDb(), actor);
+  const [factories, docker] = await Promise.all([listFactories(getDb(), actor), getDockerEngineStatus(getDocker())]);
   const countByState = (state: RuntimeState) => factories.filter((factory) => factory.runtimeStatus === state).length;
   const isEmpty = factories.length === 0;
 
@@ -31,17 +33,17 @@ export default async function FactoriesPage() {
       title="Z-FACTORY"
       activity="factories"
       badges={{ factories: factories.length }}
-      sidebar={<FactoryExplorer factories={factories} />}
+      sidebar={<FactoryExplorer factories={factories} docker={docker} />}
       status={{
         tone: isEmpty ? "off" : "ok",
         left: [isEmpty ? "no factory yet" : `${factories.length} ${factories.length === 1 ? "factory" : "factories"}`],
-        right: ["PostgreSQL connected"],
+        right: ["PostgreSQL connected", docker.reachable ? `Docker ${docker.version}` : "Docker unreachable"],
       }}
     >
       <EditorTabs tabs={[{ label: isEmpty ? "Welcome" : "Factories", active: true }]} crumb="workspace › factories" />
       {isEmpty ? (
         <Content plain className="gap-4.5">
-          <Welcome />
+          <Welcome docker={docker} />
         </Content>
       ) : (
         <Content>

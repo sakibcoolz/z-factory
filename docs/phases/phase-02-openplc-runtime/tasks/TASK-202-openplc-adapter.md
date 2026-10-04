@@ -1,6 +1,6 @@
 # TASK-202 — OpenPLC Runtime Adapter
 
-Status: **PLANNED**
+Status: **READY**
 Linear: [ZFA-9](https://linear.app/recruit-verse/issue/ZFA-9)
 
 ## Objective

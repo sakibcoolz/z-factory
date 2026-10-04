@@ -2,6 +2,8 @@ import "server-only";
 import { notFound, redirect } from "next/navigation";
 import { requireActor } from "@/lib/auth/actor";
 import { getDb } from "@/lib/db/client";
+import { getDocker } from "@/lib/docker/client";
+import { getDockerEngineStatus } from "@/lib/docker/status";
 import { isDomainError } from "@/lib/domain/errors";
 import { isDemoFactory } from "@/lib/fixtures";
 import { routes } from "@/lib/navigation/routes";
@@ -21,8 +23,12 @@ export async function loadFactory(factoryId: string) {
   const actor = await requireActor();
   const db = getDb();
   try {
-    const [factory, factories] = await Promise.all([getFactory(db, actor, factoryId), listFactories(db, actor)]);
-    return { factory, factories };
+    const [factory, factories, docker] = await Promise.all([
+      getFactory(db, actor, factoryId),
+      listFactories(db, actor),
+      getDockerEngineStatus(getDocker()),
+    ]);
+    return { factory, factories, docker };
   } catch (error) {
     if (isDomainError(error, "NOT_FOUND")) notFound();
     throw error;
