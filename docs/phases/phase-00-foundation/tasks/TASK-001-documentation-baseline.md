@@ -1,7 +1,7 @@
 # TASK-001 — Documentation Baseline
 
 Status: **DONE**
-Linear: pending project/team creation
+Linear: [ZFA-1](https://linear.app/recruit-verse/issue/ZFA-1)
 
 ## Objective
 Create mandatory documentation and AI-agent instructions before coding.

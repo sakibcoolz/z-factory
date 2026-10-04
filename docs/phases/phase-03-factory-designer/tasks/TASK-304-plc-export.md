@@ -1,6 +1,7 @@
 # TASK-304 — PLC Engineering Export
 
 Status: **PLANNED**
+Linear: [ZFA-15](https://linear.app/recruit-verse/issue/ZFA-15)
 
 ## Goal
 Export a PLC instance as a complete engineering snapshot.

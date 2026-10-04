@@ -68,3 +68,40 @@ PLC details page exposes Print / Export:
 
 ## 3D
 Three.js via React Three Fiber. 3D is visualization, not the authoritative factory model. It consumes the same canonical runtime/device/tag state as topology and live-tag views.
+
+## Wireframe reference
+Source: Claude Design project `2fc6a75c-7a5d-4a8c-a17c-17afa2d37f6c`, file `Z-Factory Wireframes.dc.html`, turn 2 (screens 2a–2q). Implemented by TASK-104 as a presentational shell over static fixtures (`lib/fixtures/`).
+
+### Visual language
+- VS Code-style dark shell: title bar with command center, activity bar, side bar, editor tabs, optional bottom panel, status bar.
+- Type: Archivo for headings and body; system monospace for addresses, tags, values and logs. Zero corner radius.
+- Tokens live only in `app/globals.css`: the Modernist design-system tokens (names unchanged) plus the dark-shell palette. UI code uses `var()`/theme utilities; raw hex and px literals in `app/` and `components/` fail lint.
+- Modernist red (`--color-accent`) is reserved for faults and destructive actions. Blue is focus/primary, green running, amber degraded/stale, purple disconnected/external.
+- The status bar colour follows the screen's worst condition: blue normal, amber degraded, red validation error/fault, purple no factory/draft.
+- The export sheet is the one light surface (paper) and uses the Modernist light tokens.
+
+### Screen → route map
+| Wireframe | Core screen | Route |
+|---|---|---|
+| 2a | Factories | `/factories` |
+| 2b | First run / welcome | `/welcome` |
+| 2c | Create Factory | `/factories/new` |
+| 2d | Factory Designer | `/factories/[factoryId]/designer` |
+| 2e | Device Catalog | `/catalog` |
+| 2f | Device Configuration — compact | `/factories/[factoryId]/devices/new/compact` |
+| 2g | Device Configuration — modular | `/factories/[factoryId]/devices/new/modular` |
+| 2h | PLC Details / Edit | `/factories/[factoryId]/plcs/[plcId]` |
+| 2i | PLC Program & Versions | `/factories/[factoryId]/plcs/[plcId]/program` |
+| 2j | PLC I/O Mapping / Pinout | `/factories/[factoryId]/plcs/[plcId]/io-mapping` |
+| 2k | Simulator / Debug | `/factories/[factoryId]/simulator` |
+| 2l | Live Tags | `/factories/[factoryId]/tags` |
+| 2m | Events / Alarms / Logs | `/factories/[factoryId]/events` |
+| 2n | Runtime / Containers | `/factories/[factoryId]/runtime` |
+| 2o | 2D Network / Wiring Topology | `/factories/[factoryId]/topology` |
+| 2p | PLC Export / Print | `/factories/[factoryId]/plcs/[plcId]/export` |
+| 2q | 3D Factory View | `/factories/[factoryId]/view-3d` |
+
+Fixtures exist for `factory_001` (Pump House Demo, PLC `dev_001`) and, for 2g only, `factory_003`. Other IDs return the not-found screen.
+
+### Activity bar
+FAC factories · CAT catalog · DSN designer (also PLC, topology, 3D, device configuration) · RUN runtime and simulator · TAG live tags · EVT events · EXP PLC export. Factory-scoped activities are disabled until a factory is open.

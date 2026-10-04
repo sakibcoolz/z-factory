@@ -1,7 +1,7 @@
 # TASK-302 — Compact & Modular PLC Configuration
 
 Status: **PLANNED**
-Linear: pending
+Linear: [ZFA-13](https://linear.app/recruit-verse/issue/ZFA-13)
 
 ## Objective
 Build a dynamic PLC create/edit UI driven by catalog metadata, including factory-specific connected peripherals and I/O/tag/protocol assignments.

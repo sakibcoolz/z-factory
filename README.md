@@ -2,7 +2,22 @@
 
 Z-Factory is a browser-first virtual industrial factory platform for designing, executing, observing, testing, and exporting PLC-controlled factories.
 
-> Status: documentation-first bootstrap. Feature development remains gated by the phase/task workflow in `docs/phases/`.
+> Status: documentation-first bootstrap. The Next.js app currently renders the UI shell and wireframe screens from static design fixtures; feature development remains gated by the phase/task workflow in `docs/phases/`.
+
+## Development
+Requires Node.js 22+ and Docker.
+
+```bash
+cp .env.example .env
+npm install
+npm run db:up      # local PostgreSQL 17 (Docker)
+npm run db:migrate # apply migrations
+npm run db:seed    # generic device categories
+npm run dev        # http://localhost:3000
+npm run format:check && npm run lint && npm run typecheck && npm test && npm run build
+```
+
+Toolchain, commands and the environment contract: `docs/bootstrap.md`.
 
 ## MVP architecture
 - One Next.js TypeScript full-stack application

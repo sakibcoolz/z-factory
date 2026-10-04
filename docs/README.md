@@ -17,6 +17,7 @@ The repository is documentation-first. Coding starts only through an approved ph
 - [PLC Export / Print](./plc-export.md)
 - [Events & Telemetry](./events-telemetry.md)
 - [Server API Contract](./api-contract.md)
+- [Development Bootstrap](./bootstrap.md)
 - [Coding Standards](./coding-standards.md)
 - [Security](./security.md)
 - [Testing](./testing.md)

@@ -1,7 +1,7 @@
 # TASK-401 — Events & Live Telemetry
 
 Status: **PLANNED**
-Linear: pending
+Linear: [ZFA-16](https://linear.app/recruit-verse/issue/ZFA-16)
 
 ## Objective
 Implement internal domain/runtime events, selected persistence, alarms and live browser delivery without making PostgreSQL the live-state authority.

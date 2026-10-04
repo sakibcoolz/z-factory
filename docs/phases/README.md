@@ -2,8 +2,8 @@
 
 | Phase | Name | Status | Gate |
 |---|---|---|---|
-| 00 | Documentation & Foundation | IN PROGRESS | Docs approved, repo bootstrap plan ready, Linear team chosen |
-| 01 | Core Next.js Platform | PLANNED | Phase 00 Done |
+| 00 | Documentation & Foundation | DONE | Docs approved, repo bootstrap plan ready, Linear team chosen |
+| 01 | Core Next.js Platform | IN PROGRESS | Phase 00 Done |
 | 02 | OpenPLC, Docker & Device Simulation Runtime | PLANNED | Phase 01 Done |
 | 03 | Factory Designer, Device Modeling & PLC Export | PLANNED | Phase 02 core runtime usable |
 | 04 | Events, Telemetry & 3D | PLANNED | Factory topology/runtime stable |

@@ -1,7 +1,7 @@
 # TASK-203 — Modbus Mapping & External Ports
 
 Status: **PLANNED**
-Linear: pending
+Linear: [ZFA-10](https://linear.app/recruit-verse/issue/ZFA-10)
 
 ## Objective
 Map persisted PLC tags/I/O to Modbus areas/addresses, encode/decode typed values, and expose controlled external host ports.

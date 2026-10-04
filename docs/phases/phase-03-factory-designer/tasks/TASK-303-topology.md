@@ -1,7 +1,7 @@
 # TASK-303 — React Flow Factory Topology
 
 Status: **PLANNED**
-Linear: pending
+Linear: [ZFA-14](https://linear.app/recruit-verse/issue/ZFA-14)
 
 ## Objective
 Implement visual factory-specific device placement and typed connection editing with React Flow.

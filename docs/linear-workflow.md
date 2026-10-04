@@ -29,5 +29,9 @@ Linear is the execution tracker. Repository Markdown is the durable engineering 
 ## Sync rule
 When status/scope changes, update both Linear and the Markdown task in the same work session.
 
-## Current bootstrap note
-The Linear workspace must provide the intended team for Z-Factory before issues are created. Do not place Z-Factory issues into an unrelated team merely to satisfy automation.
+## Workspace
+- Team: `z-factory` (key `ZFA`).
+- Project: Z-Factory — https://linear.app/recruit-verse/project/z-factory-80c595b696da
+- Milestones are named `Phase NN — <phase name>`; issues are titled `TASK-NNN — <task name>`.
+
+Do not place Z-Factory issues into any other team in the workspace.
