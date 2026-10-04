@@ -51,7 +51,7 @@ Runtime version, image digest/tag, program version, I/O mapping version, Modbus 
 ## MVP boundary
 Do not claim exact hardware timing, electrical behavior, proprietary backplanes, vendor engineering-suite compatibility, or safety certification.
 
-## Implementation (TASK-202, ADR-0008)
+## Implementation (TASK-202, ADR-0009)
 Runtime: the official OpenPLC Runtime v4 image, pinned by digest. Code: `lib/runtimes/openplc/` (adapter), `lib/protocols/modbus/` (client), `lib/services/plc-runtime-service.ts` (lifecycle with persistence).
 
 ### Deployment chain

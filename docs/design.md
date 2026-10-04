@@ -16,9 +16,11 @@
 13. 2D Network / Wiring Topology
 14. PLC Export / Print
 15. 3D Factory View
+16. Process Modules (Phase 06+)
+17. Process Module Details / I/O Mapping (Phase 06+)
 
 ## Factory Designer
-Left palette: PLC, VFD/drive, motor, pump, fan/blower, conveyor, valve, sensor, switch, relay/contactor, encoder, remote I/O, gateway.
+Left palette: PLC, VFD/drive, servo drive, soft starter, controller, motor, pump, fan/blower, conveyor, valve, sensor, switch, relay/contactor, encoder, remote I/O, gateway.
 
 Center: React Flow canvas.
 
@@ -46,6 +48,38 @@ The form must prevent incompatible modules, duplicate channel use, invalid signa
 Tabs/sections:
 Overview, Hardware/Pinout, Rack & Modules, Connections, Program, I/O Mapping, Simulator, Live Tags, Events, Logs, Versions, Runtime, Export.
 
+## Process module UX (Phase 06+)
+Process modules are created from a module type and existing factory device instances. They do not add process-specific items to the generic hardware catalog.
+
+Module editor sections:
+- Overview / module type / instance name
+- Assigned device roles
+- Required and optional logical signals
+- **Consumed PLC I/O Registry**
+- PLC I/O/tag mapping
+- Interlocks/validation
+- Simulator/runtime state
+- Trends/scenarios
+- Export
+
+The Consumed PLC I/O Registry shows each logical signal, direction, required/optional state, bound PLC/tag/I/O/register, engineering unit, quality and validation status. It also shows totals such as required inputs, optional inputs, required outputs, optional outputs, mapped and unmapped.
+
+The mapping UI must show only compatible and available PLC endpoints, just like device wiring. Required unmapped signals block runtime start; optional signals do not.
+
+## PLC-to-PLC communication UX (Phase 07)
+PLC details gains a Communication section with:
+- source/client PLC and target/server PLC
+- protocol and endpoint
+- local tag to remote register/tag mapping
+- READ/WRITE direction
+- polling/update interval
+- data type/scaling
+- connection health and stale/disconnected quality
+- topology edge between PLCs
+- validation and engineering export
+
+The UI must not imply that a supervisory PLC bypasses the target PLC program. Writes are shown as target command/setpoint writes, after which target PLC logic decides the local output behavior.
+
 ## Device simulation UI
 Show command/setpoint and actual feedback separately.
 
@@ -65,6 +99,8 @@ PLC details page exposes Print / Export:
 - CSV I/O/tag schedules
 - JSON machine-readable configuration
 - complete configuration package for reproducibility/import
+
+Process-module export additionally contains module type/version, assigned roles, logical signals and the consumed PLC I/O registry.
 
 ## 3D
 Three.js via React Three Fiber. 3D is visualization, not the authoritative factory model. It consumes the same canonical runtime/device/tag state as topology and live-tag views.

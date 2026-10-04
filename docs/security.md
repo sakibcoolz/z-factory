@@ -22,7 +22,7 @@ Z-Factory controls Docker and industrial command paths, so it crosses privileged
 ## Single-owner mode (ADR-0007)
 The MVP identifies one owner through `LOCAL_OWNER_ID` and does not authenticate the person using the browser: anyone who can reach the server acts as that owner. Keep a deployment reachable only by its owner (localhost, or a trusted network / authenticating reverse proxy). In production the application refuses every factory operation when `LOCAL_OWNER_ID` is not set.
 
-## OpenPLC runtime access (ADR-0008)
+## OpenPLC runtime access (ADR-0009)
 - Each PLC container's REST API and Modbus server are published on loopback host ports only (`RUNTIME_BIND_ADDRESSES`, default `127.0.0.1`).
 - The runtime uses a self-signed certificate generated at start; the client does not verify it and therefore refuses any non-loopback address.
 - API credentials are derived per device from `RUNTIME_SECRET` and never stored. Production must set the secret; changing it requires recreating the containers.
@@ -34,3 +34,9 @@ Z-Factory is a simulation/development platform. It must not claim safety-rated b
 
 ## Production note
 Directly mounting `/var/run/docker.sock` gives broad host control. Local development may use it knowingly; production should introduce a constrained Docker API proxy/boundary or equivalent isolation.
+
+
+## Go process simulation service (Phase 06+)
+ADR-0008 permits a separate Go simulation service only after the MVP foundation. It is a privileged internal runtime component, not a browser-facing arbitrary execution API. Validate all module/model configuration, restrict network exposure to approved factory/runtime paths, apply resource limits, and keep simulator control behind the existing authorization/audit boundaries.
+
+Process models are not safety-rated controllers. PLC/safety interlocks simulated by Z-Factory must never be represented as certified protection.

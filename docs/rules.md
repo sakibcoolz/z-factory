@@ -36,3 +36,9 @@
 34. Keep task Markdown and Linear status synchronized.
 35. Query Graphify before broad cross-module edits once generated.
 36. Update Graphify after structural changes.
+37. Generic hardware/device catalog and process modules are separate; process modules compose existing DeviceInstances and never redefine vendor hardware facts.
+38. Process-module logical I/O must bind through the normal PLC tag/I/O compatibility, occupancy, access and Modbus-address rules.
+39. Boiler and other process-specific physics/configuration belong to dedicated process modules, not the generic PLC/device schema.
+40. ADR-0008 permits a separate Go process-simulation service only in Phase 06+; do not introduce it into current MVP tasks.
+41. Advanced process simulators calculate process response; PLC logic remains the command/interlock/PID control authority.
+42. Heating or other dynamic response is state/time-step based; fixed timers are only for explicit recipe/hold stages, not a substitute for process response.

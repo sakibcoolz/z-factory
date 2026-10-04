@@ -38,11 +38,16 @@ Cloud/UI -> Edge Gateway -> Modbus TCP -> PLC command tag
          -> PLC logic -> VFD/Motor/Pump/Valve
 ```
 
+## Post-MVP process-module roadmap
+After the MVP, Phase 06 introduces reusable process modules and an optional Go process-simulation service. Phase 07 introduces PLC-to-PLC communication over Modbus TCP. These phases reuse the existing PLC/device catalog, I/O/tag mapping, Docker networking and Modbus control boundary rather than changing the MVP foundation.
+
+A process module can group existing devices, declare module-specific PLC inputs/outputs, and run a coupled deterministic process model. Phase 07 additionally allows independent PLC programs/containers to exchange explicitly mapped status, process, command and setpoint data while each target PLC retains its own local control logic.
+
 ## Explicitly out of MVP
 - Exact Siemens/Rockwell/Schneider firmware emulation.
 - TIA Portal or Studio 5000 compatibility.
 - Timing-accurate PROFINET/EtherCAT simulation.
-- Full electrical/mechanical/fluid physics.
+- Full electrical/mechanical/fluid/process-design physics or certification. Post-MVP models remain explicit approximations for software/control testing.
 - Safety-rated control simulation or certification.
 - Arbitrary host command execution from the browser.
 

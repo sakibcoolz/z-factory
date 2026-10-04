@@ -20,7 +20,7 @@ import { type CompileDiagnostic, compileStructuredText } from "./compiler";
 import { runtimeCredentials } from "./credentials";
 
 /**
- * Runtime adapter for OpenPLC Runtime v4 (ADR-0008).
+ * Runtime adapter for OpenPLC Runtime v4 (ADR-0009).
  *
  * OpenPLC is the executable runtime of a virtual PLC. It is not the firmware of the
  * hardware profile a PLC instance carries: no vendor timing, electrical behaviour or

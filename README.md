@@ -34,6 +34,8 @@ Toolchain, commands and the environment contract: `docs/bootstrap.md`.
 - External industrial edge/gateway connectivity
 - PLC engineering print/export (PDF-oriented report plus machine-readable CSV/JSON/config package)
 - Three.js / React Three Fiber 3D visualization in a later phase
+- Post-MVP process modules that compose existing devices and allocate module-specific PLC I/O
+- Phase 06+ optional Go process-simulation service for deterministic coupled process models (ADR-0008)
 
 ## Core control principle
 
@@ -56,6 +58,8 @@ External UI / Edge Gateway
 ```
 
 PLC logic is the control authority. External systems do not directly mutate motor, pump, VFD, or valve state.
+
+Post-MVP process modules preserve the same rule: the simulator calculates process response and sensor feedback, while PLC logic decides heater/drive/valve/pump commands. Boiler-specific simulation is isolated to Phase 07 rather than mixed into the generic hardware catalog.
 
 ## Runtime and persistence
 Live PLC/device values live in the runtime/simulator layer. PostgreSQL stores catalog data, factory configuration, mappings, commands, important current state, alarms/events/audit history, versions, and selected/downsampled telemetry.

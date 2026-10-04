@@ -36,7 +36,7 @@ Typical use:
 
 Do not hard-code 3xxxx/4xxxx display notation into protocol internals; store normalized Modbus area + zero/one-based address convention explicitly.
 
-## Address mapping of the OpenPLC runtime (ADR-0008)
+## Address mapping of the OpenPLC runtime (ADR-0009)
 The runtime's Modbus server maps located variables to fixed areas; Z-Factory does not choose these addresses:
 
 | Located variable | Modbus area | Address |

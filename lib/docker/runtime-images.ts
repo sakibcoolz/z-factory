@@ -10,7 +10,7 @@ import type { RuntimeImage } from "./policy";
  * (Phase 05).
  */
 
-/** Key of the OpenPLC runtime image (ADR-0008). */
+/** Key of the OpenPLC runtime image (ADR-0009). */
 export const OPENPLC_IMAGE_KEY = "openplc";
 
 export const RUNTIME_IMAGES: readonly RuntimeImage[] = [

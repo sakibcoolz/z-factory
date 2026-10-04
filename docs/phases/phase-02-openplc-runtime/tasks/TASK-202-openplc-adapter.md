@@ -30,7 +30,7 @@ Verified locally with `ghcr.io/autonomy-logic/openplc-runtime:v4.2.4` (digest `s
 - The API flow works without the Editor: create user, log in, upload a zip, poll compilation.
 - A bundle made with the STruC++ CLI (`generated.cpp`, `generated.hpp`, `strucpp_runtime/include/`, plus a hand-written `defines.h` with `PROGRAM_MD5`) **compiles** on the runtime but **does not load**: the shared library lacks the debug tables (`strucpp::debug::debug_array_count`) that the Editor produces through the STruC++ library API (`debug-table-gen`, `compose-runtime-v4-bundle.ts` in the editor repository). The CLI's `--debug` flag does not emit them.
 
-Decision (2026-10-05): the owner chose the official v4 image with a spike first. The spike succeeded, see below; ADR-0008 records the decision.
+Decision (2026-10-05): the owner chose the official v4 image with a spike first. The spike succeeded, see below; ADR-0009 records the decision.
 
 ## Spike result (2026-10-05)
 The missing piece was the compile path: the OpenPLC Editor does not use the STruC++ CLI but its library API (`compile` with `debug: true`, an MD5 and the standard libraries), which also emits `generated_debug.cpp`. Reproducing that call and the Editor's bundle layout (`composeRuntimeV4Bundle`) gives a program that builds, loads and runs. Two more findings:
@@ -43,7 +43,7 @@ The missing piece was the compile path: the OpenPLC Editor does not use the STru
 - **Redeploy without rebuilding the image.** Integration test: a second version is deployed into the same container; container id and image id are unchanged and the new logic is observed over Modbus.
 - **Mapping versions recorded.** Each deployment writes a `ConfigurationVersion` snapshot with the program version, checksum, MD5, compiler, I/O and Modbus mapping versions, runtime and image digest.
 - **Failures become states and events.** A non-compiling program → version `FAILED`, `PLC_PROGRAM_DEPLOY_FAILED`, PLC keeps running; a killed container → device `FAULTED`, `DEVICE_FAULTED`, factory `DEGRADED`.
-- **Profile vs runtime identity.** Runtime recorded as `OpenPLC Runtime v4.2.4` plus image digest on `PlcInstanceProfile`; the hardware profile stays on the catalog model. No vendor or real-time claim (ADR-0008).
+- **Profile vs runtime identity.** Runtime recorded as `OpenPLC Runtime v4.2.4` plus image digest on `PlcInstanceProfile`; the hardware profile stays on the catalog model. No vendor or real-time claim (ADR-0009).
 - **Integration tests against the real runtime** (gated by `TEST_DOCKER=1`): startup under the hardened settings, program execution (scan counter advances at the task rate), health, tag access over Modbus, PLC logic deciding the device command through an interlock, read-only areas refused, restart, stop, remove. Adapter: 7 tests. Service with PostgreSQL: 9 tests.
 - **Unit tests** (23): compiler success and diagnostics, bundle layout, zip round trip, credentials, loopback-only client, state mapping, service names, Modbus client against a fake server; server-only and "STruC++ only in the worker" checks.
 - 243 tests pass with the database and Docker tests enabled; the host had the same containers and networks before and after. Format check, lint, typecheck and build pass. CI runs the OpenPLC tests too (`TEST_DOCKER=1`).

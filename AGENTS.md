@@ -13,22 +13,23 @@ This file is mandatory reading for Claude Code, GitHub Copilot, OpenAI Codex, an
 8. `docs/design.md`
 9. `docs/device-catalog.md`
 10. `docs/device-simulation.md`
-11. `docs/openplc-runtime.md`
-12. `docs/docker-runtime.md`
-13. `docs/gateway-modbus.md`
-14. `docs/plc-export.md`
-15. `docs/events-telemetry.md`
-16. `docs/api-contract.md`
-17. `docs/coding-standards.md`
-18. `docs/bootstrap.md`
-19. `docs/security.md`
-20. `docs/testing.md`
-21. `docs/references/plc-source-policy.md`
-22. `docs/graphify.md`
-23. `docs/linear-workflow.md`
-24. Relevant ADRs under `docs/adr/`
-25. Active phase README and active task file under `docs/phases/`
-26. `docs/ai-agent-checklist.md`
+11. `docs/process-modules.md`
+12. `docs/openplc-runtime.md`
+13. `docs/docker-runtime.md`
+14. `docs/gateway-modbus.md`
+15. `docs/plc-export.md`
+16. `docs/events-telemetry.md`
+17. `docs/api-contract.md`
+18. `docs/coding-standards.md`
+19. `docs/bootstrap.md`
+20. `docs/security.md`
+21. `docs/testing.md`
+22. `docs/references/plc-source-policy.md`
+23. `docs/graphify.md`
+24. `docs/linear-workflow.md`
+25. Relevant ADRs under `docs/adr/`
+26. Active phase README and active task file under `docs/phases/`
+27. `docs/ai-agent-checklist.md`
 
 ## Non-negotiable architecture rules
 - Documentation-first. Do not implement a task whose task file is missing or not Ready/In Progress.
@@ -49,6 +50,11 @@ This file is mandatory reading for Claude Code, GitHub Copilot, OpenAI Codex, an
 - Live runtime state is not sourced from PostgreSQL. Runtime memory/simulator state is authoritative for live values; PostgreSQL stores configuration, important current state, commands, events, alarms, audit history, and selected/downsampled telemetry.
 - VFD simulation uses one generic simulator engine with factory-specific VFD instances unless an ADR changes the runtime model. MVP relation: one VFD -> one primary motor.
 - Device simulators must model appropriate behavior: sensors generate process values; switches discrete states; valves react to commands; VFDs ramp and report feedback; motors react to drive output; pumps/fans/conveyors react to motor state.
+- Generic hardware catalog and process modules are separate. Process modules compose existing factory DeviceInstances and allocate logical PLC I/O; do not model a boiler or other process as a generic vendor device.
+- Process-module I/O must reuse existing PLC tag/I/O compatibility, occupancy and Modbus mapping rules.
+- ADR-0008 authorizes a separate Go process-simulation service only for Phase 06+. Do not introduce it while executing Phase 02–05 tasks.
+- Advanced process simulation computes process response only; PLC logic remains the control/interlock/PID authority.
+- Boiler-specific thermal zones, equations and UI belong to Phase 07, not the generic simulator/catalog.
 - Every PLC instance must support a complete engineering export containing specs, I/O, tags, Modbus map, connected devices, pin/channel assignments, runtime/version metadata, and topology.
 - Never invent vendor specifications. Store authoritative source provenance.
 - Do not store vendor manuals, firmware, images or CAD unless licensing permits it; store normalized facts and source references.

@@ -1,4 +1,4 @@
-# ADR 0008 — OpenPLC Runtime v4 Image and the STruC++ Compile Step
+# ADR 0009 — OpenPLC Runtime v4 Image and the STruC++ Compile Step
 
 Status: Accepted — 2026-10-05 (owner chose option A after the image research recorded in TASK-202)
 

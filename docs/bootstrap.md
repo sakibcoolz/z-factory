@@ -18,7 +18,7 @@ Deliverable of TASK-003. It fixes the toolchain so that a coding agent can boots
 | Prisma | 7.10 | `prisma`, `@prisma/client`, `@prisma/adapter-pg`; pinned because npm `latest` currently points at an 8.0 release candidate |
 | Zod | 4 | validation at every untrusted boundary |
 | dockerode | 5 | Docker Engine API client; server-only (`lib/docker/`) |
-| STruC++ | 0.7.0 | Structured Text → C++ compiler (GPL-3.0-or-later); installed from its GitHub release, run only as a separate process (ADR-0008) |
+| STruC++ | 0.7.0 | Structured Text → C++ compiler (GPL-3.0-or-later); installed from its GitHub release, run only as a separate process (ADR-0009) |
 | fflate | 0.8 | builds the program upload zip |
 | OpenPLC Runtime image | v4.2.4 | `ghcr.io/autonomy-logic/openplc-runtime`, pinned by digest in the image allow-list |
 
