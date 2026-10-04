@@ -16,6 +16,8 @@ The MVP is one Next.js application. "API" means authenticated server actions and
 - `gateways/modbus`
 - `events/alarms/telemetry`
 - `exports`
+- `process-modules` (Phase 06+)
+- `process-modules/io-registry` (Phase 06+)
 
 ## Commands
 - create/update factory
@@ -31,6 +33,10 @@ The MVP is one Next.js application. "API" means authenticated server actions and
 - configure gateway-to-PLC mapping
 - start/stop/restart factory/device runtime
 - generate PLC engineering export
+- create/update/remove process-module instance (Phase 06+)
+- assign/release device role inside a process module (Phase 06+)
+- bind/rebind/release a module logical signal to PLC tag/I/O/protocol mapping (Phase 06+)
+- validate module required I/O and runtime readiness (Phase 06+)
 
 ## Queries
 - list/get factories
@@ -43,6 +49,14 @@ The MVP is one Next.js application. "API" means authenticated server actions and
 - get topology/connections
 - get alarms/events/history
 - get export/version metadata
+- list/get process modules and assigned devices (Phase 06+)
+- get module I/O registry including required/optional, mapped/unmapped and consumed PLC endpoints (Phase 06+)
+- list compatible free PLC endpoints for one module signal (Phase 06+)
+
+## Process-module I/O registry invariant
+The module registry is a view/binding over the existing PLC tag/I/O/protocol model, not a second PLC address space. A module start request fails validation when a required signal is unbound or incompatible. Optional signals may remain unbound.
+
+Directions are from PLC logic perspective: module INPUT values are read by PLC logic; module OUTPUT values are commands/setpoints written by PLC logic.
 
 ## Live channel
 SSE is the default server-to-browser event/telemetry transport. WebSockets may be added when justified.
