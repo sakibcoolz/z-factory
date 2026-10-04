@@ -85,6 +85,36 @@ export const plcRepository = {
     }
   },
 
+  /** Host ports other devices have reserved: published Modbus endpoints and management ports. */
+  async listReservedHostPorts(
+    db: Db,
+    exceptDeviceId: string,
+  ): Promise<Array<{ hostPort: number; bindAddress: string }>> {
+    const [ports, profiles] = await Promise.all([
+      db.runtimePort.findMany({
+        where: { deviceInstanceId: { not: exceptDeviceId }, hostPort: { not: null } },
+        select: { hostPort: true, bindAddress: true },
+      }),
+      db.plcInstanceProfile.findMany({
+        where: { deviceInstanceId: { not: exceptDeviceId }, apiHostPort: { not: null } },
+        select: { apiHostPort: true },
+      }),
+    ]);
+    return [
+      ...ports.flatMap((port) => (port.hostPort ? [{ hostPort: port.hostPort, bindAddress: port.bindAddress }] : [])),
+      ...profiles.flatMap((profile) =>
+        profile.apiHostPort ? [{ hostPort: profile.apiHostPort, bindAddress: "127.0.0.1" }] : [],
+      ),
+    ];
+  },
+
+  bumpModbusMappingVersion(db: Db, deviceId: string) {
+    return db.plcInstanceProfile.update({
+      where: { deviceInstanceId: deviceId },
+      data: { modbusMappingVersion: { increment: 1 } },
+    });
+  },
+
   recordEvent(
     db: Db,
     event: {

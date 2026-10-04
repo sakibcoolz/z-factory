@@ -4,6 +4,7 @@
  */
 import { z } from "zod";
 import { CONNECTION_RELATIONSHIPS, ENDPOINT_TYPES } from "@/lib/domain/device";
+import { TAG_DATA_TYPES, TAG_ROLES } from "@/lib/domain/tag";
 import { ipv4ToInt, maskFor } from "./network";
 
 const trimmed = (max: number) => z.string().trim().min(1).max(max);
@@ -111,3 +112,38 @@ export const connectionInputSchema = z
     }
   });
 export type ConnectionInput = z.infer<typeof connectionInputSchema>;
+
+/** Symbolic tag names are IEC identifiers, so they can be used as variable names in a program. */
+export const tagNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(64)
+  .regex(/^[A-Za-z_][A-Za-z0-9_]*$/, "Use letters, digits and underscores, not starting with a digit.");
+
+export const tagInputSchema = z.strictObject({
+  name: tagNameSchema,
+  dataType: z.enum(TAG_DATA_TYPES),
+  role: z.enum(TAG_ROLES),
+  /** IEC located address, e.g. %QX0.0, %IW3, %MD4. The Modbus address is derived from it. */
+  logicalAddress: z.string().trim().min(3).max(16),
+  scale: z
+    .number()
+    .finite()
+    .refine((value) => value !== 0, "Scale must not be zero.")
+    .default(1),
+  offset: z.number().finite().default(0),
+  unit: z.string().trim().max(16).optional(),
+  /** Device instance of the same factory the value belongs to. */
+  sourceDeviceInstanceId: z.uuid().optional(),
+});
+export type TagInput = z.infer<typeof tagInputSchema>;
+
+const hostPort = z.number().int().min(1).max(65535);
+const ipv4 = z.string().regex(/^\d{1,3}(\.\d{1,3}){3}$/, "Use an IPv4 address.");
+
+export const modbusEndpointInputSchema = z.strictObject({
+  bindAddress: ipv4,
+  hostPort,
+});
+export type ModbusEndpointInput = z.infer<typeof modbusEndpointInputSchema>;

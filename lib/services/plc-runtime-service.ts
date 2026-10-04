@@ -3,11 +3,12 @@ import { createHash } from "node:crypto";
 import type Docker from "dockerode";
 import type { Actor } from "@/lib/auth/actor";
 import { type PlcRecord, plcRepository } from "@/lib/db/repositories/plc-repository";
+import { tagRepository } from "@/lib/db/repositories/tag-repository";
 import { inspectRuntimeContainer } from "@/lib/docker/containers";
 import { imageReference } from "@/lib/docker/images";
 import { ensureFactoryNetwork } from "@/lib/docker/networks";
-import type { RuntimePolicy } from "@/lib/docker/policy";
-import { allocateHostPorts, listPublishedPorts } from "@/lib/docker/ports";
+import { LOOPBACK_ADDRESS, type RuntimePolicy } from "@/lib/docker/policy";
+import { allocateHostPorts, assertPortBindings, listPublishedPorts } from "@/lib/docker/ports";
 import { OPENPLC_IMAGE_KEY } from "@/lib/docker/runtime-images";
 import { DomainError, isDomainError } from "@/lib/domain/errors";
 import type { RuntimeState } from "@/lib/domain/runtime-state";
@@ -29,6 +30,8 @@ import {
 } from "@/lib/runtimes/openplc/adapter";
 import { MODBUS_CONTAINER_PORT } from "@/lib/runtimes/openplc/bundle";
 import { MAX_SOURCE_BYTES } from "@/lib/runtimes/openplc/compiler";
+import { parseInput } from "@/lib/validation/parse";
+import { modbusEndpointInputSchema } from "@/lib/validation/schemas";
 
 /**
  * Lifecycle of a PLC instance's OpenPLC runtime: versioned programs, start, deploy,
@@ -46,7 +49,7 @@ export type RuntimeDeps = {
 
 const notFound = () => new DomainError("NOT_FOUND", "The PLC does not exist.");
 
-async function loadPlc(db: PrismaClient, actor: Actor, plcId: string) {
+export async function loadPlc(db: PrismaClient, actor: Actor, plcId: string) {
   const device = await plcRepository.findForOwner(db, actor.ownerId, plcId);
   if (!device) throw notFound();
   if (!device.plcProfile || device.runtimeType !== "OPENPLC") {
@@ -67,7 +70,7 @@ export function serviceNameFor(deviceName: string): string {
   return name;
 }
 
-function targetOf(device: PlcRecord, policy: RuntimePolicy): OpenPlcTarget | undefined {
+function targetOf(device: PlcRecord): OpenPlcTarget | undefined {
   const modbus = device.runtimePorts.find((port) => port.protocol === "MODBUS_TCP");
   const apiHostPort = device.plcProfile?.apiHostPort;
   if (!device.dockerContainerId || !apiHostPort || !modbus?.hostPort || !device.hostName) return undefined;
@@ -78,12 +81,13 @@ function targetOf(device: PlcRecord, policy: RuntimePolicy): OpenPlcTarget | und
     serviceName: device.hostName,
     apiHostPort,
     modbusHostPort: modbus.hostPort,
-    bindAddress: modbus.bindAddress || (policy.bindAddresses[0] ?? "127.0.0.1"),
+    modbusBindAddress: modbus.bindAddress,
   };
 }
 
-function requireTarget(device: PlcRecord, policy: RuntimePolicy): OpenPlcTarget & { containerId: string } {
-  const target = targetOf(device, policy);
+/** The running PLC's endpoints; a conflict when its runtime has not been started. */
+export function requireTarget(device: PlcRecord): OpenPlcTarget & { containerId: string } {
+  const target = targetOf(device);
   if (!target || !device.dockerContainerId) {
     throw new DomainError("CONFLICT", "The PLC runtime has not been started.", { rule: "runtime-required" });
   }
@@ -177,18 +181,42 @@ export async function startPlc(deps: RuntimeDeps, actor: Actor, plcId: string): 
       policy,
     );
 
-    let target = targetOf(device, policy);
+    const existingTarget = targetOf(device);
+    let target: OpenPlcTarget;
     const exists =
-      target && device.dockerContainerId
+      existingTarget && device.dockerContainerId
         ? await inspectRuntimeContainer(docker, device.dockerContainerId).then(
             () => true,
             (error: unknown) => (isDomainError(error, "NOT_FOUND") ? false : Promise.reject(error)),
           )
         : false;
 
-    if (!target || !exists) {
-      const [apiHostPort = 0, modbusHostPort = 0] = allocateHostPorts(2, await listPublishedPorts(docker), policy);
-      const bindAddress = policy.bindAddresses[0] ?? "127.0.0.1";
+    if (existingTarget && exists) {
+      target = existingTarget;
+    } else {
+      // Ports claimed on the Docker host plus those other devices have reserved in the database.
+      const taken = [
+        ...(await listPublishedPorts(docker)),
+        ...(await plcRepository.listReservedHostPorts(db, device.id)),
+      ];
+      // The Modbus endpoint is stable configuration: reuse it when the PLC already has one.
+      const configured = device.runtimePorts.find((port) => port.protocol === "MODBUS_TCP" && port.hostPort);
+      const modbusBindAddress = configured?.bindAddress ?? LOOPBACK_ADDRESS;
+      let modbusHostPort = configured?.hostPort ?? 0;
+      if (configured?.hostPort) {
+        assertPortBindings(
+          [{ containerPort: MODBUS_CONTAINER_PORT, hostPort: configured.hostPort, bindAddress: modbusBindAddress }],
+          taken,
+          policy,
+        );
+      } else {
+        [modbusHostPort = 0] = allocateHostPorts(1, taken, policy);
+      }
+      const [apiHostPort = 0] = allocateHostPorts(
+        1,
+        [...taken, { hostPort: modbusHostPort, bindAddress: modbusBindAddress }],
+        policy,
+      );
       target = {
         factoryId: device.factoryId,
         deviceId: device.id,
@@ -196,7 +224,7 @@ export async function startPlc(deps: RuntimeDeps, actor: Actor, plcId: string): 
         serviceName: serviceNameFor(device.name),
         apiHostPort,
         modbusHostPort,
-        bindAddress,
+        modbusBindAddress,
       };
       const created = await createOpenPlcContainer(docker, policy, target);
       const image = policy.images.find((candidate) => candidate.key === OPENPLC_IMAGE_KEY);
@@ -213,7 +241,7 @@ export async function startPlc(deps: RuntimeDeps, actor: Actor, plcId: string): 
       await plcRepository.replaceModbusPort(db, device.id, {
         containerPort: MODBUS_CONTAINER_PORT,
         hostPort: modbusHostPort,
-        bindAddress,
+        bindAddress: modbusBindAddress,
       });
       device = (await loadPlc(db, actor, plcId)).device;
     }
@@ -244,7 +272,7 @@ export async function deployProgramVersion(
   plcId: string,
   programVersionId?: string,
 ): Promise<{ version: number }> {
-  const { db, policy } = deps;
+  const { db } = deps;
   const { device, profile } = await loadPlc(db, actor, plcId);
   const versionId = programVersionId ?? profile.programVersionId;
   if (!versionId)
@@ -252,7 +280,7 @@ export async function deployProgramVersion(
   const programVersion = await plcRepository.findProgramVersion(db, device.id, versionId);
   if (!programVersion) throw new DomainError("NOT_FOUND", "The program version does not exist.");
 
-  const target = requireTarget(device, policy);
+  const target = requireTarget(device);
   const client = openPlcClient(target, deps.runtimeSecret);
 
   try {
@@ -274,6 +302,20 @@ export async function deployProgramVersion(
           compiler: `STruC++ ${deployed.compilerVersion}`,
           ioMappingVersion: profile.ioMappingVersion,
           modbusMappingVersion: profile.modbusMappingVersion,
+          // The tag map as deployed, so an export can be reproduced from this snapshot alone.
+          tags: (await tagRepository.listByPlc(transaction, device.id)).map((tag) => ({
+            name: tag.name,
+            dataType: tag.dataType,
+            role: tag.role,
+            accessMode: tag.accessMode,
+            logicalAddress: tag.logicalAddress,
+            area: tag.protocolArea,
+            address: tag.protocolAddress,
+            wordCount: tag.wordCount,
+            scale: tag.scale,
+            offset: tag.offset,
+            unit: tag.unit,
+          })),
           runtime: profile.runtimeVersion,
           runtimeImage: profile.runtimeImage,
           imageDigest: profile.imageDigest,
@@ -314,9 +356,9 @@ export async function refreshPlcState(
   actor: Actor,
   plcId: string,
 ): Promise<{ state: RuntimeState }> {
-  const { db, docker, policy } = deps;
+  const { db, docker } = deps;
   const { device } = await loadPlc(db, actor, plcId);
-  const target = targetOf(device, policy);
+  const target = targetOf(device);
   if (!target || !device.dockerContainerId) {
     await setDeviceState(db, device, "STOPPED");
     return { state: "STOPPED" };
@@ -341,9 +383,9 @@ export async function refreshPlcState(
 }
 
 export async function stopPlc(deps: RuntimeDeps, actor: Actor, plcId: string): Promise<void> {
-  const { db, docker, policy } = deps;
+  const { db, docker } = deps;
   const { device } = await loadPlc(db, actor, plcId);
-  const target = requireTarget(device, policy);
+  const target = requireTarget(device);
   try {
     await stopOpenPlc(docker, target.containerId);
   } catch (error) {
@@ -355,9 +397,9 @@ export async function stopPlc(deps: RuntimeDeps, actor: Actor, plcId: string): P
 
 /** Restarts the PLC's container. The runtime reloads the program it was running. */
 export async function restartPlc(deps: RuntimeDeps, actor: Actor, plcId: string): Promise<{ state: RuntimeState }> {
-  const { db, docker, policy } = deps;
+  const { db, docker } = deps;
   const { device } = await loadPlc(db, actor, plcId);
-  const target = requireTarget(device, policy);
+  const target = requireTarget(device);
   await setDeviceState(db, device, "STARTING");
   try {
     await restartOpenPlc(docker, target.containerId, openPlcClient(target, deps.runtimeSecret));
@@ -367,7 +409,7 @@ export async function restartPlc(deps: RuntimeDeps, actor: Actor, plcId: string)
   return refreshPlcState(deps, actor, plcId);
 }
 
-/** Removes the PLC's container and releases its host ports. Program versions are kept. */
+/** Removes the PLC's container. Program versions and the Modbus endpoint are kept. */
 export async function removePlcRuntime(deps: RuntimeDeps, actor: Actor, plcId: string): Promise<void> {
   const { db, docker } = deps;
   const { device } = await loadPlc(db, actor, plcId);
@@ -379,13 +421,39 @@ export async function removePlcRuntime(deps: RuntimeDeps, actor: Actor, plcId: s
     }
   }
   await plcRepository.setDeviceRuntime(db, device.id, { dockerContainerId: null });
+  // The management port is released; the Modbus endpoint is configuration and is kept,
+  // so external clients find the PLC at the same address after it is recreated.
   await plcRepository.setRuntimeMetadata(db, device.id, { apiHostPort: null });
-  await plcRepository.replaceModbusPort(db, device.id, null);
   await setDeviceState(db, device, "STOPPED");
   await plcRepository.recordEvent(db, { factoryId: device.factoryId, deviceId: device.id, type: "DEVICE_STOPPED" });
 }
 
-/** Raw Modbus read of the running program. Typed tag access arrives with TASK-203. */
+/**
+ * Sets the host endpoint the PLC's Modbus TCP server is published on, e.g. a LAN address
+ * for an external gateway. Port bindings are fixed when a container is created, so the
+ * runtime must be removed first; the endpoint takes effect on the next start.
+ */
+export async function configureModbusEndpoint(
+  deps: RuntimeDeps,
+  actor: Actor,
+  plcId: string,
+  input: unknown,
+): Promise<{ bindAddress: string; hostPort: number }> {
+  const { db, docker, policy } = deps;
+  const endpoint = parseInput(modbusEndpointInputSchema, input);
+  const { device } = await loadPlc(db, actor, plcId);
+  if (device.dockerContainerId) {
+    throw new DomainError("CONFLICT", "Remove the PLC runtime before changing its Modbus endpoint.", {
+      rule: "runtime-recreate-required",
+    });
+  }
+  const taken = [...(await listPublishedPorts(docker)), ...(await plcRepository.listReservedHostPorts(db, device.id))];
+  assertPortBindings([{ containerPort: MODBUS_CONTAINER_PORT, ...endpoint }], taken, policy);
+  await plcRepository.replaceModbusPort(db, device.id, { containerPort: MODBUS_CONTAINER_PORT, ...endpoint });
+  return endpoint;
+}
+
+/** Raw Modbus read of the running program; typed access is in the tag service. */
 export async function readPlcRegisters(
   deps: RuntimeDeps,
   actor: Actor,
@@ -393,7 +461,7 @@ export async function readPlcRegisters(
   request: { area: ModbusArea; address: number; count?: number },
 ) {
   const { device } = await loadPlc(deps.db, actor, plcId);
-  return readPlcValues(requireTarget(device, deps.policy), request.area, request.address, request.count);
+  return readPlcValues(requireTarget(device), request.area, request.address, request.count);
 }
 
 /** Raw Modbus write to a coil or holding register of the running program. */
@@ -404,5 +472,5 @@ export async function writePlcRegister(
   request: { area: ModbusArea; address: number; value: number | boolean },
 ) {
   const { device } = await loadPlc(deps.db, actor, plcId);
-  await writePlcValue(requireTarget(device, deps.policy), request.area, request.address, request.value);
+  await writePlcValue(requireTarget(device), request.area, request.address, request.value);
 }

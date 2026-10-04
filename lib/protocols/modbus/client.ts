@@ -131,3 +131,29 @@ export async function writeModbus(
   }
   assertResponse(await exchange(endpoint, pdu), functionCode);
 }
+
+/** Writes consecutive holding registers in one request (function 16), for multi-word values. */
+export async function writeModbusRegisters(
+  endpoint: ModbusEndpoint,
+  address: number,
+  words: readonly number[],
+): Promise<void> {
+  assertRange(address, Math.max(words.length, 1), "HOLDING_REGISTER");
+  if (
+    words.length < 1 ||
+    words.length > 123 ||
+    words.some((word) => !Number.isInteger(word) || word < 0 || word > 0xffff)
+  ) {
+    throw new DomainError("VALIDATION", "Holding registers take 1 to 123 integers from 0 to 65535.", {
+      rule: "modbus-value",
+    });
+  }
+  const functionCode = 0x10;
+  const pdu = Buffer.alloc(6 + words.length * 2);
+  pdu.writeUInt8(functionCode, 0);
+  pdu.writeUInt16BE(address, 1);
+  pdu.writeUInt16BE(words.length, 3);
+  pdu.writeUInt8(words.length * 2, 5);
+  words.forEach((word, index) => pdu.writeUInt16BE(word, 6 + index * 2));
+  assertResponse(await exchange(endpoint, pdu), functionCode);
+}
