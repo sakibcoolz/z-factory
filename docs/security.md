@@ -27,3 +27,9 @@ Z-Factory is a simulation/development platform. It must not claim safety-rated b
 
 ## Production note
 Directly mounting `/var/run/docker.sock` gives broad host control. Local development may use it knowingly; production should introduce a constrained Docker API proxy/boundary or equivalent isolation.
+
+
+## Go process simulation service (Phase 06+)
+ADR-0008 permits a separate Go simulation service only after the MVP foundation. It is a privileged internal runtime component, not a browser-facing arbitrary execution API. Validate all module/model configuration, restrict network exposure to approved factory/runtime paths, apply resource limits, and keep simulator control behind the existing authorization/audit boundaries.
+
+Process models are not safety-rated controllers. PLC/safety interlocks simulated by Z-Factory must never be represented as certified protection.
