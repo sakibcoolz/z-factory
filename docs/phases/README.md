@@ -9,7 +9,7 @@
 | 04 | Events, Telemetry & 3D | PLANNED | Factory topology/runtime stable |
 | 05 | External Gateway MVP | PLANNED | Modbus runtime externally reachable |
 | 06 | Process Module Framework & Go Simulation Service | PLANNED | Phase 02–05 foundations stable; ADR-0008 |
-| 07 | Boiler Process Module | PLANNED | Phase 06 exit criteria met |
+| 07 | PLC-to-PLC Communication | PLANNED | Multi-PLC OpenPLC runtime + Modbus mapping stable |
 
 Cross-cutting requirements now included in the roadmap:
 - PostgreSQL + Prisma domain model
@@ -27,7 +27,8 @@ Cross-cutting requirements now included in the roadmap:
 - authoritative module PLC I/O registry and consumed-I/O summary
 - module I/O allocation through normal PLC tag/channel/register validation
 - post-MVP Go process simulation service (Phase 06, ADR-0008)
-- boiler-specific thermal model isolated to Phase 07
+- PLC-to-PLC communication with explicit Modbus TCP client/server mappings
+- independent PLC containers/programs with validated inter-PLC data exchange
 
 Phase 06 execution units:
 - TASK-601 Process module domain & persistence
@@ -35,5 +36,11 @@ Phase 06 execution units:
 - TASK-603 Simulator/Modbus closed-loop bridge
 - TASK-604 Process module designer & validation
 - TASK-605 Module PLC I/O registry & allocation
+
+Phase 07 execution units:
+- TASK-701 PLC relationship & communication domain
+- TASK-702 Modbus TCP client/server mapping
+- TASK-703 PLC-to-PLC runtime adapter & Docker networking
+- TASK-704 PLC-to-PLC UI, validation & E2E tests
 
 A phase can start only when prerequisites are met. Individual task files are the execution unit.
