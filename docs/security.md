@@ -19,6 +19,9 @@ Z-Factory controls Docker and industrial command paths, so it crosses privileged
 - Force-input/fault-injection/debug operations require explicit authorization and audit events.
 - Do not expose host paths, Docker socket details, credentials or secrets in PLC exports.
 
+## Single-owner mode (ADR-0007)
+The MVP identifies one owner through `LOCAL_OWNER_ID` and does not authenticate the person using the browser: anyone who can reach the server acts as that owner. Keep a deployment reachable only by its owner (localhost, or a trusted network / authenticating reverse proxy). In production the application refuses every factory operation when `LOCAL_OWNER_ID` is not set.
+
 ## Industrial-control warning
 Z-Factory is a simulation/development platform. It must not claim safety-rated behavior or be used as the sole safety-control layer for physical machinery.
 

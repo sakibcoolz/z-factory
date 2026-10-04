@@ -10,8 +10,9 @@ const plc = (factoryId: string, plcId: string) => `${factory(factoryId)}/plcs/${
 export const routes = {
   factories: () => "/factories",
   newFactory: () => "/factories/new",
-  welcome: () => "/welcome",
   catalog: () => "/catalog",
+  factory,
+  editFactory: (factoryId: string) => `${factory(factoryId)}/edit`,
   designer: (factoryId: string) => `${factory(factoryId)}/designer`,
   topology: (factoryId: string) => `${factory(factoryId)}/topology`,
   view3d: (factoryId: string) => `${factory(factoryId)}/view-3d`,

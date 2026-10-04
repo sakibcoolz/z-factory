@@ -1,6 +1,7 @@
 /** Typed domain failures. Messages are safe to show to users; they never carry host or database internals. */
 export const DOMAIN_ERROR_CODES = [
   "VALIDATION",
+  "UNAUTHORIZED",
   "NOT_FOUND",
   "CONFLICT",
   "OCCUPIED_ENDPOINT",

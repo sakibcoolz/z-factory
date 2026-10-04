@@ -83,9 +83,11 @@ Source: Claude Design project `2fc6a75c-7a5d-4a8c-a17c-17afa2d37f6c`, file `Z-Fa
 ### Screen → route map
 | Wireframe | Core screen | Route |
 |---|---|---|
-| 2a | Factories | `/factories` |
-| 2b | First run / welcome | `/welcome` |
-| 2c | Create Factory | `/factories/new` |
+| 2a | Factories | `/factories` (database) |
+| 2b | First run / welcome | `/factories` while the owner has no factories |
+| 2c | Create Factory | `/factories/new` (database) |
+| — | Factory overview | `/factories/[factoryId]` (database) |
+| — | Edit factory | `/factories/[factoryId]/edit` (database) |
 | 2d | Factory Designer | `/factories/[factoryId]/designer` |
 | 2e | Device Catalog | `/catalog` |
 | 2f | Device Configuration — compact | `/factories/[factoryId]/devices/new/compact` |
@@ -101,7 +103,14 @@ Source: Claude Design project `2fc6a75c-7a5d-4a8c-a17c-17afa2d37f6c`, file `Z-Fa
 | 2p | PLC Export / Print | `/factories/[factoryId]/plcs/[plcId]/export` |
 | 2q | 3D Factory View | `/factories/[factoryId]/view-3d` |
 
-Fixtures exist for `factory_001` (Pump House Demo, PLC `dev_001`) and, for 2g only, `factory_003`. Other IDs return the not-found screen.
+Screens 2a–2c and the factory overview/edit read the database (TASK-103). Screens 2d–2q still read fixtures: `factory_001` (Pump House Demo, PLC `dev_001`) and, for 2g only, `factory_003`; they are reachable from the "Design fixtures" section of the factory explorer. Unknown IDs return the not-found screen.
+
+### Create Factory differences from wireframe 2c
+- The network name is `zfactory_<id>` and is assigned on create, so it is shown but not editable.
+- No published-port field: published ports belong to runtime ports of devices (Phase 02).
+- No template picker: the demo template needs the verified catalog (TASK-301) and JSON import has no task yet. Factories start empty.
+- The submit button creates the factory and opens its overview; the designer for stored factories arrives with TASK-303.
+- Host status shows only what is real today: PostgreSQL connected; Docker Engine and OpenPLC are marked "phase 02".
 
 ### Activity bar
 FAC factories · CAT catalog · DSN designer (also PLC, topology, 3D, device configuration) · RUN runtime and simulator · TAG live tags · EVT events · EXP PLC export. Factory-scoped activities are disabled until a factory is open.

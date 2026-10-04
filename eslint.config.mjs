@@ -26,6 +26,12 @@ export default defineConfig([
     },
   },
   {
+    // A leading underscore marks a parameter that a signature requires but the body ignores.
+    rules: {
+      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
+    },
+  },
+  {
     // Server-only boundary (docs/bootstrap.md): components are UI only and must never
     // pull database, Docker, runtime or environment modules into a client bundle.
     files: ["components/**/*.{ts,tsx}"],
@@ -42,6 +48,8 @@ export default defineConfig([
                 "@/lib/docker/**",
                 "@/lib/runtimes",
                 "@/lib/runtimes/**",
+                "@/lib/auth",
+                "@/lib/auth/**",
                 "@/lib/services",
                 "@/lib/services/**",
                 "@/lib/generated/**",

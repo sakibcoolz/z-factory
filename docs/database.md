@@ -161,14 +161,14 @@ For high-volume history, partitioning/retention should be introduced first. Time
 Every factual vendor hardware profile keeps source URL plus verification metadata. Never fabricate pinouts, I/O counts, register maps, or electrical limits.
 
 ## Implementation (TASK-102)
-- Schema: `prisma/schema.prisma`; migrations: `prisma/migrations/`; generated client: `lib/generated/prisma/` (git-ignored).
+- Schema: `prisma/schema.prisma`; migrations: `prisma/migrations/` (`init`, `device_io_endpoint`, `factory_subnet_no_overlap`); generated client: `lib/generated/prisma/` (git-ignored).
 - Primary keys are UUID v7 (`@default(uuid(7))`, PostgreSQL `uuid`), except `TelemetrySample.id` (`bigint` identity) and the one-to-one tables keyed by their owner (`ElectricalProfile`, `PlcInstanceProfile`, `DeviceRuntimeSnapshot`).
 - Catalog rows referenced by factory data are protected with `ON DELETE RESTRICT`; factory-owned rows cascade from `Factory`.
 - `DeviceInstance.dockerContainerId` is server-side only and never sent to the browser.
 - Seed: `prisma/seed.ts` inserts only the generic `DeviceCategory` rows from `lib/catalog/generic-categories.ts`. Vendor models are never seeded; they enter through the verified ingestion of TASK-301.
 
 ## Database-enforced invariants
-Prisma cannot express CHECK or EXCLUDE constraints, so these live as SQL at the end of the initial migration. Prisma Migrate leaves them alone. Add new ones in a migration and list them here.
+Prisma cannot express CHECK or EXCLUDE constraints, so these live as hand-written SQL in the migrations (most at the end of `init`). Prisma Migrate leaves them alone. Add new ones in a migration and list them here.
 
 | Constraint | Rule |
 |---|---|
@@ -185,6 +185,7 @@ Prisma cannot express CHECK or EXCLUDE constraints, so these live as SQL at the 
 | `RackProfile_slot_count_check`, `FactoryModule_slot_index_check`, `ModuleCompatibility_slot_range_check` | rack and slot ranges |
 | `RuntimePort_port_range_check`, `GatewayPlcConnection_range_check` | port 1–65535, unit id 0–255, poll interval >= 1 ms |
 | `Factory_name_check`, `Factory_slug_check`, `DeviceInstance_name_check` | non-blank names, URL-safe slug |
+| `Factory_subnet_no_overlap` | no two factories have overlapping subnets (GiST exclusion on `subnetCidr::inet`), across owners — Docker networks share the host's address space |
 | `AlarmEvent_cleared_after_started_check`, `TelemetrySample_value_check` | history sanity |
 
 Rules that span tables are enforced in the service layer (`lib/services/`, `lib/validation/`): compact vs modular I/O sources, module/CPU/slot compatibility, signal/point-type compatibility, I/O point ownership and availability, drive → motor categories, and multi-word register overlap. `lib/db/errors.ts` turns constraint failures into typed domain errors without leaking driver messages.

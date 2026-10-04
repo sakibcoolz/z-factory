@@ -19,10 +19,11 @@ Last architecture documentation update: 2026-10-04
 - Next.js application bootstrapped (TASK-101 done): format, lint, typecheck, tests and build pass; CI workflow defined.
 - PostgreSQL/Prisma domain foundation implemented (TASK-102 done): 34-model schema, database-enforced invariants, repositories, device/connection services, Zod boundary schemas, generic category seed.
 - UI shell and all 17 wireframe screens implemented over static design fixtures (TASK-104 in progress). No persistence, Docker, OpenPLC, Modbus or live data behind them yet.
-- The screens still read fixtures: factory CRUD (TASK-103), Docker, OpenPLC, Modbus and live data are NOT STARTED.
+- Factory CRUD implemented (TASK-103, pending acceptance of ADR-0007): the Factories, Create Factory, overview and edit screens read and write the database behind the `requireActor()` boundary.
+- The remaining screens still read fixtures: Docker, OpenPLC, Modbus and live data are NOT STARTED.
 
 ## Planning gate
 Phase task Markdown remains the execution unit. Linear is synchronized: team `z-factory` (ZFA), project Z-Factory, one milestone per phase and one issue per task (ZFA-1 … ZFA-19). Phase 00 is closed.
 
 ## Next technical gate
-TASK-103 Factory CRUD is READY but needs the authorization/owner-identity decision (ADR) first. After Phase 01, implement catalog/factory entities before Docker/OpenPLC runtime work.
+Accept ADR-0007 (single-owner mode) to close TASK-103, and review TASK-104, to finish Phase 01. Then Phase 02 starts with TASK-201 (Docker Engine integration). After Phase 01, implement catalog/factory entities before Docker/OpenPLC runtime work.

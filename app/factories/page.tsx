@@ -1,143 +1,113 @@
 import type { Metadata } from "next";
+import { FactoryExplorer } from "@/components/factories/factory-explorer";
+import { Welcome } from "@/components/factories/welcome";
 import { AppShell } from "@/components/shell/app-shell";
 import { Content, EditorTabs } from "@/components/shell/editor";
-import { SideBar, SideSection, Tree } from "@/components/shell/side-bar";
 import { Button } from "@/components/ui/button";
-import { KeyValue } from "@/components/ui/primitives";
-import { RuntimeStatePill, StatePill } from "@/components/ui/state-pill";
+import { RuntimeStatePill } from "@/components/ui/state-pill";
+import { requireActor } from "@/lib/auth/actor";
+import { getDb } from "@/lib/db/client";
 import { RUNTIME_STATES, type RuntimeState, runtimeStateLabel } from "@/lib/domain/runtime-state";
-import { factories, host } from "@/lib/fixtures/factories";
+import { formatUtc } from "@/lib/factories/format";
 import { routes } from "@/lib/navigation/routes";
+import { listFactories } from "@/lib/services/factory-service";
 
 export const metadata: Metadata = { title: "Factories" };
 
-const STATE_SHORT: Record<RuntimeState, string> = {
-  STOPPED: "—",
-  STARTING: "…",
-  RUNNING: "RUN",
-  DEGRADED: "DEG",
-  FAULTED: "FLT",
-  STOPPING: "…",
-  DISCONNECTED: "DISC",
-};
+// Reads the database on every request; never prerendered at build time.
+export const dynamic = "force-dynamic";
 
 const SUMMARY_STATES: readonly RuntimeState[] = ["RUNNING", "DEGRADED", "FAULTED", "STOPPED"];
 
-/** 2a — Factories: explorer + factory list. */
-export default function FactoriesPage() {
-  const countByState = (state: RuntimeState) => factories.filter((factory) => factory.state === state).length;
+/** 2a — Factories: explorer + factory list. 2b — first run, when the owner has no factories. */
+export default async function FactoriesPage() {
+  const actor = await requireActor();
+  const factories = await listFactories(getDb(), actor);
+  const countByState = (state: RuntimeState) => factories.filter((factory) => factory.runtimeStatus === state).length;
+  const isEmpty = factories.length === 0;
 
   return (
     <AppShell
       title="Z-FACTORY"
-      command="⌘K · search factories, devices, tags…"
-      titleState={<StatePill tone="run">docker</StatePill>}
       activity="factories"
       badges={{ factories: factories.length }}
-      sidebar={
-        <SideBar title="Factories">
-          <SideSection title="Workspace">
-            <Tree
-              items={factories.map((factory, index) => ({
-                label: `▸ ${factory.name}`,
-                meta: STATE_SHORT[factory.state],
-                href: factory.href ?? undefined,
-                active: index === 0,
-              }))}
-            />
-          </SideSection>
-          <SideSection title="Host">
-            <KeyValue
-              rows={[
-                ["Docker Engine", <span key="v" className="mono">{`${host.dockerEngine} · ok`}</span>],
-                [
-                  "OpenPLC image",
-                  <span key="v" className="mono">
-                    {host.openPlcImageDigest}
-                  </span>,
-                ],
-                [
-                  "Ports free",
-                  <span key="v" className="mono">
-                    {host.freePortRange}
-                  </span>,
-                ],
-              ]}
-            />
-          </SideSection>
-        </SideBar>
-      }
+      sidebar={<FactoryExplorer factories={factories} />}
       status={{
-        left: ["⎇ develop", `${factories.length} factories`, "SSE connected"],
-        right: [`Docker ${host.dockerEngine}`, "Postgres ok"],
+        tone: isEmpty ? "off" : "ok",
+        left: [isEmpty ? "no factory yet" : `${factories.length} ${factories.length === 1 ? "factory" : "factories"}`],
+        right: ["PostgreSQL connected"],
       }}
     >
-      <EditorTabs tabs={[{ label: "Factories", active: true }]} crumb="workspace › factories" />
-      <Content>
-        <div className="flex items-end justify-between gap-3">
-          <div>
-            <div className="zf-k">Workspace</div>
-            <h1 className="zf-h mt-1.5">Factories</h1>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="ghost">Import JSON</Button>
+      <EditorTabs tabs={[{ label: isEmpty ? "Welcome" : "Factories", active: true }]} crumb="workspace › factories" />
+      {isEmpty ? (
+        <Content plain className="gap-4.5">
+          <Welcome />
+        </Content>
+      ) : (
+        <Content>
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <div className="zf-k">Workspace</div>
+              <h1 className="zf-h mt-1.5">Factories</h1>
+            </div>
             <Button variant="primary" href={routes.newFactory()}>
               + New factory
             </Button>
           </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="zf-in w-65">Filter…</div>
-          {SUMMARY_STATES.map((state) => (
-            <RuntimeStatePill key={state} state={state}>
-              {`${runtimeStateLabel(state)} ${countByState(state)}`}
-            </RuntimeStatePill>
-          ))}
-        </div>
-        <table className="zf-tbl">
-          <thead>
-            <tr>
-              <th>Factory</th>
-              <th>Devices</th>
-              <th>Network</th>
-              <th>PLCs</th>
-              <th>State</th>
-              <th>Last event</th>
-              <th>
-                <span className="sr-only">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {factories.map((factory, index) => (
-              <tr key={factory.id} aria-selected={index === 0}>
-                <td>
-                  <b className="text-fg-strong">{factory.name}</b>
-                  {factory.summary ? <div className="zf-sub mt-0.5">{factory.summary}</div> : null}
-                </td>
-                <td className="mono">{factory.deviceCount}</td>
-                <td className="mono">{factory.networkName ?? "—"}</td>
-                <td className="mono">{factory.plcCount}</td>
-                <td>
-                  <RuntimeStatePill state={factory.state} />
-                </td>
-                <td className="mono">{factory.lastEvent}</td>
-                <td>
-                  <Button size="sm" href={factory.href ?? undefined} disabled={!factory.href}>
-                    Open
-                  </Button>
-                </td>
-              </tr>
+          <div className="flex flex-wrap items-center gap-2">
+            {SUMMARY_STATES.map((state) => (
+              <RuntimeStatePill key={state} state={state}>
+                {`${runtimeStateLabel(state)} ${countByState(state)}`}
+              </RuntimeStatePill>
             ))}
-          </tbody>
-        </table>
-        <div className="mt-auto flex flex-wrap items-center gap-2">
-          <span className="zf-k">Runtime states</span>
-          {RUNTIME_STATES.map((state) => (
-            <RuntimeStatePill key={state} state={state} />
-          ))}
-        </div>
-      </Content>
+          </div>
+          <table className="zf-tbl">
+            <thead>
+              <tr>
+                <th>Factory</th>
+                <th>Devices</th>
+                <th>Subnet</th>
+                <th>PLCs</th>
+                <th>State</th>
+                <th>Last event</th>
+                <th>
+                  <span className="sr-only">Actions</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {factories.map((factory) => (
+                <tr key={factory.id}>
+                  <td>
+                    <b className="text-fg-strong">{factory.name}</b>
+                    {factory.description ? <div className="zf-sub mt-0.5">{factory.description}</div> : null}
+                  </td>
+                  <td className="mono">{factory.deviceCount}</td>
+                  <td className="mono">{factory.subnetCidr}</td>
+                  <td className="mono">{factory.plcCount}</td>
+                  <td>
+                    <RuntimeStatePill state={factory.runtimeStatus} />
+                  </td>
+                  <td className="mono">
+                    {factory.lastEvent ? `${factory.lastEvent.type} · ${formatUtc(factory.lastEvent.occurredAt)}` : "—"}
+                  </td>
+                  <td>
+                    <Button size="sm" href={routes.factory(factory.id)}>
+                      Open
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="mt-auto flex flex-wrap items-center gap-2">
+            <span className="zf-k">Runtime states</span>
+            {RUNTIME_STATES.map((state) => (
+              <RuntimeStatePill key={state} state={state} />
+            ))}
+          </div>
+        </Content>
+      )}
     </AppShell>
   );
 }

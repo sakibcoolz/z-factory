@@ -12,6 +12,7 @@ const CONSTRAINTS: Record<string, ConstraintRule> = {
   Factory_slug_key: { code: "CONFLICT", message: "A factory with this slug already exists." },
   Factory_ownerId_name_key: { code: "CONFLICT", message: "You already have a factory with this name." },
   Factory_subnetCidr_key: { code: "CONFLICT", message: "This subnet is already used by another factory." },
+  Factory_subnet_no_overlap: { code: "CONFLICT", message: "This subnet overlaps the network of another factory." },
   Factory_dockerNetworkName_key: { code: "CONFLICT", message: "This Docker network name is already in use." },
   Factory_slug_check: { code: "VALIDATION", message: "Slug must be lowercase letters, digits and single hyphens." },
   Factory_name_check: { code: "VALIDATION", message: "Factory name must not be blank." },

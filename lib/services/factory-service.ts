@@ -1,0 +1,150 @@
+import "server-only";
+import { randomUUID } from "node:crypto";
+import type { Actor } from "@/lib/auth/actor";
+import { factoryRepository } from "@/lib/db/repositories/factory-repository";
+import { DomainError } from "@/lib/domain/errors";
+import type { RuntimeState } from "@/lib/domain/runtime-state";
+import type { PrismaClient } from "@/lib/generated/prisma/client";
+import { assertSubnetFree, suggestSubnet } from "@/lib/validation/network";
+import { parseInput } from "@/lib/validation/parse";
+import { factoryInputSchema, factoryUpdateSchema } from "@/lib/validation/schemas";
+
+/**
+ * Factory configuration CRUD. These operations change desired configuration only: they
+ * never create networks or start containers (that is the runtime lifecycle of Phase 02),
+ * and they never write `runtimeStatus`.
+ */
+
+/** Plain, serializable view of a factory for pages and client components. */
+export type FactoryView = {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  status: "DRAFT" | "ACTIVE" | "ARCHIVED";
+  /** Last persisted runtime state; the runtime layer is the live authority. */
+  runtimeStatus: RuntimeState;
+  dockerNetworkName: string;
+  subnetCidr: string;
+  deviceCount: number;
+  plcCount: number;
+  lastEvent: { type: string; occurredAt: string } | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type FactoryWithSummary = NonNullable<Awaited<ReturnType<typeof factoryRepository.findWithSummary>>>;
+
+function toView(factory: FactoryWithSummary): FactoryView {
+  const [lastEvent] = factory.events;
+  return {
+    id: factory.id,
+    name: factory.name,
+    slug: factory.slug,
+    description: factory.description,
+    status: factory.status,
+    runtimeStatus: factory.runtimeStatus,
+    dockerNetworkName: factory.dockerNetworkName,
+    subnetCidr: factory.subnetCidr,
+    deviceCount: factory.devices.length,
+    plcCount: factory.devices.filter((device) => device.plcProfile !== null).length,
+    lastEvent: lastEvent ? { type: lastEvent.type, occurredAt: lastEvent.occurredAt.toISOString() } : null,
+    createdAt: factory.createdAt.toISOString(),
+    updatedAt: factory.updatedAt.toISOString(),
+  };
+}
+
+const notFound = () => new DomainError("NOT_FOUND", "The factory does not exist.");
+
+/** Deterministic Docker network name (docs/architecture.md → Factory isolation). */
+export function dockerNetworkNameFor(factoryId: string): string {
+  return `zfactory_${factoryId}`;
+}
+
+export async function listFactories(db: PrismaClient, actor: Actor): Promise<FactoryView[]> {
+  const factories = await factoryRepository.listWithSummary(db, actor.ownerId);
+  return factories.map(toView);
+}
+
+export async function getFactory(db: PrismaClient, actor: Actor, factoryId: string): Promise<FactoryView> {
+  const factory = await factoryRepository.findWithSummary(db, actor.ownerId, factoryId);
+  if (!factory) throw notFound();
+  return toView(factory);
+}
+
+/** Default subnet offered on the create form: the first /24 no factory on this host uses. */
+export async function suggestFactorySubnet(db: PrismaClient): Promise<string | undefined> {
+  return suggestSubnet(await factoryRepository.listSubnets(db));
+}
+
+export async function createFactory(db: PrismaClient, actor: Actor, input: unknown): Promise<FactoryView> {
+  const data = parseInput(factoryInputSchema, input);
+  const id = randomUUID();
+
+  return db.$transaction(async (transaction) => {
+    assertSubnetFree(data.subnetCidr, await factoryRepository.listSubnets(transaction));
+    await factoryRepository.create(transaction, {
+      id,
+      ownerId: actor.ownerId,
+      name: data.name,
+      slug: data.slug,
+      description: data.description || undefined,
+      subnetCidr: data.subnetCidr,
+      dockerNetworkName: dockerNetworkNameFor(id),
+    });
+    await factoryRepository.recordEvent(transaction, {
+      factoryId: id,
+      type: "FACTORY_CREATED",
+      payloadJson: { name: data.name, slug: data.slug },
+    });
+    const created = await factoryRepository.findWithSummary(transaction, actor.ownerId, id);
+    if (!created) throw notFound();
+    return toView(created);
+  });
+}
+
+export async function updateFactory(
+  db: PrismaClient,
+  actor: Actor,
+  factoryId: string,
+  input: unknown,
+): Promise<FactoryView> {
+  const data = parseInput(factoryUpdateSchema, input);
+
+  return db.$transaction(async (transaction) => {
+    const current = await factoryRepository.findById(transaction, actor.ownerId, factoryId);
+    if (!current) throw notFound();
+
+    if (data.subnetCidr !== current.subnetCidr) {
+      // The subnet belongs to a Docker network once the factory runs; change it only at rest.
+      if (current.runtimeStatus !== "STOPPED") {
+        throw new DomainError("CONFLICT", "Stop the factory before changing its subnet.", {
+          rule: "subnet-change-requires-stopped",
+          field: "subnetCidr",
+        });
+      }
+      assertSubnetFree(data.subnetCidr, await factoryRepository.listSubnets(transaction, factoryId));
+    }
+
+    await factoryRepository.update(transaction, actor.ownerId, factoryId, {
+      name: data.name,
+      description: data.description || null,
+      subnetCidr: data.subnetCidr,
+    });
+    const updated = await factoryRepository.findWithSummary(transaction, actor.ownerId, factoryId);
+    if (!updated) throw notFound();
+    return toView(updated);
+  });
+}
+
+export async function deleteFactory(db: PrismaClient, actor: Actor, factoryId: string): Promise<void> {
+  await db.$transaction(async (transaction) => {
+    const current = await factoryRepository.findById(transaction, actor.ownerId, factoryId);
+    if (!current) throw notFound();
+    // A running factory owns containers and a network; deleting its record would orphan them.
+    if (current.runtimeStatus !== "STOPPED") {
+      throw new DomainError("CONFLICT", "Stop the factory before deleting it.", { rule: "delete-requires-stopped" });
+    }
+    await factoryRepository.delete(transaction, actor.ownerId, factoryId);
+  });
+}
