@@ -64,7 +64,7 @@ export function AppShell({
     <div className="zf-shell">
       <header className="zf-title">
         <span>{title}</span>
-        {command ? <span className="zf-title-cmd">{command}</span> : null}
+        {command ? <span className="zf-title-cmd">{command}</span> : <span className="flex-1" />}
         {titleState}
       </header>
       <div className="zf-body">

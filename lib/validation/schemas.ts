@@ -4,6 +4,7 @@
  */
 import { z } from "zod";
 import { CONNECTION_RELATIONSHIPS, ENDPOINT_TYPES } from "@/lib/domain/device";
+import { ipv4ToInt, maskFor } from "./network";
 
 const trimmed = (max: number) => z.string().trim().min(1).max(max);
 
@@ -19,14 +20,6 @@ const PRIVATE_RANGES: ReadonlyArray<readonly [network: number, prefix: number]> 
   [ipv4ToInt(172, 16, 0, 0), 12],
   [ipv4ToInt(192, 168, 0, 0), 16],
 ];
-
-function ipv4ToInt(a: number, b: number, c: number, d: number): number {
-  return ((a << 24) | (b << 16) | (c << 8) | d) >>> 0;
-}
-
-function maskFor(prefix: number): number {
-  return prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
-}
 
 /**
  * Factory subnet: a private IPv4 network in canonical form (host bits zero), /16 to /28.
@@ -69,6 +62,10 @@ export const factoryInputSchema = z.object({
   subnetCidr: subnetCidrSchema,
 });
 export type FactoryInput = z.infer<typeof factoryInputSchema>;
+
+/** The slug is fixed at creation; name, description and subnet can change later. */
+export const factoryUpdateSchema = factoryInputSchema.omit({ slug: true });
+export type FactoryUpdate = z.infer<typeof factoryUpdateSchema>;
 
 /** Human-readable instance names such as VFD-01, PT-101, S7-1200-1214C-01. */
 export const deviceNameSchema = z

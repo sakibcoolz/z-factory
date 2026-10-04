@@ -6,12 +6,22 @@ type ButtonProps = {
   size?: "md" | "sm";
   /** Renders a link. Without it the button is not wired to an action yet. */
   href?: string;
+  /** `submit` makes the button submit its enclosing form. */
+  type?: "button" | "submit";
   disabled?: boolean;
   className?: string;
   children: ReactNode;
 };
 
-export function Button({ variant = "default", size = "md", href, disabled = false, className, children }: ButtonProps) {
+export function Button({
+  variant = "default",
+  size = "md",
+  href,
+  type = "button",
+  disabled = false,
+  className,
+  children,
+}: ButtonProps) {
   const classes = className ? `zf-btn ${className}` : "zf-btn";
   if (href && !disabled) {
     return (
@@ -21,7 +31,7 @@ export function Button({ variant = "default", size = "md", href, disabled = fals
     );
   }
   return (
-    <button type="button" className={classes} data-variant={variant} data-size={size} disabled={disabled}>
+    <button type={type} className={classes} data-variant={variant} data-size={size} disabled={disabled}>
       {children}
     </button>
   );

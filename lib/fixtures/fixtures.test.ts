@@ -1,19 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { isWritableTagRole } from "@/lib/domain/tag";
-import { factories } from "./factories";
 import { designer, devices, ioMapping, liveTags, plcExport, topology } from "./pump-house-demo";
 
 describe("design fixtures respect domain invariants", () => {
   it("keeps device instance names unique within the factory", () => {
     const names = devices.map((device) => device.name);
     expect(new Set(names).size).toBe(names.length);
-  });
-
-  it("keeps factory ids and network names unique", () => {
-    const ids = factories.map((factory) => factory.id);
-    const networks = factories.flatMap((factory) => (factory.networkName ? [factory.networkName] : []));
-    expect(new Set(ids).size).toBe(ids.length);
-    expect(new Set(networks).size).toBe(networks.length);
   });
 
   it("places only known device instances on the designer canvas", () => {

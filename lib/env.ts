@@ -10,6 +10,11 @@ const postgresUrl = z
 const serverEnvSchema = z.object({
   DATABASE_URL: postgresUrl,
   TEST_DATABASE_URL: postgresUrl.optional(),
+  /** Single-owner mode (ADR-0007): the owner every factory operation is scoped to. */
+  LOCAL_OWNER_ID: z
+    .string()
+    .regex(/^[A-Za-z0-9._-]{1,64}$/, "use 1-64 letters, digits, dots, hyphens or underscores")
+    .optional(),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

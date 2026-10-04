@@ -14,10 +14,6 @@ import SimulatorPage from "@/app/factories/[factoryId]/simulator/page";
 import TagsPage from "@/app/factories/[factoryId]/tags/page";
 import TopologyPage from "@/app/factories/[factoryId]/topology/page";
 import View3dPage from "@/app/factories/[factoryId]/view-3d/page";
-import NewFactoryPage from "@/app/factories/new/page";
-import FactoriesPage from "@/app/factories/page";
-import WelcomePage from "@/app/welcome/page";
-import { RUNTIME_STATES, runtimeStateLabel } from "@/lib/domain/runtime-state";
 import { DEMO_FACTORY_ID, DEMO_PLC_ID, MODULAR_BENCH_FACTORY_ID } from "@/lib/fixtures/factories";
 
 vi.mock("next/navigation", () => ({
@@ -38,11 +34,11 @@ type Screen = {
   element: () => ReactElement | Promise<ReactElement>;
 };
 
-/** Every wireframe screen (2a–2q) with the heading or landmark that identifies it. */
+/**
+ * The fixture-backed wireframe screens (2d–2q) with the heading that identifies each.
+ * 2a–2c read the database and are covered in app/factories/factories.test.tsx.
+ */
 const SCREENS: Screen[] = [
-  { id: "2a factories", heading: "Factories", activity: "Factories", element: () => <FactoriesPage /> },
-  { id: "2b welcome", heading: "Build a virtual plant.", activity: "Factories", element: () => <WelcomePage /> },
-  { id: "2c create factory", heading: "Create factory", activity: "Factories", element: () => <NewFactoryPage /> },
   {
     id: "2d designer",
     heading: "Inspector",
@@ -110,8 +106,8 @@ describe("wireframe screens", () => {
     expect(screen.getByRole("contentinfo")).toBeInTheDocument();
   });
 
-  it("covers all 17 wireframe screens", () => {
-    expect(SCREENS).toHaveLength(17);
+  it("covers the 14 fixture-backed wireframe screens", () => {
+    expect(SCREENS).toHaveLength(14);
   });
 
   it("rejects factories and PLCs that have no screen", async () => {
@@ -122,39 +118,6 @@ describe("wireframe screens", () => {
       PlcPage({ params: Promise.resolve({ factoryId: DEMO_FACTORY_ID, plcId: "dev_999" }) }),
     ).rejects.toThrow("NEXT_NOT_FOUND");
     await expect(NewDevicePage({ params: deviceParams(DEMO_FACTORY_ID, "modular") })).rejects.toThrow("NEXT_NOT_FOUND");
-  });
-});
-
-describe("factories screen", () => {
-  it("shows a distinct pill for every runtime state", () => {
-    render(<FactoriesPage />);
-
-    const tones = RUNTIME_STATES.map((state) => {
-      const pills = screen.getAllByText(runtimeStateLabel(state), { selector: ".zf-st" });
-      return pills[0]?.getAttribute("data-tone");
-    });
-    expect(tones.every(Boolean)).toBe(true);
-    // STARTING and STOPPING share the transitional tone by design; the rest are unique.
-    expect(new Set(tones).size).toBe(RUNTIME_STATES.length - 1);
-  });
-
-  it("only links factories that have a screen", () => {
-    render(<FactoriesPage />);
-
-    const table = within(screen.getByRole("table"));
-    expect(table.getAllByRole("link", { name: "Open" })).toHaveLength(2);
-    expect(table.getAllByRole("button", { name: "Open" })).toHaveLength(2);
-    for (const button of table.getAllByRole("button", { name: "Open" })) {
-      expect(button).toBeDisabled();
-    }
-  });
-
-  it("disables factory-scoped activities until a factory is open", () => {
-    render(<FactoriesPage />);
-
-    const activities = within(screen.getByRole("navigation", { name: "Activities" }));
-    expect(activities.getByLabelText("Designer")).toHaveAttribute("aria-disabled", "true");
-    expect(activities.getByLabelText("Device catalog")).toHaveAttribute("href", "/catalog");
   });
 });
 
