@@ -1,6 +1,6 @@
 # TASK-201 — Docker Engine Integration
 
-Status: **PLANNED**
+Status: **READY**
 Linear: [ZFA-8](https://linear.app/recruit-verse/issue/ZFA-8)
 
 ## Objective
