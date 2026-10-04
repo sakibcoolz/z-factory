@@ -17,14 +17,14 @@ type EditFactoryPageProps = {
 
 export default async function EditFactoryPage({ params }: EditFactoryPageProps) {
   const { factoryId } = await params;
-  const { factory, factories } = await loadFactory(factoryId);
+  const { factory, factories, docker } = await loadFactory(factoryId);
 
   return (
     <AppShell
       title={`${factory.name} — Z-FACTORY`}
       activity="factories"
       badges={{ factories: factories.length }}
-      sidebar={<FactoryExplorer factories={factories} activeFactoryId={factory.id} />}
+      sidebar={<FactoryExplorer factories={factories} activeFactoryId={factory.id} docker={docker} />}
       status={{ tone: "off", left: [`⎇ ${factory.slug}`, "editing"] }}
     >
       <EditorTabs

@@ -15,6 +15,21 @@ const serverEnvSchema = z.object({
     .string()
     .regex(/^[A-Za-z0-9._-]{1,64}$/, "use 1-64 letters, digits, dots, hyphens or underscores")
     .optional(),
+  /** Docker Engine endpoint: a unix socket or a TCP proxy. Never exposed to the browser. */
+  DOCKER_HOST: z
+    .string()
+    .regex(/^(unix:\/\/\/.+|tcp:\/\/[A-Za-z0-9.-]+:\d{1,5})$/, "use unix:///path or tcp://host:port")
+    .default("unix:///var/run/docker.sock"),
+  /** Host ports runtime containers may publish, as `min-max`. */
+  RUNTIME_PORT_RANGE: z
+    .string()
+    .regex(/^\d{1,5}-\d{1,5}$/, "use min-max, e.g. 15000-15999")
+    .default("15000-15999"),
+  /** Comma-separated host addresses runtime ports may bind to. */
+  RUNTIME_BIND_ADDRESSES: z
+    .string()
+    .regex(/^\d{1,3}(\.\d{1,3}){3}(,\d{1,3}(\.\d{1,3}){3})*$/, "use comma-separated IPv4 addresses")
+    .default("127.0.0.1"),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

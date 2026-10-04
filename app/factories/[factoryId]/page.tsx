@@ -21,7 +21,7 @@ type FactoryPageProps = {
 /** Factory overview: configuration, last persisted runtime state, edit and delete. */
 export default async function FactoryPage({ params }: FactoryPageProps) {
   const { factoryId } = await params;
-  const { factory, factories } = await loadFactory(factoryId);
+  const { factory, factories, docker } = await loadFactory(factoryId);
 
   return (
     <AppShell
@@ -29,7 +29,7 @@ export default async function FactoryPage({ params }: FactoryPageProps) {
       titleState={<RuntimeStatePill state={factory.runtimeStatus} />}
       activity="factories"
       badges={{ factories: factories.length }}
-      sidebar={<FactoryExplorer factories={factories} activeFactoryId={factory.id} />}
+      sidebar={<FactoryExplorer factories={factories} activeFactoryId={factory.id} docker={docker} />}
       status={{
         tone: factory.runtimeStatus === "STOPPED" ? "off" : "ok",
         left: [`⎇ ${factory.slug}`, "overview"],

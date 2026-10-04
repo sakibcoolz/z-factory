@@ -15,13 +15,21 @@ const STATE_SHORT: Record<RuntimeState, string> = {
   DISCONNECTED: "DISC",
 };
 
+/** Docker Engine reachability, probed on the server and passed down as plain data. */
+export type DockerHostStatus = { reachable: boolean; version?: string };
+
 type FactoryExplorerProps = {
   factories: ReadonlyArray<{ id: string; name: string; runtimeStatus: RuntimeState }>;
   activeFactoryId?: string;
+  docker: DockerHostStatus;
 };
 
+export function dockerStatusLabel(docker: DockerHostStatus): string {
+  return docker.reachable ? `${docker.version ?? "engine"} · ok` : "unreachable";
+}
+
 /** Side bar of the factory screens: the owner's factories, the design fixtures and host status. */
-export function FactoryExplorer({ factories, activeFactoryId }: FactoryExplorerProps) {
+export function FactoryExplorer({ factories, activeFactoryId, docker }: FactoryExplorerProps) {
   return (
     <SideBar title="Factories">
       <SideSection title="Workspace">
@@ -62,14 +70,14 @@ export function FactoryExplorer({ factories, activeFactoryId }: FactoryExplorerP
             ],
             [
               "Docker Engine",
-              <StatePill key="v" tone="off">
-                phase 02
+              <StatePill key="v" tone={docker.reachable ? "run" : "flt"}>
+                {dockerStatusLabel(docker)}
               </StatePill>,
             ],
             [
               "OpenPLC image",
               <StatePill key="v" tone="off">
-                phase 02
+                TASK-202
               </StatePill>,
             ],
           ]}

@@ -21,10 +21,13 @@ const service = vi.hoisted(() => ({
   deleteFactory: vi.fn(),
 }));
 const actor = vi.hoisted(() => ({ requireActor: vi.fn() }));
+const dockerStatus = vi.hoisted(() => ({ getDockerEngineStatus: vi.fn() }));
 
 vi.mock("@/lib/services/factory-service", () => service);
 vi.mock("@/lib/auth/actor", () => actor);
 vi.mock("@/lib/db/client", () => ({ getDb: () => ({}) }));
+vi.mock("@/lib/docker/client", () => ({ getDocker: () => ({}) }));
+vi.mock("@/lib/docker/status", () => dockerStatus);
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/navigation", () => ({
   notFound: () => {
@@ -60,6 +63,7 @@ beforeEach(() => {
   service.listFactories.mockResolvedValue([factory()]);
   service.getFactory.mockResolvedValue(factory());
   service.suggestFactorySubnet.mockResolvedValue("172.20.2.0/24");
+  dockerStatus.getDockerEngineStatus.mockResolvedValue({ reachable: true, version: "29.7.2" });
 });
 
 describe("2a factories list", () => {
@@ -87,13 +91,26 @@ describe("2a factories list", () => {
     expect(new Set(tones).size).toBe(RUNTIME_STATES.length - 1);
   });
 
-  it("disables factory-scoped activities and makes no Docker claim", async () => {
+  it("disables factory-scoped activities until a factory is open", async () => {
     render(await FactoriesPage());
 
     const activities = within(screen.getByRole("navigation", { name: "Activities" }));
     expect(activities.getByLabelText("Factories")).toHaveAttribute("aria-current", "page");
     expect(activities.getByLabelText("Designer")).toHaveAttribute("aria-disabled", "true");
-    expect(screen.getAllByText("phase 02").length).toBeGreaterThan(0);
+  });
+
+  it("shows the real Docker Engine status, reachable or not", async () => {
+    const { unmount } = render(await FactoriesPage());
+    expect(screen.getByText("29.7.2 · ok")).toHaveAttribute("data-tone", "run");
+    expect(screen.getByText("Docker 29.7.2")).toBeInTheDocument();
+    unmount();
+
+    dockerStatus.getDockerEngineStatus.mockResolvedValue({ reachable: false });
+    render(await FactoriesPage());
+    expect(screen.getByText("unreachable")).toHaveAttribute("data-tone", "flt");
+    expect(screen.getByText("Docker unreachable")).toBeInTheDocument();
+    // An unreachable engine is shown, not thrown: the factory list still renders.
+    expect(screen.getByRole("table")).toBeInTheDocument();
   });
 
   it("propagates an authorization failure instead of rendering data", async () => {

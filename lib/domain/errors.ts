@@ -7,6 +7,7 @@ export const DOMAIN_ERROR_CODES = [
   "OCCUPIED_ENDPOINT",
   "INCOMPATIBLE",
   "INVARIANT",
+  "RUNTIME_FAILURE",
 ] as const;
 
 export type DomainErrorCode = (typeof DOMAIN_ERROR_CODES)[number];
