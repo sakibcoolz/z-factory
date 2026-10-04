@@ -18,6 +18,9 @@ Deliverable of TASK-003. It fixes the toolchain so that a coding agent can boots
 | Prisma | 7.10 | `prisma`, `@prisma/client`, `@prisma/adapter-pg`; pinned because npm `latest` currently points at an 8.0 release candidate |
 | Zod | 4 | validation at every untrusted boundary |
 | dockerode | 5 | Docker Engine API client; server-only (`lib/docker/`) |
+| STruC++ | 0.7.0 | Structured Text → C++ compiler (GPL-3.0-or-later); installed from its GitHub release, run only as a separate process (ADR-0008) |
+| fflate | 0.8 | builds the program upload zip |
+| OpenPLC Runtime image | v4.2.4 | `ghcr.io/autonomy-logic/openplc-runtime`, pinned by digest in the image allow-list |
 
 Planned, added by their owning tasks: React Flow (TASK-303), Three.js + React Three Fiber (TASK-402).
 
@@ -50,7 +53,7 @@ docs/                   engineering documentation
 ```
 
 ## Server-only convention
-- Every module under `lib/db/`, `lib/services/`, `lib/auth/`, `lib/docker/`, `lib/runtimes/` and `lib/env.ts` starts with `import "server-only";`.
+- Every module under `lib/db/`, `lib/services/`, `lib/auth/`, `lib/docker/`, `lib/runtimes/`, `lib/protocols/` and `lib/env.ts` starts with `import "server-only";`. The one exception is `lib/runtimes/openplc/strucpp-worker.mjs`, which runs as its own process.
 - `components/**` may not import those paths; ESLint enforces it (`no-restricted-imports`).
 - Client components are opt-in (`"use client"`) and receive plain serializable props from server components.
 - Vitest aliases `server-only` to an empty module so server modules stay testable.
@@ -64,6 +67,7 @@ All variables are read through `lib/env.ts`, which validates them with Zod and f
 | `TEST_DATABASE_URL` | no | integration tests | Database the integration tests may reset; tests are skipped when unset |
 | `LOCAL_OWNER_ID` | production: yes | `lib/auth/actor.ts` | Owner every factory operation is scoped to (ADR-0007); defaults to `local-owner` outside production |
 | `DOCKER_HOST` | no | `lib/docker/client.ts` | Docker Engine endpoint: `unix:///path` or `tcp://host:port` (default `unix:///var/run/docker.sock`) |
+| `RUNTIME_SECRET` | production: yes | `lib/runtimes/openplc/credentials.ts` | Secret (>= 32 characters) the per-container runtime API credentials are derived from; a development value is used outside production |
 | `RUNTIME_PORT_RANGE` | no | `lib/docker/policy.ts` | Host ports runtime containers may publish, `min-max` within 1024–65535 (default `15000-15999`) |
 | `RUNTIME_BIND_ADDRESSES` | no | `lib/docker/policy.ts` | Comma-separated IPv4 addresses runtime ports may bind to (default `127.0.0.1`) |
 | `TEST_DOCKER` | no | integration tests | `1` runs the Docker lifecycle tests against the engine; they are skipped otherwise |
@@ -90,7 +94,7 @@ A task that introduces a variable adds it to this table, to `.env.example` and t
 - Docker Engine with the Compose plugin; the developer's user can reach the Docker daemon.
 - Local database: `npm run db:up` starts PostgreSQL 17 from `compose.yaml`, bound to `127.0.0.1` only, with development-only credentials.
 - The Next.js server talks to the Docker Engine API through `DOCKER_HOST`. Local development may use the Docker socket knowingly; it is never mounted into, or reachable from, browser code (see `docs/security.md`).
-- The Docker lifecycle tests (`TEST_DOCKER=1`) pull `busybox:1.37` and create a labelled test network and containers, which they remove afterwards.
+- The Docker tests (`TEST_DOCKER=1`) pull `busybox:1.37` and the pinned OpenPLC image (about 360 MB to download, 1.4 GB on disk) and create labelled test networks and containers, which they remove afterwards.
 - Factory runtime containers are created by the application, not by `compose.yaml`.
 
 ## CI baseline
@@ -103,7 +107,7 @@ GitHub Actions workflow `.github/workflows/ci.yml`, on pushes and pull requests 
 6. `npm test` with `TEST_DATABASE_URL` and `TEST_DOCKER=1` set (the runner's Docker Engine)
 7. `npm run build`
 
-OpenPLC integration tests join the pipeline with TASK-202.
+The OpenPLC integration tests run in the same step: they pull the pinned runtime image and exercise compile, deploy, execution and Modbus access.
 
 ## Graphify
 1. Install the CLI: `pipx install graphifyy` (provides the `graphify` command).

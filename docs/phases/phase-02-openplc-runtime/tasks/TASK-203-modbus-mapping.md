@@ -1,6 +1,6 @@
 # TASK-203 — Modbus Mapping & External Ports
 
-Status: **PLANNED**
+Status: **READY**
 Linear: [ZFA-10](https://linear.app/recruit-verse/issue/ZFA-10)
 
 ## Objective

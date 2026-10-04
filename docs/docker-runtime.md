@@ -90,7 +90,7 @@ A container request has exactly these fields: `factoryId`, `deviceId`, `networkN
 Not privileged; all capabilities dropped; `no-new-privileges`; no binds, mounts or devices; network mode is the factory network only; restart policy `no`; an init process; log rotation (10 MB × 3); CPU, memory (no extra swap) and PID limits. Defaults: 1 CPU, 256 MB, 256 processes; maximum 2 CPUs and 1024 MB.
 
 ### Image allow-list
-`RUNTIME_IMAGES` lists each runnable image with a key, `repository:tag`, optional pinned digest, fixed command, publishable container ports and allowed environment variable names. A request names a key, never a reference. The list is empty until TASK-202 (OpenPLC) and TASK-204 (device simulator) add their images, so the application cannot start any container yet. Program and configuration artifacts will be copied into containers through the Docker API, not bind-mounted.
+`RUNTIME_IMAGES` lists each runnable image with a key, `repository:tag`, pinned digest, optional fixed command, publishable container ports, allowed environment variable names and default limits. A request names a key, never a reference. It currently holds one image: `openplc` → `ghcr.io/autonomy-logic/openplc-runtime:v4.2.4` pinned by digest, publishable ports 8443 (REST API) and 502 (Modbus TCP), 1 GB memory (ADR-0008). The device simulator image follows with TASK-204. Programs and configuration reach a container through its REST API, never through mounts.
 
 ### Networks
 `ensureFactoryNetwork` creates a bridge network named `zfactory_<factoryId>` on the factory subnet, labelled `zfactory.managed=true` and `zfactory.factory-id`. It is idempotent, refuses a subnet that overlaps any existing Docker network on the host, and refuses to reuse a name held by a different network. `removeFactoryNetwork` only removes managed networks with no containers attached.
@@ -102,4 +102,4 @@ A published port must use an allowed bind address (`RUNTIME_BIND_ADDRESSES`, def
 Start, stop, restart, remove and inspect first check the `zfactory.managed` label and refuse anything else, so other containers and networks on the host are never touched.
 
 ### Not yet wired
-No screen starts a factory: the Docker layer is exercised by its tests only. The OpenPLC adapter (TASK-202) is the first caller. The factory screens show whether the engine is reachable.
+No screen starts a factory yet. The OpenPLC adapter and the PLC runtime service (TASK-202) are the callers of this layer; the factory screens show whether the engine is reachable.

@@ -36,6 +36,19 @@ Typical use:
 
 Do not hard-code 3xxxx/4xxxx display notation into protocol internals; store normalized Modbus area + zero/one-based address convention explicitly.
 
+## Address mapping of the OpenPLC runtime (ADR-0008)
+The runtime's Modbus server maps located variables to fixed areas; Z-Factory does not choose these addresses:
+
+| Located variable | Modbus area | Address |
+|---|---|---|
+| `%QX<byte>.<bit>` | coils (read/write) | `byte * 8 + bit` |
+| `%IX<byte>.<bit>` | discrete inputs (read-only) | `byte * 8 + bit` |
+| `%IW<n>` | input registers (read-only) | `n` |
+| `%QW<n>` | holding registers (read/write) | `n` |
+| `%MW`, `%MD`, `%ML` | holding registers, after the `%QW` segment | segment offset + index |
+
+Inside the factory network the server listens on port 502 of the PLC's service name; on the host it is published on a loopback port from `RUNTIME_PORT_RANGE`.
+
 ## Data types
 Each mapping records:
 - data type
