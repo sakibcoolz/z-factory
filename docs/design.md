@@ -16,6 +16,8 @@
 13. 2D Network / Wiring Topology
 14. PLC Export / Print
 15. 3D Factory View
+16. Process Modules (Phase 06+)
+17. Process Module Details / I/O Mapping (Phase 06+)
 
 ## Factory Designer
 Left palette: PLC, VFD/drive, motor, pump, fan/blower, conveyor, valve, sensor, switch, relay/contactor, encoder, remote I/O, gateway.
@@ -45,6 +47,23 @@ The form must prevent incompatible modules, duplicate channel use, invalid signa
 ## PLC edit
 Tabs/sections:
 Overview, Hardware/Pinout, Rack & Modules, Connections, Program, I/O Mapping, Simulator, Live Tags, Events, Logs, Versions, Runtime, Export.
+
+## Process module UX (Phase 06+)
+Process modules are created from a module type and existing factory device instances. They do not add process-specific items to the generic hardware catalog.
+
+Module editor sections:
+- Overview / module type / instance name
+- Assigned device roles
+- Required and optional logical signals
+- PLC I/O/tag mapping
+- Interlocks/validation
+- Simulator/runtime state
+- Trends/scenarios
+- Export
+
+The mapping UI must show only compatible and available PLC endpoints, just like device wiring.
+
+A future boiler module may display bottom/middle/top temperature feedback, heater command/output, level/process feedback and assigned devices, but those controls belong only to the boiler module screen.
 
 ## Device simulation UI
 Show command/setpoint and actual feedback separately.
