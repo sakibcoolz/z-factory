@@ -11,6 +11,7 @@ The repository is documentation-first. Coding starts only through an approved ph
 - [Engineering Rules](./rules.md)
 - [Device Catalog](./device-catalog.md)
 - [Device Simulation](./device-simulation.md)
+- [Process Modules](./process-modules.md)
 - [OpenPLC Runtime](./openplc-runtime.md)
 - [Docker Runtime](./docker-runtime.md)
 - [Gateway & Modbus](./gateway-modbus.md)
