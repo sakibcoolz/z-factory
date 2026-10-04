@@ -4,18 +4,22 @@ Status: **PLANNED**
 Linear: pending
 
 ## Objective
-Build a dynamic PLC creation/configuration UI driven by catalog metadata.
+Build a dynamic PLC create/edit UI driven by catalog metadata, including factory-specific connected peripherals and I/O/tag/protocol assignments.
 
 ## Compact path
-Built-in DI/DO/AI/AO, terminals/channels, electrical metadata, communication ports.
+Built-in DI/DO/AI/AO, terminals/channels, electrical metadata, communication ports, occupancy and compatible peripheral picker.
 
 ## Modular path
-CPU -> rack/backplane -> slots -> compatible modules -> module channels/terminals.
+CPU -> rack/backplane -> slots -> compatible modules -> module channels/terminals -> occupancy -> compatible peripheral picker.
 
 ## Acceptance criteria
+- User creates a uniquely named PLC instance with separate process role.
 - Incompatible modules cannot be selected.
 - Expansion/slot limits enforced.
-- Peripheral-to-channel type validation.
+- Peripheral-to-channel signal/type compatibility validated.
+- Occupied pins/channels cannot be double-assigned.
+- Selected devices can be mapped to PLC pin/channel/tag/Modbus endpoints.
 - Pin/channel visualization is data-driven.
+- PLC edit view exposes overview, hardware, connections, program, I/O mapping, simulator, live tags, logs, versions, runtime and export.
 - Configuration persists and reloads correctly.
-- Unit/component tests cover both paths.
+- Unit/component tests cover both compact and modular paths.
