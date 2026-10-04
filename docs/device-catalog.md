@@ -16,10 +16,26 @@ Process-specific assemblies such as a boiler are **not** generic hardware catalo
 These entries do not imply official vendor Docker images or firmware emulation.
 
 ## Industrial device categories to seed
-- PLC / controller
+### Controllers and intermediate/control-interface devices
+- PLC / programmable controller
 - VFD / variable-frequency drive
 - servo drive
 - soft starter
+- motion controller
+- PID / process controller
+- temperature controller
+- robot/controller interface
+- safety relay / safety-controller metadata (simulation only; never safety-rated)
+- remote I/O / distributed I/O
+- IO-Link master
+- protocol converter / industrial gateway
+- signal conditioner / isolator
+- analog transmitter / converter
+- motor starter / intelligent motor protection relay
+- industrial edge gateway
+- HMI/SCADA endpoint metadata where needed
+
+### Field/process devices
 - motor
 - centrifugal/dosing/vacuum pump
 - fan / blower / cooling-tower fan
@@ -41,12 +57,22 @@ These entries do not imply official vendor Docker images or firmware emulation.
 - flow sensor/transmitter
 - humidity / vibration / current / voltage / position sensor
 - encoder
-- remote I/O
-- industrial edge/protocol gateway
-- HMI/SCADA endpoint metadata where needed
+
+An intermediate device is optional. Direct sensor/switch/actuator wiring to PLC I/O remains a first-class topology.
 
 ## Required model metadata
-Manufacturer, family, exact model/SKU, device category, lifecycle, supply/electrical data, I/O requirements/capabilities, signal ranges, terminals, communication ports/protocols, register maps when authoritative, engineering units, faults, dimensions/reference metadata, simulator type, drive/motor relationship capabilities, source URL, source revision/date, verification timestamp.
+Manufacturer, family, exact model/SKU, device category, lifecycle, supply/electrical data, I/O requirements/capabilities, signal ranges, terminals, communication ports/protocols, register maps when authoritative, engineering units, faults, dimensions/reference metadata, simulator type, drive/motor relationship capabilities, programmability/configuration capability, source URL, source revision/date, verification timestamp.
+
+## Controller/runtime capability
+A device profile may declare whether it is:
+- passive/direct I/O
+- parameter-configured
+- protocol-controlled
+- programmable
+- externally simulated/emulated
+- unsupported for executable runtime
+
+Do not assume every controller needs custom code. PID/temperature controllers may be parameter-driven, while motion/robot/programmable controllers may require executable logic. If no legal/usable runtime or emulator exists, Z-Factory simulates documented behavior rather than pretending to run vendor firmware.
 
 ## Drive relationship metadata
 Do not assume every motor-driven device requires a VFD.
@@ -73,7 +99,10 @@ Hardware profiles may map to OpenPLC or generic device simulators only when sema
 Generic device simulation stays device-centric. A process module may couple several devices and virtual/process values, but it must reference catalog-backed devices rather than invent process-specific vendor hardware facts.
 
 Examples:
-- VFD -> motor -> pump remains a device relationship.
+- PLC -> VFD -> motor -> pump is a valid relationship chain.
+- PLC -> remote I/O -> sensors/valves is a valid distributed-I/O chain.
+- PLC -> temperature controller -> heater is a valid controller chain.
+- Sensor -> PLC direct I/O is valid and requires no intermediate device.
 - A boiler module may assign heater, temperature sensors, level transmitter, pump and valves to process roles and then allocate its logical PLC I/O.
 
 ## Source policy
