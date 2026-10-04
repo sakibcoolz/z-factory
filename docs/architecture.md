@@ -21,14 +21,12 @@ Next.js
 PostgreSQL                 Docker Engine
                               |
                        Factory Docker Network
-                      /          |           \
-             OpenPLC PLCs   Device Simulator   Gateway(optional)
-                 |              |   |
-              Modbus TCP <------+   +--> VFD/Motor/Pump/Valve/Sensor state
-                 |
-          published endpoint when external access is enabled
-                 |
-       Physical Industrial Edge Gateway
+                    /            |             \
+              OpenPLC-A      OpenPLC-B     Device Simulator
+                  |              |
+                  +-- Modbus TCP-+
+                                 |
+                           Gateway(optional)
 ```
 
 ## Layering
@@ -39,31 +37,24 @@ PostgreSQL                 Docker Engine
 - `lib/env.ts`: validated environment contract; server-only.
 - `lib/auth/`: the authorization boundary `requireActor()` (ADR-0007); server-only.
 - `lib/db/`: Prisma client, repositories and database-error translation; server-only.
-- `lib/docker/`: Docker Engine integration (dockerode): policy and image allow-list, hardened container specs, factory networks, port validation, lifecycle; server-only. See `docs/docker-runtime.md` → Implementation.
+- `lib/docker/`: Docker Engine integration (dockerode): policy and image allow-list, hardened container specs, factory networks, port validation, lifecycle; server-only.
 - `lib/runtimes/`: OpenPLC and device-simulator runtime adapters.
-- `lib/protocols/`: Modbus abstractions, register codecs and mappings.
+- `lib/protocols/`: Modbus abstractions, register codecs, gateway mappings and PLC-to-PLC mappings.
 - `lib/events/`: internal event bus and SSE/WebSocket transport.
 - `lib/catalog/`: normalized PLC/peripheral catalog access.
 - `lib/validation/`: Zod schemas for untrusted input plus pure compatibility, I/O occupancy and domain invariants.
 - `lib/export/`: engineering report/config package generation.
 - `lib/navigation/`: route builders; every screen URL is built here from Z-Factory IDs.
-- `lib/fixtures/`: static design fixtures behind the wireframe screens (TASK-104). Temporary: each fixture is replaced by its owning service/task and nothing outside `app/` and `components/` may depend on it.
-
-## Frontend toolchain
-Next.js 16 (App Router, Turbopack) · React 19 · TypeScript 6 strict · Tailwind CSS 4 (theme tokens in `app/globals.css`) · Prisma 7 with the `pg` driver adapter · dockerode 5 · Zod 4 · ESLint 9 with `eslint-config-next` · Prettier 3 · Vitest 5 + Testing Library (jsdom). Screens are server components; client components are limited to interactive leaves (the factory form and delete confirmation) that receive server actions as props. Versions, commands and the environment contract are fixed in `docs/bootstrap.md`.
-
-## Server-only boundary
-Modules under `lib/db/`, `lib/services/`, `lib/auth/`, `lib/docker/`, `lib/runtimes/` and `lib/env.ts` import `server-only`. `components/**` may not import them (ESLint `no-restricted-imports`); pages under `app/` load data on the server and pass plain props down.
+- `lib/fixtures/`: temporary design fixtures behind wireframe screens.
 
 ## Factory isolation
-Each factory receives one isolated Docker network by default, e.g. `zfactory_<factory_id>`. Containers join networks; Dockerfiles do not.
+Each factory receives one isolated Docker network by default, e.g. `zfactory_<factory_id>`.
 
 Use deterministic Docker DNS/service names inside a factory. Do not hard-code container IPs.
 
 ## PLC abstraction
 The UI creates/edits a PLC, not a Dockerfile.
 
-Backend translation:
 ```text
 PLC Form
  -> validate hardware profile
@@ -79,6 +70,20 @@ PLC Form
 
 Program/config changes should not rebuild an image unless the image itself must change.
 
+## PLC program deployment
+Each PLC container uses the same reusable OpenPLC runtime image but receives its own program/configuration.
+
+```text
+ProgramVersion
+ -> compile/generate OpenPLC artifacts
+ -> deployProgram()
+ -> mount/inject PLC-specific program + I/O + Modbus config
+ -> reload/restart PLC runtime as required
+ -> run independent scan cycle
+```
+
+A factory may therefore run many OpenPLC containers from the same base image while each PLC executes a different control program.
+
 ## Control authority
 PLC runtime is the control authority.
 
@@ -87,12 +92,43 @@ Gateway/UI -> PLC command/setpoint -> PLC logic -> simulated field device
 simulated device -> PLC feedback/status/alarm -> Gateway/UI
 ```
 
-Never bypass PLC logic by writing gateway commands directly into motor/pump/VFD state.
+Never bypass PLC logic by writing gateway commands directly into device state.
+
+## PLC-to-PLC communication — Phase 07
+PLC instances remain independent runtimes. Communication is explicit and protocol-driven.
+
+```text
+PLC-A local communication tag
+        |
+        v
+Modbus TCP Client Mapping
+        |
+        | factory Docker network
+        v
+PLC-B Modbus TCP Server
+        |
+        v
+PLC-B tag/register
+        |
+        v
+PLC-B local control logic
+```
+
+Rules:
+- First protocol: Modbus TCP.
+- Client/server role is configured per PLC relationship.
+- Read mappings copy PLC-B feedback/status/process values into PLC-A communication tags.
+- Write mappings target only explicitly writable PLC-B command/setpoint endpoints.
+- PLC-B remains responsible for local interlocks and final device outputs.
+- Communication uses deterministic Docker DNS/service names, not fixed IP addresses.
+- Host-published ports are unnecessary for same-factory internal PLC traffic.
+- Cross-factory direct PLC links are rejected in Phase 07.
+- Disconnected/stale quality and reconnect behavior are observable.
 
 ## Device simulation architecture
-MVP uses a shared device-simulator runtime capable of hosting many factory-specific state machines. It may manage VFD, motor, pump, fan, conveyor, valve, sensor and switch instances. Avoid one container per simple peripheral unless isolation or protocol fidelity requires it.
+MVP uses a shared device-simulator runtime capable of hosting many factory-specific state machines. Avoid one container per simple peripheral unless isolation or protocol fidelity requires it.
 
-Generic device simulation and process simulation are separate concerns. Reusable PLCs/sensors/drives/motors/valves remain catalog-backed devices; a process module composes existing factory device instances into a process-specific unit and allocates its logical PLC I/O. See `docs/process-modules.md`.
+Generic device simulation and process simulation are separate concerns. A process module composes existing factory device instances and allocates its logical PLC I/O.
 
 ### Post-MVP process simulation
 Phase 06 may add the ADR-0008 Go process-simulation service behind explicit adapters. This is additive and must not rewrite the Phase 02–05 runtime contracts.
@@ -100,20 +136,17 @@ Phase 06 may add the ADR-0008 Go process-simulation service behind explicit adap
 ```text
 Next.js / Z-Factory configuration
           |
-          | versioned module/model config
           v
 Go Process Simulation Service
           |
-          | feedback/process values
           v
 Modbus/runtime adapter <-> OpenPLC tags
           ^
-          | PLC commands/setpoints
           |
       PLC control logic
 ```
 
-The Go service computes process response; OpenPLC remains the control authority. Boiler-specific physics is deferred to Phase 07 rather than embedded in the generic device runtime.
+The Go service computes process response; OpenPLC remains the control authority. Specific machine/process models are created later as module definitions and are not hard-coded into the generic framework.
 
 ## Live-state boundary
 - Runtime/OpenPLC/device simulator: authoritative live state.
