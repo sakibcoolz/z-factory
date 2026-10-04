@@ -26,3 +26,9 @@ Pressure/level sensor -> OpenPLC logic -> VFD -> motor -> pump/process -> feedba
 
 ## Definition of Done
 Relevant tests pass locally/CI; new behavior has tests; failures and evidence are recorded in the task file.
+
+
+## Process simulation (Phase 06+)
+Advanced process models require deterministic tests with fixed configuration, initial state, command sequence and time steps. Cover model bounds, repeatability, PLC command/feedback mapping, scaling/data types, disconnect/stale quality, and integration with OpenPLC.
+
+Boiler Phase 07 tests must verify multi-zone temperature evolution and control-loop behavior without treating the model as thermodynamic or safety certification.
