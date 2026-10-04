@@ -319,16 +319,16 @@ model DeviceModel {
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
-  family               DeviceFamily                 @relation(fields: [familyId], references: [id], onDelete: Restrict)
-  electricalProfile    ElectricalProfile?
-  communicationPorts   CommunicationPort[]
-  ioDefinitions        DeviceIoDefinition[]
-  builtInIoChannels    BuiltInIoChannel[]
-  faultDefinitions     DeviceFaultDefinition[]
-  registerDefinitions  ProtocolRegisterDefinition[]
-  moduleCompatibility  ModuleCompatibility[]
-  simulationProfiles   SimulationProfile[]
-  instances            DeviceInstance[]
+  family              DeviceFamily                 @relation(fields: [familyId], references: [id], onDelete: Restrict)
+  electricalProfile   ElectricalProfile?
+  communicationPorts  CommunicationPort[]
+  ioDefinitions       DeviceIoDefinition[]
+  builtInIoChannels   BuiltInIoChannel[]
+  faultDefinitions    DeviceFaultDefinition[]
+  registerDefinitions ProtocolRegisterDefinition[]
+  moduleCompatibility ModuleCompatibility[]
+  simulationProfiles  SimulationProfile[]
+  instances           DeviceInstance[]
 
   @@unique([familyId, modelName])
   @@index([sku])
@@ -548,16 +548,16 @@ model DeviceInstance {
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
-  factory             Factory               @relation(fields: [factoryId], references: [id], onDelete: Cascade)
-  deviceModel         DeviceModel           @relation(fields: [deviceModelId], references: [id], onDelete: Restrict)
+  factory             Factory                @relation(fields: [factoryId], references: [id], onDelete: Cascade)
+  deviceModel         DeviceModel            @relation(fields: [deviceModelId], references: [id], onDelete: Restrict)
   plcProfile          PlcInstanceProfile?
   gateway             Gateway?
   runtimePorts        RuntimePort[]
   simulationProfiles  SimulationProfile[]
   runtimeSnapshot     DeviceRuntimeSnapshot?
-  sourcedTags         Tag[]                 @relation("TagSourceDevice")
-  outgoingConnections DeviceConnection[]    @relation("ConnectionSource")
-  incomingConnections DeviceConnection[]    @relation("ConnectionTarget")
+  sourcedTags         Tag[]                  @relation("TagSourceDevice")
+  outgoingConnections DeviceConnection[]     @relation("ConnectionSource")
+  incomingConnections DeviceConnection[]     @relation("ConnectionTarget")
   commands            DeviceCommand[]
   events              RuntimeEvent[]
   alarms              AlarmEvent[]
@@ -569,14 +569,16 @@ model DeviceInstance {
 
 /// PLC-specific instance configuration.
 model PlcInstanceProfile {
-  deviceInstanceId      String  @id @db.Uuid
+  deviceInstanceId     String  @id @db.Uuid
   /// Program version currently selected for deployment.
-  programVersionId      String? @unique @db.Uuid
-  ioMappingVersion      Int     @default(0)
-  modbusMappingVersion  Int     @default(0)
-  runtimeImage          String?
-  runtimeVersion        String?
-  imageDigest           String?
+  programVersionId     String? @unique @db.Uuid
+  ioMappingVersion     Int     @default(0)
+  modbusMappingVersion Int     @default(0)
+  runtimeImage         String?
+  runtimeVersion       String?
+  imageDigest          String?
+  /// Loopback host port the runtime's management API is published on while a container exists.
+  apiHostPort          Int?    @unique
 
   deviceInstance     DeviceInstance         @relation(fields: [deviceInstanceId], references: [id], onDelete: Cascade)
   programVersion     ProgramVersion?        @relation("CurrentProgram", fields: [programVersionId], references: [id], onDelete: SetNull)
@@ -664,13 +666,13 @@ model Tag {
   /// Last persisted quality; live quality comes from the runtime.
   quality                TagQuality?
 
-  plc              PlcInstanceProfile  @relation(fields: [plcInstanceId], references: [deviceInstanceId], onDelete: Cascade)
-  ioPoint          PlcIoPoint?         @relation(fields: [plcIoPointId], references: [id], onDelete: SetNull)
-  sourceDevice     DeviceInstance?     @relation("TagSourceDevice", fields: [sourceDeviceInstanceId], references: [id], onDelete: SetNull)
-  gatewayMappings  GatewayTagMapping[]
-  commands         DeviceCommand[]
-  alarms           AlarmEvent[]
-  telemetry        TelemetrySample[]
+  plc             PlcInstanceProfile  @relation(fields: [plcInstanceId], references: [deviceInstanceId], onDelete: Cascade)
+  ioPoint         PlcIoPoint?         @relation(fields: [plcIoPointId], references: [id], onDelete: SetNull)
+  sourceDevice    DeviceInstance?     @relation("TagSourceDevice", fields: [sourceDeviceInstanceId], references: [id], onDelete: SetNull)
+  gatewayMappings GatewayTagMapping[]
+  commands        DeviceCommand[]
+  alarms          AlarmEvent[]
+  telemetry       TelemetrySample[]
 
   @@unique([plcInstanceId, name])
   @@unique([plcInstanceId, protocol, protocolArea, protocolAddress])

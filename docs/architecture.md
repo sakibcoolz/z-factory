@@ -37,15 +37,21 @@ PostgreSQL                 Docker Engine
 - `lib/env.ts`: validated environment contract; server-only.
 - `lib/auth/`: the authorization boundary `requireActor()` (ADR-0007); server-only.
 - `lib/db/`: Prisma client, repositories and database-error translation; server-only.
-- `lib/docker/`: Docker Engine integration (dockerode): policy and image allow-list, hardened container specs, factory networks, port validation, lifecycle; server-only.
-- `lib/runtimes/`: OpenPLC and device-simulator runtime adapters.
-- `lib/protocols/`: Modbus abstractions, register codecs, gateway mappings and PLC-to-PLC mappings.
+- `lib/docker/`: Docker Engine integration (dockerode): policy and image allow-list, hardened container specs, factory networks, port validation, lifecycle; server-only. See `docs/docker-runtime.md` → Implementation.
+- `lib/runtimes/`: runtime adapters; `openplc/` holds the OpenPLC Runtime v4 adapter, its REST client, the STruC++ compile worker and the bundle composer (ADR-0009); the device-simulator adapter follows with TASK-204; server-only.
+- `lib/protocols/`: Modbus abstractions; the Modbus TCP client exists today, register codecs, gateway mappings and PLC-to-PLC mappings follow (TASK-203, Phase 07); server-only.
 - `lib/events/`: internal event bus and SSE/WebSocket transport.
 - `lib/catalog/`: normalized PLC/peripheral catalog access.
 - `lib/validation/`: Zod schemas for untrusted input plus pure compatibility, I/O occupancy and domain invariants.
 - `lib/export/`: engineering report/config package generation.
 - `lib/navigation/`: route builders; every screen URL is built here from Z-Factory IDs.
-- `lib/fixtures/`: temporary design fixtures behind wireframe screens.
+- `lib/fixtures/`: static design fixtures behind the wireframe screens (TASK-104). Temporary: each fixture is replaced by its owning service/task and nothing outside `app/` and `components/` may depend on it.
+
+## Frontend toolchain
+Next.js 16 (App Router, Turbopack) · React 19 · TypeScript 6 strict · Tailwind CSS 4 (theme tokens in `app/globals.css`) · Prisma 7 with the `pg` driver adapter · dockerode 5 · STruC++ 0.7 (separate process) · fflate · Zod 4 · ESLint 9 with `eslint-config-next` · Prettier 3 · Vitest 5 + Testing Library (jsdom). Screens are server components; client components are limited to interactive leaves (the factory form and delete confirmation) that receive server actions as props. Versions, commands and the environment contract are fixed in `docs/bootstrap.md`.
+
+## Server-only boundary
+Modules under `lib/db/`, `lib/services/`, `lib/auth/`, `lib/docker/`, `lib/runtimes/`, `lib/protocols/` and `lib/env.ts` import `server-only`. `components/**` may not import them (ESLint `no-restricted-imports`); pages under `app/` load data on the server and pass plain props down.
 
 ## Factory isolation
 Each factory receives one isolated Docker network by default, e.g. `zfactory_<factory_id>`.

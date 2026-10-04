@@ -5,8 +5,8 @@ Status: **IN PROGRESS**
 | Task | Status |
 |---|---|
 | TASK-201 Docker engine integration | DONE |
-| TASK-202 OpenPLC adapter | READY (needs the OpenPLC image decision) |
-| TASK-203 Modbus mapping & runtime ports | PLANNED |
+| TASK-202 OpenPLC adapter | DONE |
+| TASK-203 Modbus mapping & runtime ports | READY |
 | TASK-204 Device simulator runtime | PLANNED |
 
 Exit criteria: Z-Factory can safely create an isolated factory network, run OpenPLC-backed PLC instances from reusable images, execute/version PLC programs, expose validated Modbus TCP mappings, and run multiple device-simulator instances/state machines with PLC-driven feedback loops.

@@ -54,6 +54,26 @@ export function assertPortBindings(
   });
 }
 
+/** Picks the lowest free host ports in the allowed range for the default bind address. */
+export function allocateHostPorts(
+  count: number,
+  taken: readonly PublishedPort[],
+  policy: Pick<RuntimePolicy, "portRange" | "bindAddresses">,
+): number[] {
+  const bindAddress = policy.bindAddresses[0] ?? "127.0.0.1";
+  const allocated: number[] = [];
+  for (let port = policy.portRange.min; port <= policy.portRange.max && allocated.length < count; port += 1) {
+    const candidate = { hostPort: port, bindAddress };
+    if (!taken.some((published) => collides(published, candidate))) allocated.push(port);
+  }
+  if (allocated.length < count) {
+    throw new DomainError("CONFLICT", "No free host port is left in the runtime port range.", {
+      rule: "host-ports-exhausted",
+    });
+  }
+  return allocated;
+}
+
 /**
  * Host ports claimed on this Docker host: published by any running container (managed by
  * Z-Factory or not), plus the bindings of Z-Factory containers that are not running yet.

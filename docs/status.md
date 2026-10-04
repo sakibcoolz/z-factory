@@ -23,8 +23,9 @@ Last architecture documentation update: 2026-10-05
 - UI shell and all 17 wireframe screens implemented (TASK-104 done). Screens 2d–2q still render static design fixtures.
 - Phase 01 complete.
 - Factory CRUD implemented (TASK-103 done; single-owner mode per ADR-0007): the Factories, Create Factory, overview and edit screens read and write the database behind the `requireActor()` boundary.
-- Docker Engine integration implemented (TASK-201 done): server-only policy-checked network and container lifecycle with an image allow-list, tested against a real engine. No runtime image is allow-listed yet, so nothing can be started.
-- The remaining screens still read fixtures: OpenPLC, Modbus, device simulation and live data are NOT STARTED.
+- Docker Engine integration implemented (TASK-201 done): server-only policy-checked network and container lifecycle with an image allow-list, tested against a real engine.
+- OpenPLC runtime adapter implemented (TASK-202 done, ADR-0009): Structured Text is compiled with STruC++, deployed to the official OpenPLC Runtime v4 container and executed; program versions, runtime metadata, state and events are persisted; raw tag access over Modbus TCP works. Not wired to any screen yet.
+- The remaining screens still read fixtures: Modbus tag mapping, device simulation and live data are NOT STARTED.
 - Post-MVP process-module architecture documented: generic devices remain catalog-backed, while process modules compose factory devices and allocate module-specific PLC I/O.
 - Phase 06 includes TASK-605 for an authoritative module PLC I/O registry.
 - ADR-0008 accepts a separate Go process-simulation service in Phase 06+ only; it does not alter current MVP Phase 02–05 implementation.
@@ -36,4 +37,4 @@ Last architecture documentation update: 2026-10-05
 Phase task Markdown remains the execution unit. Existing Linear Phase 00–05 items remain synchronized. Newly documented Phase 06–07 tasks, including TASK-605 and TASK-701–704, must be mirrored to Linear before either phase becomes active. Phase 00 is closed.
 
 ## Next technical gate
-Phase 02 is in progress. After TASK-201, TASK-202 (OpenPLC runtime adapter) adds the first allow-listed image and starts PLC containers; it needs a choice of OpenPLC image to pin.
+Phase 02 is in progress. Next is TASK-203 (Modbus mapping and external ports): typed tags on top of the runtime's fixed address mapping, write permissions by tag role, and persisted port allocation.
