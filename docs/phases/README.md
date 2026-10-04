@@ -8,6 +8,8 @@
 | 03 | Factory Designer, Device Modeling & PLC Export | PLANNED | Phase 02 core runtime usable |
 | 04 | Events, Telemetry & 3D | PLANNED | Factory topology/runtime stable |
 | 05 | External Gateway MVP | PLANNED | Modbus runtime externally reachable |
+| 06 | Process Module Framework & Go Simulation Service | PLANNED | Phase 02–05 foundations stable; ADR-0008 |
+| 07 | Boiler Process Module | PLANNED | Phase 06 exit criteria met |
 
 Cross-cutting requirements now included in the roadmap:
 - PostgreSQL + Prisma domain model
@@ -19,5 +21,9 @@ Cross-cutting requirements now included in the roadmap:
 - live-state vs durable-history separation
 - gateway command path through PLC logic
 - PLC engineering print/export
+- process-module composition over existing device instances
+- module-specific PLC I/O allocation through normal validation
+- post-MVP Go process simulation service (Phase 06, ADR-0008)
+- boiler-specific thermal model isolated to Phase 07
 
 A phase can start only when prerequisites are met. Individual task files are the execution unit.
