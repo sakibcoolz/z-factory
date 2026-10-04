@@ -66,7 +66,19 @@ The Consumed PLC I/O Registry shows each logical signal, direction, required/opt
 
 The mapping UI must show only compatible and available PLC endpoints, just like device wiring. Required unmapped signals block runtime start; optional signals do not.
 
-A future boiler module may display bottom/middle/top temperature feedback, heater command/output, level/process feedback and assigned devices, but those controls belong only to the boiler module screen.
+## PLC-to-PLC communication UX (Phase 07)
+PLC details gains a Communication section with:
+- source/client PLC and target/server PLC
+- protocol and endpoint
+- local tag to remote register/tag mapping
+- READ/WRITE direction
+- polling/update interval
+- data type/scaling
+- connection health and stale/disconnected quality
+- topology edge between PLCs
+- validation and engineering export
+
+The UI must not imply that a supervisory PLC bypasses the target PLC program. Writes are shown as target command/setpoint writes, after which target PLC logic decides the local output behavior.
 
 ## Device simulation UI
 Show command/setpoint and actual feedback separately.
