@@ -1,13 +1,13 @@
 # Phase 01 — Core Next.js Platform
 
-Status: **IN PROGRESS**
+Status: **DONE**
 
 | Task | Status |
 |---|---|
 | TASK-101 Bootstrap Next.js | DONE |
 | TASK-102 Prisma/domain foundation | DONE |
 | TASK-103 Factory CRUD | DONE |
-| TASK-104 UI shell & wireframe screens | IN PROGRESS |
+| TASK-104 UI shell & wireframe screens | DONE |
 
 Scope includes PostgreSQL/Prisma entities for catalog definitions, factory-specific device instances, PLC I/O/tag mappings, device relationships, versions, commands, events/alarms and telemetry metadata.
 

@@ -1,10 +1,10 @@
 # Phase 02 — OpenPLC, Docker & Device Simulation Runtime
 
-Status: **PLANNED**
+Status: **READY** (Phase 01 gate met on 2026-10-05)
 
 | Task | Status |
 |---|---|
-| TASK-201 Docker engine integration | PLANNED |
+| TASK-201 Docker engine integration | READY |
 | TASK-202 OpenPLC adapter | PLANNED |
 | TASK-203 Modbus mapping & runtime ports | PLANNED |
 | TASK-204 Device simulator runtime | PLANNED |

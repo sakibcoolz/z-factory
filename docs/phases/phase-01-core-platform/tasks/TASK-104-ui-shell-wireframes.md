@@ -1,6 +1,6 @@
 # TASK-104 — UI Shell & Wireframe Screens
 
-Status: **IN PROGRESS**
+Status: **DONE**
 Linear: [ZFA-7](https://linear.app/recruit-verse/issue/ZFA-7)
 
 ## Objective
@@ -59,5 +59,7 @@ Everything under `lib/fixtures/` is transcribed from the wireframes. It is not l
 - The export sheet is 680px wide (wireframe 520px) so the connected-device schedule fits without clipping.
 - The 3D placeholder moves the MOTOR-01 label above its mesh to stop it overlapping PUMP-01.
 
-## Remaining before DONE
-- Owner review of the gate note and of the deviations above.
+## Acceptance
+The owner reviewed and accepted the gate note and the deviations above on 2026-10-05.
+
+Since TASK-103, screens 2a–2c read the database instead of fixtures; their differences from the wireframes are recorded in `docs/design.md`.
