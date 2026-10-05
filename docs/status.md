@@ -1,6 +1,6 @@
 # Project Status
 
-Last architecture documentation update: 2026-10-05
+Last architecture documentation update: 2026-10-06
 
 ## Current state
 - Repository initialized on `develop`.
@@ -45,11 +45,17 @@ Last architecture documentation update: 2026-10-05
 - Post-MVP process-module architecture documented: generic devices remain catalog-backed, while process modules compose factory devices and allocate module-specific PLC I/O.
 - Phase 06 includes TASK-605 for an authoritative module PLC I/O registry.
 - ADR-0008 accepts a separate Go process-simulation service in Phase 06+ only; it does not alter current MVP Phase 02–05 implementation.
+- Phase 03 reopened for follow-up work: TASK-306 is in progress; TASK-307 planned for canonical pin-to-pin wiring/validation; TASK-308 planned for capability-driven programming/configuration across PLC, RTU and other supported controllers.
+- TASK-307 will replace the current PLC-centric writable mapping flow with one canonical endpoint wiring source. Signal I/O is single-connection by default; explicitly modeled power, 0V/COM, PE/earth and supported bus endpoints may be shareable within metadata-defined limits.
+- Phase 04 reopened for TASK-405: 2D keeps one logical edge, while 3D renders the exact physical conductor set for all catalog device relationships (for example, three distinct conductors for modeled three-phase VFD-to-motor wiring).
+- Programming UI will be capability-driven: PLC/programmable RTU may expose Program/Versions, while VFD and similar controllers default to Parameters/Registers unless their exact model declares programmable logic.
 - Phase 07 is now PLC-to-PLC Communication. It plans independent PLC containers/programs exchanging explicitly mapped data over Modbus TCP.
 - PLC-to-PLC writes are limited to configured writable command/setpoint endpoints; target PLC local logic remains authoritative.
 - Cross-factory PLC-to-PLC links are out of scope for Phase 07.
 
 ## Planning gate
+- New follow-up tasks are mirrored to Linear: TASK-307 = ZFA-34 (Todo), TASK-308 = ZFA-35 (Todo), TASK-405 = ZFA-36 (Todo).
+
 Phase task Markdown remains the execution unit. Linear mirrors every task of Phases 00–07: the Phase 06 tasks TASK-601–605 are ZFA-24 to ZFA-28 and the Phase 07 tasks TASK-701–704 are ZFA-29 to ZFA-32, each in its phase milestone and in the backlog (mirrored 2026-10-05). Phase 06 was started by the owner on 2026-10-05 with TASK-601; Phase 07 is not active until the owner starts a task of it. Phase 00 is closed.
 
 ## Next technical gate

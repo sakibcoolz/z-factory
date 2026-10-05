@@ -95,6 +95,23 @@ ProgramVersion
 
 A factory may therefore run many OpenPLC containers from the same base image while each PLC executes a different control program.
 
+## Programmable device abstraction
+The existing PLC program/version workflow is generalized through capability-driven adapters.
+
+```text
+Catalog model capabilities
+ -> device instance UI
+ -> Program / Script / Parameters editor
+ -> immutable version
+ -> validator/compiler when applicable
+ -> runtime adapter
+ -> canonical tags/I/O/connections
+```
+
+PLC, RTU, drive and controller screens are not hard-coded from category names. The exact model declares whether it is programmable, scriptable or parameter-configurable. OpenPLC remains the first PLC runtime. RTU support is adapter/capability based. VFDs are parameter-first unless the selected profile explicitly supports logic.
+
+The program/configuration layer consumes TASK-307 canonical wiring and must not create a competing mapping source.
+
 ## Control authority
 PLC runtime is the control authority.
 
