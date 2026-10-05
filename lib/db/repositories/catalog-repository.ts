@@ -11,6 +11,7 @@ const modelInclude = {
   moduleCompatibility: {
     include: { moduleModel: { include: { channels: { orderBy: [{ ioType: "asc" }, { channelIndex: "asc" }] } } } },
   },
+  assets3d: { orderBy: { version: "desc" } },
 } as const satisfies Prisma.DeviceModelInclude;
 
 export type CatalogModelRecord = NonNullable<Awaited<ReturnType<typeof catalogRepository.findModel>>>;
@@ -27,7 +28,15 @@ export const catalogRepository = {
             category: true,
             models: {
               orderBy: { modelName: "asc" },
-              select: { id: true, modelName: true, sku: true, architectureType: true, verificationStatus: true },
+              select: {
+                id: true,
+                modelName: true,
+                sku: true,
+                architectureType: true,
+                verificationStatus: true,
+                active3dAssetId: true,
+                assets3d: { select: { id: true, version: true, status: true }, orderBy: { version: "desc" } },
+              },
             },
           },
         },

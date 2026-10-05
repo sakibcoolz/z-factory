@@ -48,6 +48,14 @@ const serverEnvSchema = z.object({
     .min(1)
     .refine((path) => !path.includes("\0"), "must be a directory path")
     .default("./data/assets"),
+  /**
+   * Key of the Meshy account that generates catalog 3D assets. Only the authoring script
+   * reads it (`npm run assets`); the application runs without it and never sends it to a browser.
+   */
+  MESHY_API_KEY: z
+    .string()
+    .regex(/^\S{16,200}$/, "use the key as Meshy shows it, without spaces")
+    .optional(),
   /** How often the tags of a running PLC are read for live values, in milliseconds. */
   TAG_POLL_MS: z.coerce.number().int().min(100).max(60_000).default(500),
   /** Telemetry: a tag is stored at most this often, in milliseconds. */

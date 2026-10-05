@@ -379,6 +379,12 @@ model Catalog3dAsset {
   provider       String
   /// The provider's own task or job id, when it has one.
   providerJobId  String?
+  /// What the provider last said about the job, in its own words (e.g. `IN_PROGRESS 40%`).
+  providerStatus String?
+  /// Why a version is pending, failed or retired, for the person looking at the catalog.
+  statusMessage  String?
+  /// How the file was asked for: `{ prompt, texturePrompt, aiModel, ... }`. Never credentials.
+  generationJson Json?
   /// Uniform scale applied to the file's units; null fits the model to its category's footprint.
   scale          Float?
   /// Rotation about the vertical axis, in degrees, that turns the file's front to the scene's front.

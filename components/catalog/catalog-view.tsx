@@ -1,10 +1,17 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { SectionRule } from "@/components/ui/primitives";
-import { StatePill } from "@/components/ui/state-pill";
+import { StatePill, type Tone } from "@/components/ui/state-pill";
 import { formatFact, signalTypeLabel } from "@/lib/catalog/format";
 import { CONTROL_CAPABILITY_LABELS } from "@/lib/domain/catalog";
-import type { CatalogModelDetail, ChannelSummary, PeripheralCompatibility } from "@/lib/domain/catalog-view";
+import {
+  assetSummaryLabel,
+  type CatalogAssetSummary,
+  type CatalogAssetVersion,
+  type CatalogModelDetail,
+  type ChannelSummary,
+  type PeripheralCompatibility,
+} from "@/lib/domain/catalog-view";
 import { routes } from "@/lib/navigation/routes";
 
 const RUNTIME_LABELS: Record<string, string> = {
@@ -36,6 +43,40 @@ export function VerificationPill({ model }: { model: Pick<CatalogModelDetail, "v
   }
   if (model.verificationStatus === "GENERIC") return <StatePill tone="off">generic · simulated</StatePill>;
   return <StatePill tone="deg">unverified</StatePill>;
+}
+
+const ASSET_TONE: Record<CatalogAssetSummary["state"], Tone> = {
+  READY: "run",
+  PENDING: "start",
+  FAILED: "flt",
+  NONE: "off",
+};
+
+/** Whether the model has a 3D asset, is getting one, or is drawn as its category's generic shape. */
+export function AssetPill({ asset }: { asset: CatalogAssetSummary }) {
+  return <StatePill tone={ASSET_TONE[asset.state]}>{assetSummaryLabel(asset)}</StatePill>;
+}
+
+const VERSION_TONE: Record<CatalogAssetVersion["status"], Tone> = {
+  READY: "run",
+  PENDING: "start",
+  FAILED: "flt",
+  RETIRED: "off",
+};
+
+function versionState(version: CatalogAssetVersion): string {
+  if (version.status === "READY") return version.active ? "ready · rendered" : "ready";
+  return version.status.toLowerCase();
+}
+
+/** Megabytes for a real model; a file smaller than that still shows a size. */
+const fileSize = (bytes: number) =>
+  bytes >= 100_000 ? `${(bytes / 1_000_000).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1000))} kB`;
+
+function versionNote(version: CatalogAssetVersion): string {
+  if (version.status === "PENDING") return version.providerStatus ?? version.statusMessage ?? "requested";
+  if (version.status === "READY") return version.sizeBytes ? fileSize(version.sizeBytes) : "—";
+  return version.statusMessage ?? "—";
 }
 
 function connectionText(peripheral: PeripheralCompatibility): string {
@@ -175,6 +216,48 @@ export function CatalogModelView({ model, peripherals }: CatalogModelViewProps) 
       ) : (
         <p className="zf-sub">Generic simulated profile. It makes no claim about any vendor&apos;s device.</p>
       )}
+
+      <SectionRule>
+        <span className="zf-k">3D asset</span>
+        <AssetPill asset={model.asset} />
+      </SectionRule>
+      <p className="zf-sub">
+        {model.asset.activeVersion === null
+          ? `Drawn in the 3D view as the generic ${model.placeholderKind} shape of its category.`
+          : `Every factory instance is drawn from version ${model.asset.activeVersion}. The shape is generic and shows no manufacturer's product.`}
+        {" Assets are generated and registered with "}
+        <span className="mono">npm run assets</span>
+        {", never from this screen."}
+      </p>
+      {model.assetVersions.length > 0 ? (
+        <table className="zf-tbl">
+          <thead>
+            <tr>
+              <th>Version</th>
+              <th>State</th>
+              <th>Source</th>
+              <th>Changed</th>
+              <th>Note</th>
+            </tr>
+          </thead>
+          <tbody>
+            {model.assetVersions.map((version) => (
+              <tr key={version.id} data-muted={version.status === "RETIRED"}>
+                <td className="mono">{`v${version.version}`}</td>
+                <td className="mono">
+                  <StatePill tone={VERSION_TONE[version.status]}>{versionState(version)}</StatePill>
+                </td>
+                <td className="mono">
+                  {version.provider.toLowerCase()}
+                  {version.providerJobId ? <span className="syn-comment block">{version.providerJobId}</span> : null}
+                </td>
+                <td className="mono">{version.updatedAt}</td>
+                <td className="mono whitespace-normal">{versionNote(version)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : null}
 
       {model.modules.length > 0 ? (
         <>

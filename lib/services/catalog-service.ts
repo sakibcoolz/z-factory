@@ -1,15 +1,17 @@
 import "server-only";
 import { catalogRepository, type CatalogModelRecord } from "@/lib/db/repositories/catalog-repository";
-import type {
-  CatalogModelDetail,
-  CatalogTerminal,
-  CatalogOverview,
-  ChannelSummary,
-  PeripheralCompatibility,
+import {
+  type CatalogModelDetail,
+  type CatalogTerminal,
+  type CatalogOverview,
+  type ChannelSummary,
+  type PeripheralCompatibility,
+  summarizeAssetVersions,
 } from "@/lib/domain/catalog-view";
 import { PLC_CATEGORY_CODE } from "@/lib/domain/device";
 import { DomainError } from "@/lib/domain/errors";
 import type { PrismaClient } from "@/lib/generated/prisma/client";
+import { placeholderFor } from "@/lib/scene/placeholders";
 import {
   matchTerminals,
   matchTerminalsToModules,
@@ -48,6 +50,7 @@ export async function getCatalogOverview(db: PrismaClient): Promise<CatalogOverv
   const categories = new Map<string, { code: string; name: string; modelCount: number }>();
   let verified = 0;
   let generic = 0;
+  let withAsset = 0;
   const manufacturers = rows
     .map((manufacturer) => {
       const families = manufacturer.families
@@ -60,16 +63,21 @@ export async function getCatalogOverview(db: PrismaClient): Promise<CatalogOverv
           };
           category.modelCount += family.models.length;
           categories.set(category.code, category);
-          for (const model of family.models) {
+          const models = family.models.map(({ active3dAssetId, assets3d, ...model }) => {
             if (model.verificationStatus === "VERIFIED") verified += 1;
             if (model.verificationStatus === "GENERIC") generic += 1;
-          }
+            const asset = summarizeAssetVersions(
+              assets3d.map((version) => ({ ...version, active: version.id === active3dAssetId })),
+            );
+            if (asset.activeVersion !== null) withAsset += 1;
+            return { ...model, asset };
+          });
           return {
             id: family.id,
             name: family.name,
             categoryCode: family.category.code,
             categoryName: family.category.name,
-            models: family.models,
+            models,
           };
         });
       return {
@@ -88,6 +96,7 @@ export async function getCatalogOverview(db: PrismaClient): Promise<CatalogOverv
       manufacturers: manufacturers.length,
       verified,
       generic,
+      withAsset,
     },
   };
 }
@@ -111,12 +120,27 @@ function toTerminals(model: { ioDefinitions: CatalogModelRecord["ioDefinitions"]
 export async function getCatalogModel(db: PrismaClient, modelId: string): Promise<CatalogModelDetail> {
   const model = await loadModel(db, modelId);
   const isPlc = model.family.category.code === PLC_CATEGORY_CODE;
+  const assetVersions = model.assets3d.map((asset) => ({
+    id: asset.id,
+    version: asset.version,
+    status: asset.status,
+    active: asset.id === model.active3dAssetId,
+    provider: asset.provider,
+    providerJobId: asset.providerJobId,
+    providerStatus: asset.providerStatus,
+    statusMessage: asset.statusMessage,
+    sizeBytes: asset.sizeBytes,
+    updatedAt: asset.updatedAt.toISOString().slice(0, 10),
+  }));
   return {
     id: model.id,
     modelName: model.modelName,
     sku: model.sku,
     architectureType: model.architectureType,
     verificationStatus: model.verificationStatus,
+    asset: summarizeAssetVersions(assetVersions),
+    assetVersions,
+    placeholderKind: placeholderFor(model.family.category.code).kind,
     manufacturer: model.family.manufacturer.name,
     family: model.family.name,
     categoryCode: model.family.category.code,
