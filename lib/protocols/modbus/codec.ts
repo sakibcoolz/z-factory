@@ -27,6 +27,20 @@ const RANGE: Record<Exclude<TagDataType, "BOOL" | "FLOAT32">, readonly [number, 
   UINT32: [0, 4294967295],
 };
 
+/** Largest magnitude a 32-bit float holds. */
+const FLOAT32_MAX = 3.4028234663852886e38;
+
+/** The engineering values an encoding can carry, after scale and offset. BOOL has no range. */
+export function engineeringRange(encoding: Encoding): readonly [number, number] {
+  if (encoding.dataType === "BOOL") return [0, 1];
+  const [min, max] = encoding.dataType === "FLOAT32" ? [-FLOAT32_MAX, FLOAT32_MAX] : RANGE[encoding.dataType];
+  const scale = encoding.scale ?? 1;
+  const offset = encoding.offset ?? 0;
+  const a = min * scale + offset;
+  const b = max * scale + offset;
+  return a <= b ? [a, b] : [b, a];
+}
+
 const swapBytes = (word: number) => ((word & 0xff) << 8) | ((word >> 8) & 0xff);
 
 /** Words as they travel on the wire for the given orders. */

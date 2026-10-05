@@ -663,6 +663,8 @@ model Tag {
   offset                 Float        @default(0)
   unit                   String?
   sourceDeviceInstanceId String?      @db.Uuid
+  /// Signal of the source device this tag carries to or from the device simulator, e.g. `run`, `actualFrequency`.
+  sourceSignal           String?
   /// Last persisted quality; live quality comes from the runtime.
   quality                TagQuality?
 
@@ -676,6 +678,8 @@ model Tag {
 
   @@unique([plcInstanceId, name])
   @@unique([plcInstanceId, protocol, protocolArea, protocolAddress])
+  /// One tag per device signal: a signal has exactly one wire.
+  @@unique([sourceDeviceInstanceId, sourceSignal])
   @@index([sourceDeviceInstanceId])
 }
 

@@ -35,6 +35,10 @@ const serverEnvSchema = z.object({
     .string()
     .regex(/^\d{1,3}(\.\d{1,3}){3}(,\d{1,3}(\.\d{1,3}){3})*$/, "use comma-separated IPv4 addresses")
     .default("127.0.0.1"),
+  /** Device-simulator cycle time in milliseconds. */
+  SIMULATION_TICK_MS: z.coerce.number().int().min(20).max(5000).default(100),
+  /** How often the simulator persists a state snapshot of its devices, in milliseconds. */
+  SIMULATION_SNAPSHOT_MS: z.coerce.number().int().min(1000).max(3_600_000).default(10_000),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

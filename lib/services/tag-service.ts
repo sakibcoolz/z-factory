@@ -24,6 +24,7 @@ import {
 import { modbusEndpoint } from "@/lib/runtimes/openplc/adapter";
 import { parseInput } from "@/lib/validation/parse";
 import { tagInputSchema } from "@/lib/validation/schemas";
+import { assertSignalBinding } from "@/lib/validation/simulation";
 import { assertNoAddressOverlap, assertTagAccess } from "@/lib/validation/tag";
 import { loadPlc, requireTarget, type RuntimeDeps } from "./plc-runtime-service";
 
@@ -56,6 +57,8 @@ export type ModbusMapRow = {
   offset: number;
   unit: string | null;
   sourceDeviceInstanceId: string | null;
+  /** Device signal the tag carries to or from the device simulator. */
+  sourceSignal: string | null;
 };
 
 export type ModbusMap = {
@@ -99,6 +102,7 @@ function toRow(tag: Tag & { protocolArea: ModbusArea; protocolAddress: number; l
     offset: tag.offset,
     unit: tag.unit,
     sourceDeviceInstanceId: tag.sourceDeviceInstanceId,
+    sourceSignal: tag.sourceSignal,
   };
 }
 
@@ -122,11 +126,25 @@ export async function createTag(db: PrismaClient, actor: Actor, plcId: string, i
   const accessMode = isWritableTagRole(data.role) ? "READ_WRITE" : "READ_ONLY";
   assertTagAccess({ role: data.role, accessMode, protocolArea: location.area });
 
-  if (data.sourceDeviceInstanceId) {
-    const sameFactory = await tagRepository.deviceInFactory(db, data.sourceDeviceInstanceId, device.factoryId);
-    if (!sameFactory) {
+  const sourceDeviceId = data.sourceDeviceInstanceId;
+  if (data.sourceSignal && !sourceDeviceId) {
+    throw new DomainError("VALIDATION", "A device signal needs the device it belongs to.", {
+      rule: "signal-device",
+      field: "sourceDeviceInstanceId",
+    });
+  }
+  if (sourceDeviceId) {
+    const source = await tagRepository.findDeviceInFactory(db, sourceDeviceId, device.factoryId);
+    if (!source) {
       throw new DomainError("NOT_FOUND", "The source device does not exist in this factory.", {
         field: "sourceDeviceInstanceId",
+      });
+    }
+    if (data.sourceSignal) {
+      assertSignalBinding({
+        device: source,
+        signal: data.sourceSignal,
+        tag: { dataType: data.dataType, accessMode, region: located.region },
       });
     }
   }
@@ -142,6 +160,15 @@ export async function createTag(db: PrismaClient, actor: Actor, plcId: string, i
         dataType: tag.dataType,
       })),
     );
+    if (sourceDeviceId && data.sourceSignal) {
+      const wired = await tagRepository.findBySignal(transaction, sourceDeviceId, data.sourceSignal);
+      if (wired) {
+        throw new DomainError("CONFLICT", `That device signal is already wired to tag ${wired.name}.`, {
+          rule: "signal-bound",
+          field: "sourceSignal",
+        });
+      }
+    }
 
     const created = await tagRepository.create(transaction, {
       plcInstanceId: device.id,
@@ -161,7 +188,8 @@ export async function createTag(db: PrismaClient, actor: Actor, plcId: string, i
       scale: data.scale,
       offset: data.offset,
       unit: data.unit || null,
-      sourceDeviceInstanceId: data.sourceDeviceInstanceId ?? null,
+      sourceDeviceInstanceId: sourceDeviceId ?? null,
+      sourceSignal: data.sourceSignal ?? null,
     });
     await plcRepository.bumpModbusMappingVersion(transaction, device.id);
     if (!mapped(created)) throw new DomainError("INVARIANT", "The tag was stored without its mapping.");
