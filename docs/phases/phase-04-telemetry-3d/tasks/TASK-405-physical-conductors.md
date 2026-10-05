@@ -1,6 +1,7 @@
 # TASK-405 — 3D Physical Conductor Rendering
 
 Status: **PLANNED**
+Linear: [ZFA-36](https://linear.app/recruit-verse/issue/ZFA-36)
 
 ## Objective
 Render physical conductors in the 3D factory view from the canonical pin-to-pin wiring produced by TASK-307.
