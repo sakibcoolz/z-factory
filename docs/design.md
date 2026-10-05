@@ -103,7 +103,20 @@ PLC details page exposes Print / Export:
 Process-module export additionally contains module type/version, assigned roles, logical signals and the consumed PLC I/O registry.
 
 ## 3D
-Three.js via React Three Fiber. 3D is visualization, not the authoritative factory model. It consumes the same canonical runtime/device/tag state as topology and live-tag views.
+Three.js via React Three Fiber. 3D is visualization, not the authoritative factory model. It consumes the same canonical runtime/device/tag/connection state as topology and live-tag views.
+
+Every reusable generic catalog model may own a versioned GLB asset. The asset is generated/curated during authoring (TASK-403), stored under Z-Factory control, and reused by every factory instance of that catalog model. Opening a factory view must not call Meshy.
+
+Catalog 3D coverage includes PLCs, VFDs/drives, servo drives, soft starters, controllers, motors, pumps, fans/blowers, conveyors, valves, sensors, switches, relays/contactors, encoders, remote I/O, gateways and future catalog peripherals.
+
+Runtime styling is layered on top of the GLB rather than baked into it:
+- RUNNING: green device outline/emphasis.
+- FAULTED: red device outline/emphasis and affected connection lines red.
+- DEGRADED/stale and DISCONNECTED use the existing warning/disconnected design semantics.
+- Healthy active connections may be green/animated.
+- State changes come from the same live event/telemetry stream as other runtime screens.
+
+Process/module-specific 3D generation is not part of Phase 04. Module authoring will define its own UX later.
 
 ## Wireframe reference
 Source: Claude Design project `2fc6a75c-7a5d-4a8c-a17c-17afa2d37f6c`, file `Z-Factory Wireframes.dc.html`, turn 2 (screens 2a–2q). Implemented by TASK-104 as a presentational shell over static fixtures (`lib/fixtures/`).
