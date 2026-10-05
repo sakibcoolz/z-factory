@@ -53,6 +53,8 @@ Last architecture documentation update: 2026-10-06
 - Cross-factory PLC-to-PLC links are out of scope for Phase 07.
 
 ## Planning gate
+- New follow-up tasks are mirrored to Linear: TASK-307 = ZFA-34 (Todo), TASK-308 = ZFA-35 (Todo), TASK-405 = ZFA-36 (Todo).
+
 Phase task Markdown remains the execution unit. Linear mirrors every task of Phases 00–07: the Phase 06 tasks TASK-601–605 are ZFA-24 to ZFA-28 and the Phase 07 tasks TASK-701–704 are ZFA-29 to ZFA-32, each in its phase milestone and in the backlog (mirrored 2026-10-05). Phase 06 was started by the owner on 2026-10-05 with TASK-601; Phase 07 is not active until the owner starts a task of it. Phase 00 is closed.
 
 ## Next technical gate
