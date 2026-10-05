@@ -263,7 +263,7 @@ describeDb("device simulation service against PostgreSQL", () => {
         ["PT01_Pressure", "OUT", "HOLDING_REGISTER", 2048],
       ],
     );
-    expect([...plan.plcs.values()]).toEqual([{ name: "PLC-01", endpoint: null }]);
+    expect([...plan.plcs.values()]).toEqual([{ name: "PLC-01", endpoint: null, runtimeStatus: "STOPPED" }]);
 
     await expectDomainError(planSimulation(db, bob, factoryId), "NOT_FOUND");
   });

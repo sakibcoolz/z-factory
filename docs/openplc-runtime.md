@@ -68,6 +68,9 @@ ProgramVersion (ST source, immutable, checksum)
 | Function | Effect |
 |---|---|
 | `createProgramVersion` | saves version n+1 with its SHA-256 checksum as `DRAFT` and selects it |
+| `checkProgram` | compiles a source without saving or deploying it; returns errors and warnings with line and column |
+| `selectProgramVersion` | selects an existing version for the next start or deploy |
+| `saveAndDeployProgram` | saves the source as a new version and deploys it; source identical to the selected version is deployed without a new version; needs a started runtime |
 | `startPlc` | ensures the factory network, creates the container from the allow-listed image (two loopback host ports: API and Modbus), waits for the API, creates the API user, deploys the selected version |
 | `deployProgramVersion` | compiles, uploads and runs a version in the existing container; marks it `DEPLOYED`, the previous one `COMPILED`; records a `ConfigurationVersion` snapshot and `PLC_PROGRAM_DEPLOYED` |
 | `refreshPlcState` | reads container and program state and stores it as the last known state |
@@ -88,7 +91,10 @@ Every function takes the `Actor` and treats a PLC of another owner as not found.
 ### Failures
 - A program that does not compile never reaches the runtime: the version becomes `FAILED`, `PLC_PROGRAM_DEPLOY_FAILED` (warning) is recorded, and the PLC keeps running the previous program.
 - A runtime build or start failure marks the version `FAILED`, records `PLC_PROGRAM_DEPLOY_FAILED` (critical) and re-reads the runtime state.
+- A program saved and deployed in one step that fails stays stored as `FAILED`, and the previously selected version is selected again, so the next start does not pick the failed one.
+- A start whose selected program fails leaves the container up without that program: the state the runtime reports is stored (`DEGRADED`), never `STARTING`.
 - A failed start, stop or remove, or a container that died, makes the device `FAULTED` with a `DEVICE_FAULTED` event.
+- A runtime Z-Factory stopped stays `STOPPED` when its state is read again: the container ends with the stop signal's exit code, which is not a fault.
 - State mapping: container running + program `RUNNING` → `RUNNING`; running with no or a stopped program → `DEGRADED`; program `ERROR` or a non-zero container exit → `FAULTED`.
 
 ### Identity
@@ -108,5 +114,18 @@ Inputs are in memory, not in `%I`: the runtime accepts simulated field values on
 
 A compact PLC's points are numbered by channel. A module's points start after everything already in use, digital blocks on a byte boundary, so existing addresses never move when modules are added or removed. Tags the user placed by hand are skipped, and a hand-made tag cannot take the address of an I/O point. A PLC has room for 1024 DI, 1024 DO, 256 AI and 256 AO.
 
-### Not yet wired
-No screen calls these services yet; the Program, PLC overview and Runtime screens still render fixtures. The tag registry and its Modbus map exist (TASK-203); generating tags and I/O points from the PLC configuration form is TASK-302.
+### Screens (TASK-305)
+The Program, Versions and Runtime screens of a stored PLC call these services through the server actions in `app/factories/[factoryId]/plcs/runtime-actions.ts`. Their read models are in `lib/services/plc-runtime-view-service.ts`:
+
+| Function | Returns |
+|---|---|
+| `getPlcProgramView` | the versions, the source the editor opens with (requested, selected, newest, or a starter program) and the PLC's tags as located variables |
+| `getPlcVersionsView` | program versions and deployment snapshots, newest first |
+| `getPlcRuntimeView` | stored state, service name, runtime version, image, Modbus endpoint, selected and deployed program, the last runtime events |
+| `readLivePlcState` | reads the state from the runtime and stores it, unless there is no runtime or a start or stop is in progress; a runtime that cannot be asked is a reason to show, not an error |
+
+The starter program (`lib/plc/program-template.ts`) declares each tag as `Name AT <address> : <type>` (BOOL, INT, UINT, DINT, UDINT, REAL), with the device signal as a comment, and ends with the task configuration the runtime needs. Tag names that are not IEC identifiers are left out.
+
+The read models never contain the container id or the runtime's management port. An action returns the domain message of a failure; build-log lines and Docker causes go to the server log only.
+
+A started runtime needs `RUNTIME_SECRET` in production. Without it, runtime operations answer with that reason and the other screens keep working.

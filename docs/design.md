@@ -129,17 +129,35 @@ Source: Claude Design project `2fc6a75c-7a5d-4a8c-a17c-17afa2d37f6c`, file `Z-Fa
 | 2f | Device Configuration — compact | `/factories/[factoryId]/devices/new/compact`, then `/plcs/[plcId]/hardware` |
 | 2g | Device Configuration — modular | `/factories/[factoryId]/devices/new/modular`, then `/plcs/[plcId]/hardware` |
 | 2h | PLC Details / Edit | `/factories/[factoryId]/plcs/[plcId]` |
-| 2i | PLC Program & Versions | `/factories/[factoryId]/plcs/[plcId]/program` |
+| 2i | PLC Program & Versions | `/factories/[factoryId]/plcs/[plcId]/program` (`?version=`), `/plcs/[plcId]/versions` |
 | 2j | PLC I/O Mapping / Pinout | `/factories/[factoryId]/plcs/[plcId]/io-mapping` |
 | 2k | Simulator / Debug | `/factories/[factoryId]/simulator` |
 | 2l | Live Tags | `/factories/[factoryId]/tags` |
 | 2m | Events / Alarms / Logs | `/factories/[factoryId]/events` |
-| 2n | Runtime / Containers | `/factories/[factoryId]/runtime` |
+| 2n | Runtime / Containers | `/factories/[factoryId]/runtime`, per PLC `/plcs/[plcId]/runtime` |
 | 2o | 2D Network / Wiring Topology | `/factories/[factoryId]/topology` |
 | 2p | PLC Export / Print | `/factories/[factoryId]/plcs/[plcId]/export`, `/export/report` (print) |
 | 2q | 3D Factory View | `/factories/[factoryId]/view-3d` |
 
-Screens 2a–2c and the factory overview/edit read the database (TASK-103), and so does 2e, the device catalog (TASK-301). For stored factories 2f, 2g, 2h and 2j read the database too (TASK-302), together with the PLC connections screen `/factories/[factoryId]/plcs/[plcId]/connections`, and so do 2d (designer) and 2o (topology) (TASK-303) and 2p (export) (TASK-304). For the design fixtures, screens 2d and 2f–2q still read fixtures: `factory_001` (Pump House Demo, PLC `dev_001`) and, for 2g only, `factory_003`; they are reachable from the "Design fixtures" section of the factory explorer. Unknown IDs return the not-found screen.
+Screens 2a–2c and the factory overview/edit read the database (TASK-103), and so does 2e, the device catalog (TASK-301). For stored factories 2f, 2g, 2h and 2j read the database too (TASK-302), together with the PLC connections screen `/factories/[factoryId]/plcs/[plcId]/connections`, and so do 2d (designer) and 2o (topology) (TASK-303), 2p (export) (TASK-304) and 2i, 2k and 2n (program, versions, simulator and runtime) (TASK-305). For the design fixtures, screens 2d and 2f–2q still read fixtures: `factory_001` (Pump House Demo, PLC `dev_001`) and, for 2g only, `factory_003`; they are reachable from the "Design fixtures" section of the factory explorer. Unknown IDs return the not-found screen.
+
+### Program, versions, runtime and simulator as built (TASK-305)
+For a stored PLC:
+
+- **Program** (`plcs/[plcId]/program`): a Structured Text editor with line numbers. A PLC without a program opens with a starter program that declares every tag of the PLC as a located variable. Three actions: **Check** compiles without saving, **Save version** stores an immutable version, **Save & deploy** stores it and runs it on the started runtime. Compiler findings are listed with line and column; choosing one moves the cursor there. Beside the editor: runtime state, the latest versions (each opens in the editor with `?version=`) and the PLC's located variables.
+- **Versions** (`plcs/[plcId]/versions`): every program version with status (draft, compiled, deployed, failed), which one is selected for the next start, and per version "Use for next start" and "Deploy now". Below, the configuration snapshot recorded at each deployment.
+- **Runtime** (`plcs/[plcId]/runtime`): state read from the runtime when the page is opened, program, Modbus TCP endpoint, runtime version and image, and the operations Start, Deploy, Restart, Stop, Remove (asks first) and Refresh state. The last runtime events of the PLC are listed, failures included. The page re-reads itself every 5 seconds while a runtime exists.
+- **Simulator** (`/factories/[factoryId]/simulator`, factory-wide): start and stop the device simulation; one card per simulated device with its command/setpoint signals (from PLC logic) and its feedback signals (from the simulator) kept apart, each with the tag it is wired to; per device, inject and clear its faults and reset it. Live values refresh every 2 seconds.
+- **Factory runtime** (`/factories/[factoryId]/runtime`): the factory's PLCs with their last stored state, the simulation state and the Docker host status, linking to each PLC's Runtime screen.
+
+Feedback for slow operations: while an operation runs, its button names it and counts the seconds, the other buttons are disabled and a line says why it can take minutes (image download, program build). The result or the reason for a failure appears under the buttons.
+
+Differences from wireframes 2i, 2k and 2n:
+- No syntax highlighting, no multiple program files and no debug console: one Structured Text program per PLC in a plain editor.
+- Versions are a screen of their own. Rollback is "Deploy now" on an earlier version.
+- The runtime screen is per PLC and shows the service name, never a container id; no CPU/memory figures and no container log viewer.
+- The simulator shows every device as a card instead of one selected device, has no trend sparklines, and does not force sensor values (the service supports it; no control yet).
+- No "Start factory": each PLC is started from its own Runtime screen and the simulation from the Simulator.
 
 ### PLC export as built (TASK-304)
 For a stored PLC the export screen shows the configuration revision, the program and mapping versions, download buttons (JSON, three CSV schedules), a switch to include the stored runtime status, and a preview of the whole report. "Open printable report" shows the report alone on a paper-like page with a print button.
@@ -174,7 +192,7 @@ The topology screen (`/factories/[factoryId]/topology`) shows the same canvas re
 
 Differences from wireframes 2d and 2o:
 - No Save or Validate button: every change is validated and saved when made.
-- No Start/Stop factory and no Export on the toolbar: runtime control for stored factories is not wired (TASK-305), export is TASK-304.
+- No Start/Stop factory and no Export on the toolbar: a PLC is started from its Runtime screen and the simulation from the Simulator (TASK-305); export is on the PLC (TASK-304).
 - No zones, layers or manual edge routing. Removing a wired edge disconnects the device from the PLC as a whole.
 - The state overlay uses the stored state, not a live stream (TASK-401).
 
@@ -190,7 +208,7 @@ Differences from wireframes 2f, 2g, 2h and 2j:
 - No draft state and no "Next" step: each step is saved when submitted.
 - The channel panel is read-only; wiring is done from Connections, not by editing a pin.
 - Creating and connecting a peripheral is one action. Removing it deletes the device.
-- Section list of the PLC: Overview, Hardware, Connections and I/O Mapping are wired. Export is wired too since TASK-304. Program, Simulator, Live Tags, Events, Logs, Versions and Runtime are listed but not wired for stored PLCs yet (TASK-305 proposed for Program, Versions, Runtime and Simulator; TASK-401 for Events and Live Tags).
+- Section list of the PLC: Overview, Hardware, Connections and I/O Mapping are wired. Export is wired since TASK-304; Program, Versions, Runtime and Simulator since TASK-305. Live Tags, Events and Logs are listed but not wired for stored PLCs yet (TASK-401).
 - The Pump House Demo and the modular bench keep their fixture screens.
 
 ### Device Catalog differences from wireframe 2e

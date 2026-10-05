@@ -709,6 +709,66 @@
   .zf-code-line[data-active="true"] .zf-code-no {
     color: var(--color-fg);
   }
+  /* Editable program source: a line-number gutter beside a textarea that grows with its text. */
+  .zf-source {
+    display: grid;
+    grid-template-columns: 44px 1fr;
+    align-items: start;
+    flex: 1;
+    min-height: 250px;
+    overflow: auto;
+    border: 1px solid var(--color-line);
+    background: var(--color-editor);
+    font: 400 12px/1.75 var(--font-mono);
+  }
+  .zf-source:focus-within {
+    border-color: var(--color-focus);
+  }
+  .zf-source-no {
+    margin: 0;
+    padding: 10px 12px 10px 0;
+    text-align: right;
+    color: var(--color-fg-faint);
+    user-select: none;
+    font: inherit;
+  }
+  .zf-source textarea {
+    display: block;
+    width: 100%;
+    padding: 10px 12px 10px 0;
+    border: 0;
+    outline: none;
+    resize: none;
+    overflow-x: auto;
+    overflow-y: hidden;
+    background: transparent;
+    color: var(--color-fg-strong);
+    font: inherit;
+    white-space: pre;
+    tab-size: 2;
+  }
+  .zf-problem {
+    display: grid;
+    grid-template-columns: 96px 60px 1fr;
+    gap: 12px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .zf-problem:hover,
+  .zf-problem:focus-visible {
+    background: var(--color-line-active);
+    outline: none;
+  }
+  .zf-notice {
+    font-size: 11px;
+    line-height: 1.45;
+    color: var(--color-ok);
+  }
   .syn-var {
     color: var(--color-syn-var);
   }

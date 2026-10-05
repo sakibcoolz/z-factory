@@ -103,5 +103,5 @@ A published port must use an allowed bind address (`RUNTIME_BIND_ADDRESSES`, def
 ### Managed-only rule
 Start, stop, restart, remove and inspect first check the `zfactory.managed` label and refuse anything else, so other containers and networks on the host are never touched.
 
-### Not yet wired
-No screen starts a factory yet. The OpenPLC adapter and the PLC runtime service (TASK-202) are the callers of this layer; the factory screens show whether the engine is reachable.
+### Callers
+The OpenPLC adapter and the PLC runtime service (TASK-202) are the callers of this layer. Since TASK-305 a stored PLC's Runtime screen starts, stops, restarts and removes its container through that service; the factory screens show whether the engine is reachable. No screen receives a container id, a network id or the management port.

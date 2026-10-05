@@ -133,10 +133,16 @@ export default async function FactoryPage({ params }: FactoryPageProps) {
           </Button>
           <Button href={routes.newDevice(factory.id, "compact")}>Add compact PLC</Button>
           <Button href={routes.newDevice(factory.id, "modular")}>Add modular PLC</Button>
+          <Button variant="ghost" href={routes.runtime(factory.id)}>
+            Runtime
+          </Button>
+          <Button variant="ghost" href={routes.simulator(factory.id)}>
+            Simulator
+          </Button>
         </div>
         <p className="zf-sub mt-auto">
-          This is the factory&apos;s desired configuration; nothing here starts Docker. Runtime control for stored
-          factories is not wired yet.
+          This is the factory&apos;s desired configuration; nothing here starts Docker. A PLC is started from its
+          Runtime screen, the device simulation from the Simulator.
         </p>
       </Content>
     </AppShell>

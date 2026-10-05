@@ -9,7 +9,17 @@ import {
 } from "@/lib/db/repositories/simulation-repository";
 import { DomainError } from "@/lib/domain/errors";
 import type { RuntimeEventEnvelope } from "@/lib/domain/events";
-import { findSignal, isLoadType, isSimulatedType, type SimulatedType } from "@/lib/domain/simulation";
+import type { RuntimeState } from "@/lib/domain/runtime-state";
+import {
+  DEVICE_FAULTS,
+  DEVICE_SIGNALS,
+  findSignal,
+  isLoadType,
+  isSimulatedType,
+  type SignalDefinition,
+  type SimulatedType,
+} from "@/lib/domain/simulation";
+import type { SimulatedSignalView, SimulationView } from "@/lib/domain/simulation-view";
 import type { EventBus } from "@/lib/events/bus";
 import type { PrismaClient } from "@/lib/generated/prisma/client";
 import { type ModbusEndpoint, readModbus, writeModbus, writeModbusRegisters } from "@/lib/protocols/modbus/client";
@@ -42,7 +52,7 @@ export type SimulationDeps = {
 export type SimulationPlan = {
   devices: DeviceConfig[];
   bindings: SignalBinding[];
-  plcs: Map<string, { name: string; endpoint: ModbusEndpoint | null }>;
+  plcs: Map<string, { name: string; endpoint: ModbusEndpoint | null; runtimeStatus: RuntimeState }>;
   /** Devices of the factory the simulator leaves alone, and why. */
   skipped: Array<{ deviceId: string; name: string; reason: string }>;
 };
@@ -163,6 +173,7 @@ export async function planSimulation(db: PrismaClient, actor: Actor, factoryId: 
     plcs.set(plc.id, {
       name: plc.name,
       endpoint: port?.hostPort ? publishedModbusEndpoint(port.bindAddress, port.hostPort) : null,
+      runtimeStatus: plc.runtimeStatus,
     });
   }
   return { devices, bindings, plcs, skipped };
@@ -227,6 +238,24 @@ async function recordFactoryEvent(
   ]);
 }
 
+/** Why this plan cannot be started, if anything stands in the way. */
+function startBlocker(plan: SimulationPlan): DomainError | undefined {
+  if (plan.devices.length === 0) {
+    return new DomainError("CONFLICT", "This factory has no devices the simulator can run.", {
+      rule: "nothing-to-simulate",
+    });
+  }
+  for (const [plcId, plc] of plan.plcs) {
+    if (!plc.endpoint) {
+      return new DomainError("CONFLICT", `Start ${plc.name} first: its Modbus endpoint is not configured yet.`, {
+        rule: "plc-endpoint-required",
+        plcId,
+      });
+    }
+  }
+  return undefined;
+}
+
 /**
  * Starts the device simulation of a factory. Every PLC a device is wired to must have
  * its Modbus endpoint configured (it is, once the PLC has been started); a PLC that is
@@ -244,20 +273,11 @@ export async function startFactorySimulation(
       rule: "simulation-running",
     });
   }
-  if (plan.devices.length === 0) {
-    throw new DomainError("CONFLICT", "This factory has no devices the simulator can run.", {
-      rule: "nothing-to-simulate",
-    });
-  }
+  const blocked = startBlocker(plan);
+  if (blocked) throw blocked;
   const plcs = new Map<string, PlcIo>();
   for (const [plcId, plc] of plan.plcs) {
-    if (!plc.endpoint) {
-      throw new DomainError("CONFLICT", `Start ${plc.name} first: its Modbus endpoint is not configured yet.`, {
-        rule: "plc-endpoint-required",
-        plcId,
-      });
-    }
-    plcs.set(plcId, modbusIo(plc.endpoint));
+    if (plc.endpoint) plcs.set(plcId, modbusIo(plc.endpoint));
   }
 
   deps.simulator.start(factoryId, {
@@ -305,6 +325,75 @@ export async function getSimulationState(
   if (!(await factoryRepository.findById(deps.db, actor.ownerId, factoryId))) throw notFound("factory");
   const status = deps.simulator.status(factoryId);
   return status ? { running: true, ...status } : { running: false };
+}
+
+/**
+ * The simulator screen: every device the simulator runs (or would run) with its signals,
+ * the tags they are wired to and, while the simulation runs, its live state from
+ * simulator memory. Command signals and feedback signals are kept apart.
+ */
+export async function getSimulationView(
+  deps: SimulationDeps,
+  actor: Actor,
+  factoryId: string,
+): Promise<SimulationView> {
+  const plan = await planSimulation(deps.db, actor, factoryId);
+  const status = deps.simulator.status(factoryId);
+  const live = new Map(status?.devices.map((device) => [device.deviceId, device]));
+  const tags = new Map(
+    plan.bindings.map((binding) => [
+      `${binding.deviceId}:${binding.signal}`,
+      `${plan.plcs.get(binding.plcId)?.name ?? "PLC"} · ${binding.tagName}`,
+    ]),
+  );
+
+  const devices = plan.devices.map((device) => {
+    const snapshot = live.get(device.id);
+    const signal = (definition: SignalDefinition): SimulatedSignalView => ({
+      key: definition.key,
+      label: definition.label,
+      kind: definition.kind,
+      unit: definition.unit ?? null,
+      value: (definition.direction === "IN" ? snapshot?.inputs : snapshot?.outputs)?.[definition.key] ?? null,
+      tag: tags.get(`${device.id}:${definition.key}`) ?? null,
+    });
+    const signals = DEVICE_SIGNALS[device.type];
+    return {
+      deviceId: device.id,
+      name: device.name,
+      type: device.type,
+      state: snapshot?.state ?? null,
+      faulted: snapshot?.faulted ?? false,
+      tripped: snapshot?.tripped ?? false,
+      quality: snapshot?.quality ?? null,
+      inputs: signals.filter((definition) => definition.direction === "IN").map(signal),
+      outputs: signals.filter((definition) => definition.direction === "OUT").map(signal),
+      faults: DEVICE_FAULTS[device.type].map((fault) => ({
+        code: fault.code,
+        name: fault.name,
+        latching: device.faults?.[fault.code]?.latching ?? fault.latching,
+        active: snapshot?.activeFaults.includes(fault.code) ?? false,
+      })),
+    };
+  });
+
+  return {
+    running: Boolean(status),
+    tickMs: status?.tickMs ?? null,
+    ticks: status?.ticks ?? null,
+    startedAt: status?.startedAt ?? null,
+    // The raw message can come from any layer below; the page gets a fixed text.
+    lastError: status?.lastError ? "The last simulation cycle failed. The simulation keeps trying." : null,
+    devices,
+    skipped: plan.skipped,
+    plcs: [...plan.plcs].map(([id, plc]) => ({
+      id,
+      name: plc.name,
+      runtimeStatus: plc.runtimeStatus,
+      endpointReady: plc.endpoint !== null,
+    })),
+    blocker: status ? null : (startBlocker(plan)?.message ?? null),
+  };
 }
 
 /** Applies an operator action to a simulated device and records it. */

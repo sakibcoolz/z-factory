@@ -19,6 +19,7 @@ Z-Factory controls Docker and industrial command paths, so it crosses privileged
 - Enforced by wiring (TASK-204): a device signal can only be bound to a tag that gateways and the UI cannot write, so device inputs come from the PLC program alone. Fault injection, device reset and forced sensor values are separate, authenticated operator actions on the simulated equipment and are always recorded as events.
 - Force-input/fault-injection/debug operations require explicit authorization and audit events.
 - Do not expose host paths, Docker socket details, credentials or secrets in PLC exports.
+- Runtime screens (TASK-305) identify a PLC runtime by its Z-Factory id and service name. Their read models carry no container id and no management port; a failed operation shows its domain message, while build logs and Docker causes stay in the server log.
 
 ## Single-owner mode (ADR-0007)
 The MVP identifies one owner through `LOCAL_OWNER_ID` and does not authenticate the person using the browser: anyone who can reach the server acts as that owner. Keep a deployment reachable only by its owner (localhost, or a trusted network / authenticating reverse proxy). In production the application refuses every factory operation when `LOCAL_OWNER_ID` is not set.

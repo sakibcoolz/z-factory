@@ -11,6 +11,15 @@ export const tagRepository = {
     });
   },
 
+  /** The PLC's tags in address order, each with the name of the device it is wired to. */
+  listWithSourceDevice(db: Db, plcInstanceId: string) {
+    return db.tag.findMany({
+      where: { plcInstanceId },
+      include: { sourceDevice: { select: { name: true } } },
+      orderBy: [{ logicalAddress: "asc" }, { name: "asc" }],
+    });
+  },
+
   findByName(db: Db, plcInstanceId: string, name: string): Promise<Tag | null> {
     return db.tag.findUnique({ where: { plcInstanceId_name: { plcInstanceId, name } } });
   },
