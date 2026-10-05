@@ -29,7 +29,7 @@ import {
   writePlcValue,
 } from "@/lib/runtimes/openplc/adapter";
 import { MODBUS_CONTAINER_PORT } from "@/lib/runtimes/openplc/bundle";
-import { MAX_SOURCE_BYTES } from "@/lib/runtimes/openplc/compiler";
+import { type CompileDiagnostic, compileStructuredText, MAX_SOURCE_BYTES } from "@/lib/runtimes/openplc/compiler";
 import { parseInput } from "@/lib/validation/parse";
 import { modbusEndpointInputSchema } from "@/lib/validation/schemas";
 
@@ -158,6 +158,38 @@ export async function createProgramVersion(
   });
 }
 
+/**
+ * Compiles a program without saving or deploying it. Nothing reaches the runtime; the
+ * compiler runs in its own process on the server.
+ */
+export async function checkProgram(
+  db: PrismaClient,
+  actor: Actor,
+  plcId: string,
+  input: { sourceText: string },
+): Promise<{ success: boolean; errors: CompileDiagnostic[]; warnings: CompileDiagnostic[] }> {
+  await loadPlc(db, actor, plcId);
+  if (typeof input.sourceText !== "string" || input.sourceText.trim() === "") {
+    throw new DomainError("VALIDATION", "The program source is empty.", { rule: "program-source" });
+  }
+  const compiled = await compileStructuredText(input.sourceText);
+  return { success: compiled.success, errors: compiled.success ? [] : compiled.errors, warnings: compiled.warnings };
+}
+
+/** Selects an existing version for the next start or deploy, e.g. to go back to an earlier one. */
+export async function selectProgramVersion(
+  db: PrismaClient,
+  actor: Actor,
+  plcId: string,
+  programVersionId: string,
+): Promise<{ version: number }> {
+  const { device } = await loadPlc(db, actor, plcId);
+  const programVersion = await plcRepository.findProgramVersion(db, device.id, programVersionId);
+  if (!programVersion) throw new DomainError("NOT_FOUND", "The program version does not exist.");
+  await plcRepository.selectProgramVersion(db, device.id, programVersion.id);
+  return { version: programVersion.version };
+}
+
 export async function listProgramVersions(db: PrismaClient, actor: Actor, plcId: string) {
   const { device } = await loadPlc(db, actor, plcId);
   return plcRepository.listProgramVersions(db, device.id);
@@ -257,7 +289,13 @@ export async function startPlc(deps: RuntimeDeps, actor: Actor, plcId: string): 
   }
 
   if (device.plcProfile?.programVersionId) {
-    await deployProgramVersion(deps, actor, plcId);
+    try {
+      await deployProgramVersion(deps, actor, plcId);
+    } catch (error) {
+      // The container is up without this program: store what the runtime reports, not STARTING.
+      await refreshPlcState(deps, actor, plcId).catch(() => undefined);
+      throw error;
+    }
   }
   return refreshPlcState(deps, actor, plcId);
 }
@@ -350,6 +388,32 @@ export async function deployProgramVersion(
   }
 }
 
+/**
+ * Saves the source as a new version and deploys it. Source identical to the selected
+ * version is not saved again: that version is deployed.
+ */
+export async function saveAndDeployProgram(
+  deps: RuntimeDeps,
+  actor: Actor,
+  plcId: string,
+  input: { sourceText: string },
+): Promise<{ version: number; saved: boolean }> {
+  const { device, profile } = await loadPlc(deps.db, actor, plcId);
+  requireTarget(device);
+  const selected = profile.programVersion;
+  if (selected && selected.sourceText === input.sourceText) {
+    return { ...(await deployProgramVersion(deps, actor, plcId, selected.id)), saved: false };
+  }
+  const created = await createProgramVersion(deps.db, actor, plcId, input);
+  try {
+    return { ...(await deployProgramVersion(deps, actor, plcId, created.id)), saved: true };
+  } catch (error) {
+    // The new version stays stored as FAILED, but the next start must not pick it up.
+    if (selected) await plcRepository.selectProgramVersion(deps.db, device.id, selected.id);
+    throw error;
+  }
+}
+
 /** Reads the live state from the runtime and records it as the last known state. */
 export async function refreshPlcState(
   deps: RuntimeDeps,
@@ -364,22 +428,20 @@ export async function refreshPlcState(
     return { state: "STOPPED" };
   }
   const health = await openPlcHealth(docker, device.dockerContainerId, openPlcClient(target, deps.runtimeSecret));
-  if (health.state !== device.runtimeStatus) {
-    await setDeviceState(db, device, health.state);
+  // A runtime Z-Factory stopped stays stopped: its container ends with the stop signal's
+  // exit code, which is not a fault of the PLC.
+  const state = device.runtimeStatus === "STOPPED" && !health.containerRunning ? "STOPPED" : health.state;
+  if (state !== device.runtimeStatus) {
+    await setDeviceState(db, device, state);
     await plcRepository.recordEvent(db, {
       factoryId: device.factoryId,
       deviceId: device.id,
-      type:
-        health.state === "RUNNING"
-          ? "DEVICE_RUNNING"
-          : health.state === "FAULTED"
-            ? "DEVICE_FAULTED"
-            : "DEVICE_STATE_CHANGED",
-      severity: health.state === "FAULTED" ? "CRITICAL" : "INFO",
-      payloadJson: { state: health.state, plcStatus: health.plcStatus ?? null },
+      type: state === "RUNNING" ? "DEVICE_RUNNING" : state === "FAULTED" ? "DEVICE_FAULTED" : "DEVICE_STATE_CHANGED",
+      severity: state === "FAULTED" ? "CRITICAL" : "INFO",
+      payloadJson: { state, plcStatus: health.plcStatus ?? null },
     });
   }
-  return { state: health.state };
+  return { state };
 }
 
 export async function stopPlc(deps: RuntimeDeps, actor: Actor, plcId: string): Promise<void> {

@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import { AppShell } from "@/components/shell/app-shell";
 import { Content, EditorTabs, Panel } from "@/components/shell/editor";
 import { SideBar, SideSection, Tree } from "@/components/shell/side-bar";
@@ -9,8 +8,12 @@ import { RuntimeStatePill, StatePill } from "@/components/ui/state-pill";
 import { demoContext, isDemoFactory } from "@/lib/fixtures";
 import { devices, factory, simulator } from "@/lib/fixtures/pump-house-demo";
 import { routes } from "@/lib/navigation/routes";
+import { StoredSimulator } from "./stored-simulator";
 
 export const metadata: Metadata = { title: "Simulator" };
+
+// Stored factories read the database and the simulator on every request.
+export const dynamic = "force-dynamic";
 
 type SimulatorPageProps = {
   params: Promise<{ factoryId: string }>;
@@ -22,7 +25,8 @@ type SimulatorPageProps = {
  */
 export default async function SimulatorPage({ params }: SimulatorPageProps) {
   const { factoryId } = await params;
-  if (!isDemoFactory(factoryId)) notFound();
+  // Stored factories show their real simulation; the demo factory keeps its fixture screen.
+  if (!isDemoFactory(factoryId)) return StoredSimulator({ factoryId });
 
   const device = simulator.selectedDevice;
 

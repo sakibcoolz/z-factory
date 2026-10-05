@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import { AppShell } from "@/components/shell/app-shell";
 import { Content, EditorTabs, Panel, Toolbar } from "@/components/shell/editor";
 import { SideBar, SideSection } from "@/components/shell/side-bar";
@@ -10,8 +9,12 @@ import { demoContext, isDemoFactory } from "@/lib/fixtures";
 import { host } from "@/lib/fixtures/factories";
 import { factory, runtime } from "@/lib/fixtures/pump-house-demo";
 import { routes } from "@/lib/navigation/routes";
+import { StoredFactoryRuntime } from "./stored-runtime";
 
 export const metadata: Metadata = { title: "Runtime" };
+
+// Stored factories read the database on every request.
+export const dynamic = "force-dynamic";
 
 type RuntimePageProps = {
   params: Promise<{ factoryId: string }>;
@@ -31,7 +34,8 @@ const monoRows = (rows: ReadonlyArray<readonly [string, string]>) =>
 /** 2n — Runtime / Containers: Docker lifecycle per factory. Shows service names, never Docker IDs. */
 export default async function RuntimePage({ params }: RuntimePageProps) {
   const { factoryId } = await params;
-  if (!isDemoFactory(factoryId)) notFound();
+  // Stored factories list their real PLC runtimes; the demo factory keeps its fixture screen.
+  if (!isDemoFactory(factoryId)) return StoredFactoryRuntime({ factoryId });
 
   const { services, summary } = runtime;
   const external = services.filter((service) => service.state === "DISCONNECTED").length;

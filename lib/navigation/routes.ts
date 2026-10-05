@@ -36,7 +36,11 @@ export const routes = {
   /** Peripherals; `add` opens the form for one catalog model. */
   plcConnections: (factoryId: string, plcId: string, add?: string) =>
     `${plc(factoryId, plcId)}/connections${add ? `?add=${encodeURIComponent(add)}` : ""}`,
-  plcProgram: (factoryId: string, plcId: string) => `${plc(factoryId, plcId)}/program`,
+  /** Program editor; `version` opens a stored version instead of the selected one. */
+  plcProgram: (factoryId: string, plcId: string, version?: number) =>
+    `${plc(factoryId, plcId)}/program${version ? `?version=${version}` : ""}`,
+  plcVersions: (factoryId: string, plcId: string) => `${plc(factoryId, plcId)}/versions`,
+  plcRuntime: (factoryId: string, plcId: string) => `${plc(factoryId, plcId)}/runtime`,
   plcIoMapping: (factoryId: string, plcId: string) => `${plc(factoryId, plcId)}/io-mapping`,
   plcExport: (factoryId: string, plcId: string) => `${plc(factoryId, plcId)}/export`,
   /** The report alone, for printing. `runtime` adds the stored runtime state. */

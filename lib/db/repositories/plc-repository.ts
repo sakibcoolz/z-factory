@@ -148,7 +148,6 @@ export const plcRepository = {
     });
   },
 
-  /** Runtime states of the factory's OpenPLC devices, for the factory-level summary. */
   /** The configuration snapshot recorded at the PLC's most recent deployment. */
   latestConfigurationVersion(db: Db, factoryId: string, plcId: string) {
     return db.configurationVersion.findFirst({
@@ -158,6 +157,21 @@ export const plcRepository = {
     });
   },
 
+  /** Deployment snapshots of the PLC, newest first. */
+  listConfigurationVersions(db: Db, factoryId: string, plcId: string, take = 20) {
+    return db.configurationVersion.findMany({
+      where: { factoryId, scopeType: "PLC", scopeId: plcId },
+      orderBy: { version: "desc" },
+      take,
+    });
+  },
+
+  /** The most recent runtime events of one device, newest first. */
+  listDeviceEvents(db: Db, deviceId: string, take: number) {
+    return db.runtimeEvent.findMany({ where: { deviceId }, orderBy: [{ occurredAt: "desc" }, { id: "desc" }], take });
+  },
+
+  /** Runtime states of the factory's OpenPLC devices, for the factory-level summary. */
   async plcRuntimeStates(db: Db, factoryId: string): Promise<RuntimeState[]> {
     const devices = await db.deviceInstance.findMany({
       where: { factoryId, runtimeType: "OPENPLC" },

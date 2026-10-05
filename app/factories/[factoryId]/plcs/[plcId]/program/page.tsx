@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import { AppShell } from "@/components/shell/app-shell";
 import { EditorTabs, Panel, Toolbar } from "@/components/shell/editor";
 import { SideBar, SideSection, Tree } from "@/components/shell/side-bar";
@@ -9,11 +8,16 @@ import { StatePill } from "@/components/ui/state-pill";
 import { demoContext, isDemoPlc } from "@/lib/fixtures";
 import { factory, program, type SyntaxKind } from "@/lib/fixtures/pump-house-demo";
 import { routes } from "@/lib/navigation/routes";
+import { StoredPlcProgram } from "../stored-runtime-screens";
 
 export const metadata: Metadata = { title: "PLC program" };
 
+// Stored PLCs read the database on every request.
+export const dynamic = "force-dynamic";
+
 type ProgramPageProps = {
   params: Promise<{ factoryId: string; plcId: string }>;
+  searchParams?: Promise<{ version?: string | string[] }>;
 };
 
 const SYNTAX_CLASS: Record<SyntaxKind, string | undefined> = {
@@ -28,9 +32,14 @@ const SYNTAX_CLASS: Record<SyntaxKind, string | undefined> = {
 };
 
 /** 2i — PLC Program & Versions: ST source, lifecycle bar, build panel. */
-export default async function ProgramPage({ params }: ProgramPageProps) {
+export default async function ProgramPage({ params, searchParams }: ProgramPageProps) {
   const { factoryId, plcId } = await params;
-  if (!isDemoPlc(factoryId, plcId)) notFound();
+  // Stored PLCs edit their real program; the demo PLC keeps its fixture screen.
+  if (!isDemoPlc(factoryId, plcId)) {
+    const requested = (await searchParams)?.version;
+    const version = typeof requested === "string" && /^[1-9]\d{0,8}$/.test(requested) ? Number(requested) : undefined;
+    return StoredPlcProgram({ factoryId, plcId, version });
+  }
 
   return (
     <AppShell

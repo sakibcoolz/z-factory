@@ -3,11 +3,12 @@ import { AppShell } from "@/components/shell/app-shell";
 import { Content, EditorTabs } from "@/components/shell/editor";
 import { SideBar, SideSection, Tree, type TreeNode } from "@/components/shell/side-bar";
 import { KeyValue } from "@/components/ui/primitives";
-import { RuntimeStatePill } from "@/components/ui/state-pill";
+import { RuntimeStatePill, runtimeStateTone } from "@/components/ui/state-pill";
 import type { PlcConfigurationView } from "@/lib/domain/plc-config-view";
 import { routes } from "@/lib/navigation/routes";
 
-export type StoredPlcSection = "overview" | "hardware" | "connections" | "io-mapping" | "export";
+export type StoredPlcSection =
+  "overview" | "hardware" | "connections" | "program" | "io-mapping" | "versions" | "runtime" | "export";
 
 type StoredPlcShellProps = {
   factory: { id: string; name: string };
@@ -20,9 +21,15 @@ const SECTION_LABELS: Record<StoredPlcSection, string> = {
   overview: "Overview",
   hardware: "Hardware / Pinout",
   connections: "Connections",
+  program: "Program",
   "io-mapping": "I/O Mapping",
+  versions: "Versions",
+  runtime: "Runtime",
   export: "Export",
 };
+
+/** Status bar colour for the PLC's runtime state: red for a fault, amber for degraded, grey when stopped. */
+const STATUS_TONE: Partial<Record<string, "ok" | "flt" | "deg" | "off">> = { flt: "flt", deg: "deg", off: "off" };
 
 /** Sections of the PLC edit view (docs/design.md → PLC edit). Those without a screen for stored PLCs yet are listed, not linked. */
 function sections(view: PlcConfigurationView, active: StoredPlcSection): TreeNode[] {
@@ -44,19 +51,20 @@ function sections(view: PlcConfigurationView, active: StoredPlcSection): TreeNod
       href: routes.plcConnections(factoryId, id),
       active: active === "connections",
     },
-    pending("Program"),
+    { label: SECTION_LABELS.program, href: routes.plcProgram(factoryId, id), active: active === "program" },
     {
       label: SECTION_LABELS["io-mapping"],
       meta: `v${view.plc.ioMappingVersion}`,
       href: routes.plcIoMapping(factoryId, id),
       active: active === "io-mapping",
     },
-    pending("Simulator"),
+    // The device simulation belongs to the factory, not to one PLC.
+    { label: "Simulator", meta: "factory", href: routes.simulator(factoryId) },
     pending("Live Tags"),
     pending("Events"),
     pending("Logs"),
-    pending("Versions"),
-    pending("Runtime"),
+    { label: SECTION_LABELS.versions, href: routes.plcVersions(factoryId, id), active: active === "versions" },
+    { label: SECTION_LABELS.runtime, href: routes.plcRuntime(factoryId, id), active: active === "runtime" },
     { label: SECTION_LABELS.export, href: routes.plcExport(factoryId, id), active: active === "export" },
   ];
 }
@@ -92,7 +100,7 @@ export function StoredPlcShell({ factory, view, section, children }: StoredPlcSh
         </SideBar>
       }
       status={{
-        tone: plc.runtimeStatus === "STOPPED" ? "off" : "ok",
+        tone: STATUS_TONE[runtimeStateTone(plc.runtimeStatus)] ?? "ok",
         left: [plc.name, SECTION_LABELS[section].toLowerCase()],
         right: [
           `${occupancy.occupied}/${occupancy.total} channels used`,
