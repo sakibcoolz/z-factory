@@ -48,6 +48,19 @@ The form must prevent incompatible modules, duplicate channel use, invalid signa
 Tabs/sections:
 Overview, Hardware/Pinout, Rack & Modules, Connections, Program, I/O Mapping, Simulator, Live Tags, Events, Logs, Versions, Runtime, Export.
 
+## Capability-driven device editor
+Device detail navigation is generated from the exact catalog model's capabilities.
+
+- PLC / programmable RTU: Overview, Hardware, I/O, Connections, Program, Versions, Communications, Runtime, Live Tags, Events.
+- VFD / parameter-driven controller: Overview, Connections, Parameters, Registers, Runtime, Telemetry, Faults.
+- Scriptable gateway/controller: Overview, Connections, Script, Versions, Communications, Runtime, Logs.
+
+A Program tab is never shown just because an item is called a controller. The model must explicitly support programmable logic.
+
+TASK-307 makes the 2D topology the authoritative interactive wiring editor: one logical edge per device relationship, with exact endpoint mappings edited in the inspector. Existing PLC Connections/I/O Mapping screens become read-only projections or are retired as writable sources after migration.
+
+TASK-405 keeps 2D simple but expands each logical edge in 3D to the persisted physical conductor set. For example, a modeled three-phase VFD-to-motor connection renders three thin conductors; all catalog device combinations use the same rule.
+
 ## Process module UX (Phase 06+)
 Process modules are created from a module type and existing factory device instances. They do not add process-specific items to the generic hardware catalog.
 
