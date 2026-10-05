@@ -83,11 +83,22 @@ Optional model-level register definition for smart devices.
 
 ### Catalog3dAsset
 One version of the reusable 3D asset of a catalog model (TASK-402, ADR-0012). The file is in asset storage; this row is its record.
-`id, deviceModelId, version, status, storageKey, contentSha256, sizeBytes, provider, providerJobId, scale, rotationYDeg, boundsJson, validationJson, createdAt, updatedAt`
+`id, deviceModelId, version, status, storageKey, contentSha256, sizeBytes, provider, providerJobId, providerStatus, statusMessage, generationJson, scale, rotationYDeg, boundsJson, validationJson, createdAt, updatedAt`
 
-`status = PENDING | READY | FAILED | RETIRED`; only `READY` is rendered and served. `storageKey` is the file's path inside asset storage (`models/<model id>/v<version>/model.glb`). `provider` says where the file came from (`MESHY`, `MANUAL`); `providerJobId` is the provider's own id. `scale` is a uniform factor for the file's units; null fits the model into the space of its category. `rotationYDeg` turns the file's front to the scene's front. `boundsJson` is the box around the vertex positions the file states (`{ min, max }`, file units, an estimate). `validationJson` is what the check at registration found. Unique: `(deviceModelId, version)`. Deleting a model deletes its asset records; deleting an asset clears `DeviceModel.active3dAssetId`.
+`status = PENDING | READY | FAILED | RETIRED`; only `READY` is rendered and served.
 
-That the active asset belongs to the same model and is ready is kept by the asset service, not by a constraint.
+| Status | Meaning | Set by |
+|---|---|---|
+| `PENDING` | a generation job is running; the version has no file | `openCatalogAssetJob` (TASK-403) |
+| `READY` | stored, normalized and checked | `registerCatalogAsset`, `completeCatalogAssetJob` |
+| `FAILED` | the provider failed the job, or its file was refused; kept as the record | `failCatalogAssetJob` |
+| `RETIRED` | taken out of use on purpose; never rendered or served again | `retireCatalogAsset` |
+
+`storageKey` is the file's path inside asset storage (`models/<model id>/v<version>/model.glb`); it is null for a version without a file and after a retired version's file was deleted. `provider` says where the file came from (`MESHY`, `MANUAL`); `providerJobId` is the provider's own id of the last job (the texture job when there is one). `providerStatus` is what the provider last said about the job (`mesh in progress 40%`); `statusMessage` says why a version is pending, failed or retired. `generationJson` is how the file was asked for: prompt, texture prompt, provider model, polygon target, the shape key, and the provider's job ids so that an interrupted job can be continued; for a shared file, the asset it was copied from. It never holds a key or a download address.
+
+`scale` is a uniform factor for the file's units; null fits the model into the space of its category. `rotationYDeg` turns the file's front to the scene's front. A file that went through the authoring path is normalized (metres, upright, standing on its origin), so its `scale` is 1 and its `rotationYDeg` 0. `boundsJson` is the box around the model: `{ min, max, anchor }` in metres for a normalized file, else the box the file states (file units, an estimate). `validationJson` is what the check found (`{ ok, generator, counts, normalization }`), or `{ ok: false, message }` for a failed job. Unique: `(deviceModelId, version)`. Deleting a model deletes its asset records; deleting an asset clears `DeviceModel.active3dAssetId`.
+
+That the active asset belongs to the same model and is ready, and that a model has at most one pending job, is kept by the asset service, not by a constraint.
 
 ### DeviceInstance
 A named device created inside one factory.
@@ -273,7 +284,7 @@ For high-volume history, partitioning/retention should be introduced first. Time
 Every factual vendor hardware profile keeps source URL plus verification metadata. Never fabricate pinouts, I/O counts, register maps, or electrical limits.
 
 ## Implementation (TASK-102)
-- Schema: `prisma/schema.prisma`; migrations: `prisma/migrations/` (`init`, `device_io_endpoint`, `factory_subnet_no_overlap`, `plc_api_host_port`, `tag_source_signal`, `catalog_capabilities`, `device_io_simulator_signal`, `device_canvas_position`); generated client: `lib/generated/prisma/` (git-ignored).
+- Schema: `prisma/schema.prisma`; migrations: `prisma/migrations/` (`init`, `device_io_endpoint`, `factory_subnet_no_overlap`, `plc_api_host_port`, `tag_source_signal`, `catalog_capabilities`, `device_io_simulator_signal`, `device_canvas_position`, `catalog_3d_assets`, `catalog_asset_generation`); generated client: `lib/generated/prisma/` (git-ignored).
 - Primary keys are UUID v7 (`@default(uuid(7))`, PostgreSQL `uuid`), except `TelemetrySample.id` (`bigint` identity) and the one-to-one tables keyed by their owner (`ElectricalProfile`, `PlcInstanceProfile`, `DeviceRuntimeSnapshot`).
 - Catalog rows referenced by factory data are protected with `ON DELETE RESTRICT`; factory-owned rows cascade from `Factory`.
 - `DeviceInstance.dockerContainerId` is server-side only and never sent to the browser.

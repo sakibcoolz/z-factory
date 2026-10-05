@@ -1,7 +1,13 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { formatFact, signalTypeLabel } from "@/lib/catalog/format";
-import type { CatalogModelDetail, PeripheralCompatibility } from "@/lib/domain/catalog-view";
+import {
+  assetSummaryLabel,
+  type CatalogAssetVersion,
+  type CatalogModelDetail,
+  type PeripheralCompatibility,
+  summarizeAssetVersions,
+} from "@/lib/domain/catalog-view";
 import { CatalogModelView } from "./catalog-view";
 
 const plc: CatalogModelDetail = {
@@ -36,7 +42,24 @@ const plc: CatalogModelDetail = {
   facts: { workMemoryKb: 100, signalModulesMax: 8 },
   racks: [],
   modules: [],
+  asset: { state: "NONE", activeVersion: null },
+  assetVersions: [],
+  placeholderKind: "cabinet",
 };
+
+const assetVersion = (overrides: Partial<CatalogAssetVersion>): CatalogAssetVersion => ({
+  id: `0199a000-0000-7000-8000-0000000000a${overrides.version ?? 1}`,
+  version: 1,
+  status: "READY",
+  active: false,
+  provider: "MESHY",
+  providerJobId: null,
+  providerStatus: null,
+  statusMessage: null,
+  sizeBytes: null,
+  updatedAt: "2026-10-05",
+  ...overrides,
+});
 
 const peripheral = (overrides: Partial<PeripheralCompatibility>): PeripheralCompatibility => ({
   modelId: "0199a000-0000-7000-8000-000000000002",
@@ -198,5 +221,86 @@ describe("catalog model view", () => {
     expect(screen.getByText("direct PLC I/O")).toBeInTheDocument();
     expect(screen.getByText(/makes no claim about any vendor/)).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
+  });
+});
+
+describe("3D asset status in the catalog", () => {
+  it("says a model without an asset is drawn as its category's generic shape", () => {
+    render(<CatalogModelView model={plc} peripherals={[]} />);
+    expect(screen.getByText("generic shape")).toBeInTheDocument();
+    expect(screen.getByText(/Drawn in the 3D view as the generic cabinet shape of its category\./)).toBeInTheDocument();
+    // Generation is authoring work: the screen names the command and offers no control for it.
+    expect(screen.getByText("npm run assets")).toBeInTheDocument();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Version" })).not.toBeInTheDocument();
+  });
+
+  it("lists the versions with their state, source and what the provider said", () => {
+    const assetVersions = [
+      assetVersion({
+        version: 4,
+        status: "PENDING",
+        providerJobId: "018a-mesh",
+        providerStatus: "mesh in progress 40%",
+      }),
+      assetVersion({
+        version: 3,
+        status: "FAILED",
+        providerJobId: "018a-old",
+        statusMessage: "The provider failed the mesh: refused.",
+      }),
+      assetVersion({ version: 2, status: "READY", active: true, sizeBytes: 4_260_000 }),
+      assetVersion({ version: 1, status: "RETIRED", provider: "MANUAL", statusMessage: "Looked like a product." }),
+    ];
+    render(
+      <CatalogModelView
+        model={{ ...plc, asset: summarizeAssetVersions(assetVersions), assetVersions }}
+        peripherals={[]}
+      />,
+    );
+
+    expect(screen.getByText("3D v2 · generating")).toBeInTheDocument();
+    expect(screen.getByText(/Every factory instance is drawn from version 2\./)).toBeInTheDocument();
+    const rows = screen.getAllByRole("row").filter((row) => /^v\d/.test(row.textContent ?? ""));
+    expect(
+      rows.map((row) =>
+        within(row)
+          .getAllByRole("cell")
+          .map((cell) => cell.textContent),
+      ),
+    ).toEqual([
+      ["v4", "pending", "meshy018a-mesh", "2026-10-05", "mesh in progress 40%"],
+      ["v3", "failed", "meshy018a-old", "2026-10-05", "The provider failed the mesh: refused."],
+      ["v2", "ready · rendered", "meshy", "2026-10-05", "4.3 MB"],
+      ["v1", "retired", "manual", "2026-10-05", "Looked like a product."],
+    ]);
+    expect(rows[3]).toHaveAttribute("data-muted", "true");
+  });
+
+  it("works out one state per model from its versions", () => {
+    const state = (...versions: Array<Partial<CatalogAssetVersion>>) => {
+      const summary = summarizeAssetVersions(versions.map(assetVersion));
+      return [summary.state, summary.activeVersion, assetSummaryLabel(summary)];
+    };
+    expect(state()).toEqual(["NONE", null, "generic shape"]);
+    expect(state({ version: 1, active: true })).toEqual(["READY", 1, "3D v1"]);
+    expect(state({ version: 2, status: "PENDING" }, { version: 1, active: true })).toEqual([
+      "PENDING",
+      1,
+      "3D v1 · generating",
+    ]);
+    expect(state({ version: 1, status: "PENDING" })).toEqual(["PENDING", null, "generic shape · generating"]);
+    expect(state({ version: 2, status: "FAILED" }, { version: 1, active: true })).toEqual([
+      "FAILED",
+      1,
+      "3D v1 · generation failed",
+    ]);
+    expect(state({ version: 1, status: "FAILED" })).toEqual(["FAILED", null, "generic shape · generation failed"]);
+    // A failure older than the rendered version is history, not the model's state.
+    expect(state({ version: 2, active: true }, { version: 1, status: "FAILED" })).toEqual(["READY", 2, "3D v2"]);
+    // A retired version says nothing; a ready one that is not rendered is not "the asset".
+    expect(state({ version: 2, status: "RETIRED" }, { version: 1, active: true })).toEqual(["READY", 1, "3D v1"]);
+    expect(state({ version: 1, status: "RETIRED" })).toEqual(["NONE", null, "generic shape"]);
+    expect(state({ version: 1, status: "READY", active: false })).toEqual(["NONE", null, "generic shape"]);
   });
 });

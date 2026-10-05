@@ -26,6 +26,9 @@ next-env.d.ts
 # asset storage: catalog 3D assets are data of an installation, not source (ADR-0012)
 /data/
 
+# meshy: files downloaded while authoring assets are not source either (TASK-403)
+/meshy_output/
+
 # misc
 .DS_Store
 npm-debug.log*

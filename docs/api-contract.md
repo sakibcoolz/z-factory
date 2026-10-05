@@ -238,3 +238,20 @@ Services in `lib/services/asset-service.ts` and `lib/services/scene-service.ts`.
 | Action (`app/factories/[factoryId]/view-3d/actions.ts`) | Effect |
 |---|---|
 | `sceneTransformAction(factoryId, …)` with `deviceId`, `operation` = `rotate-left` \| `rotate-right` \| `scale-up` \| `scale-down` \| `reset` | one step of 45° or ×1.25 from where the device is |
+
+### `catalog 3D asset authoring` (TASK-403)
+Not an API of the application: these functions are called by `scripts/catalog-assets.ts` (`npm run assets`) on the server and by nothing a browser can reach. Services in `lib/services/asset-authoring-service.ts` and `lib/services/asset-service.ts`; the provider is injected (`AssetProvider`, `lib/assets/meshy.ts`).
+
+| Operation | Entry point | Rules |
+|---|---|---|
+| plan | `listAssetPlan(db)`, `getAssetPlanEntry(db, modelId, hint?)` | every catalog model with its prompt, shape key, space and current asset |
+| cost preview | `previewGeneration(db, { deviceModelId, … })` | what would be requested and the credits it is expected to cost; requests nothing |
+| generate | `generateCatalogAsset(deps, { deviceModelId, aiModel?, targetPolycount?, textured?, hint?, upAxis?, yawDeg? })` | opens a pending version, runs the provider's jobs, downloads, normalizes, checks, registers; a failure is recorded on the version; refused while the model has a pending job |
+| resume | `resumeCatalogAsset(deps, assetId)` | continues a pending version from its stored job ids; requests nothing twice |
+| import | `importCatalogAsset({ db, storage }, { deviceModelId, provider?, providerJobId?, upAxis?, yawDeg? }, glb)` | a file from elsewhere: normalized, checked and registered as the next version; a refused file changes nothing |
+| share | `shareCatalogAsset({ db, storage }, { sourceAssetId, deviceModelId })`, `findShareableAsset(db, modelId)` | copies a ready file to another model as that model's own version, fitted into its category's space |
+| job states | `openCatalogAssetJob`, `recordCatalogAssetJob`, `failCatalogAssetJob`, `completeCatalogAssetJob` | only a pending version changes; completing stores the file and makes the version active in one transaction |
+| retire | `retireCatalogAsset({ db, storage }, assetId, { purge?, reason? })` | the version is no longer rendered or served; the newest other ready version becomes active, else none; `purge` deletes the file |
+| activate | `activateCatalogAsset({ db, storage }, assetId)` | only a ready version whose file exists |
+
+`getCatalogOverview` and `getCatalogModel` report the result: per model `asset: { state: READY | PENDING | FAILED | NONE, activeVersion }`, per model detail every version with status, source, provider status and message, and `totals.withAsset`.

@@ -42,6 +42,8 @@ export default defineConfig([
           patterns: [
             {
               group: [
+                "@/lib/assets",
+                "@/lib/assets/**",
                 "@/lib/db",
                 "@/lib/db/**",
                 "@/lib/docker",

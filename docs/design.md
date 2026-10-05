@@ -185,7 +185,7 @@ Differences from wireframe 2q:
 - Devices themselves do not move (no spinning rotor, no travelling valve): only connections flow and faults pulse.
 - Positions are not edited here; the layout is the designer's. Only rotation and size are set in this view.
 - No "external device" styling and no saved camera positions.
-- The catalog models have no 3D assets until TASK-403 generates them; until then every device is a generic shape.
+- A device is drawn from its catalog model's asset once one is authored (TASK-403); an installation without assets draws every device as a generic shape.
 
 ### Live tags and events as built (TASK-401)
 For a stored factory:
@@ -272,6 +272,9 @@ Differences from wireframes 2f, 2g, 2h and 2j:
 - Creating and connecting a peripheral is one action. Removing it deletes the device.
 - Section list of the PLC: Overview, Hardware, Connections and I/O Mapping are wired. Export is wired since TASK-304; Program, Versions, Runtime and Simulator since TASK-305. Live Tags and Events open the factory's screens narrowed to the PLC (TASK-401). Logs is listed but not wired.
 - The Pump House Demo and the modular bench keep their fixture screens.
+
+### 3D asset status in the catalog (TASK-403)
+A catalog model's screen has a **3D asset** section: a pill with what is rendered and what is going on (`3D v2`, `generic shape`, `… · generating`, `… · generation failed`), a sentence saying whether instances are drawn from a version or as the generic shape of the category, and a table of the stored versions (version, state, source with the provider's task id, date, and a note: the provider's progress, the file size, or why it failed or was retired). In the model tree a model with an asset is marked `3D`, one being generated `3D …`, one whose last generation failed `3D failed`; the status bar counts the models with an asset. The screen has no control that generates, retires or uploads anything: it names the command (`npm run assets`).
 
 ### Device Catalog differences from wireframe 2e
 - No "Use in factory" button: the catalog has no factory context; devices are created from the designer (TASK-302).

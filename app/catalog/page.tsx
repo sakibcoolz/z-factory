@@ -19,6 +19,17 @@ export const dynamic = "force-dynamic";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** Beside a model in the tree: whether it has a 3D asset. A model without one says nothing. */
+const ASSET_MARK: Record<
+  CatalogOverview["manufacturers"][number]["families"][number]["models"][number]["asset"]["state"],
+  string | undefined
+> = {
+  READY: "3D",
+  PENDING: "3D …",
+  FAILED: "3D failed",
+  NONE: undefined,
+};
+
 /** Vendor records first; the long list of generic models goes last. */
 function vendorsFirst(overview: CatalogOverview): CatalogOverview["manufacturers"] {
   const isGeneric = (manufacturer: CatalogOverview["manufacturers"][number]) =>
@@ -42,6 +53,7 @@ function buildTree(overview: CatalogOverview, type: string | undefined, selected
       for (const model of family.models) {
         nodes.push({
           label: model.modelName,
+          meta: ASSET_MARK[model.asset.state],
           level: 2,
           href: routes.catalog({ model: model.id, type }),
           active: model.id === selectedId,
@@ -118,7 +130,10 @@ export default async function CatalogPage({ searchParams }: CatalogPageProps) {
       status={{
         tone: totals.models > 0 ? "ok" : "off",
         left: ["catalog", `${totals.models} models · ${totals.manufacturers} manufacturers`],
-        right: [`${totals.verified} verified · ${totals.generic} generic`],
+        right: [
+          `${totals.verified} verified · ${totals.generic} generic`,
+          `${totals.withAsset} of ${totals.models} with 3D asset`,
+        ],
       }}
     >
       <EditorTabs

@@ -197,7 +197,7 @@ describeDb("device catalog against PostgreSQL", () => {
 
   it("lists the catalog as manufacturer, family and model with totals", async () => {
     const overview = await getCatalogOverview(db);
-    expect(overview.totals).toEqual({ models: 30, manufacturers: 4, verified: 4, generic: 26 });
+    expect(overview.totals).toEqual({ models: 30, manufacturers: 4, verified: 4, generic: 26, withAsset: 0 });
     expect(overview.manufacturers.map((manufacturer) => [manufacturer.name, manufacturer.modelCount])).toEqual([
       ["Generic / simulated", 26],
       ["Rockwell Automation", 1],
