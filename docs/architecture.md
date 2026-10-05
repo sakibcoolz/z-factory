@@ -156,6 +156,41 @@ Modbus/runtime adapter <-> OpenPLC tags
 
 The Go service computes process response; OpenPLC remains the control authority. Specific machine/process models are created later as module definitions and are not hard-coded into the generic framework.
 
+## Catalog 3D asset pipeline — Phase 04
+Meshy MCP is an authoring-time provider for reusable catalog assets, not a runtime dependency.
+
+```text
+Catalog model metadata
+        |
+        v
+Meshy MCP (server/developer-side)
+        |
+        v
+Generated 3D artifact
+        |
+        v
+Normalize + validate GLB
+        |
+        v
+Z-Factory-controlled asset storage/version
+        |
+        v
+Catalog model 3D asset reference
+        |
+        v
+Factory instance -> React Three Fiber renderer
+```
+
+Rules:
+- Runtime rendering loads a stored GLB; it does not call Meshy.
+- One catalog asset can be reused by many factory instances.
+- Live device state is a renderer overlay/material/outline concern and does not mutate or regenerate the GLB.
+- RUNNING uses green emphasis; FAULTED uses red emphasis and propagates red visual state to affected connection lines.
+- 3D relationship lines come from the canonical connection graph.
+- Asset absence/failure uses a category fallback rather than blocking the catalog or factory.
+- Meshy credentials and provider calls remain server/developer-side.
+- Process/module-specific 3D authoring is deferred beyond Phase 04.
+
 ## Live-state boundary
 - Runtime/OpenPLC/device simulator: authoritative live state.
 - PostgreSQL: catalog/configuration/mapping/version/audit/event/alarm/history and selected current-state snapshots.
