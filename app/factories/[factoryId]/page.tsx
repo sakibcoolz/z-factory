@@ -139,6 +139,9 @@ export default async function FactoryPage({ params }: FactoryPageProps) {
           <Button variant="ghost" href={routes.simulator(factory.id)}>
             Simulator
           </Button>
+          <Button variant="ghost" href={routes.view3d(factory.id)}>
+            3D view
+          </Button>
           <Button variant="ghost" href={routes.tags(factory.id)}>
             Live tags
           </Button>

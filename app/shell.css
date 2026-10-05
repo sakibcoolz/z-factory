@@ -1049,6 +1049,76 @@
     background: color-mix(in srgb, var(--color-side) 85%, transparent);
   }
 
+  /* The WebGL scene of a stored factory: canvas beside its inspector. */
+  .zf-scene3d {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    background: radial-gradient(ellipse at 50% 60%, var(--color-scene) 0%, var(--color-canvas) 70%);
+  }
+  /* Device names over the canvas; the scene moves them with the camera. */
+  .zf-scene-labels {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  .zf-scene-label {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    padding: 2px 6px;
+    border: 1px solid var(--color-line-strong);
+    background: color-mix(in srgb, var(--color-side) 85%, transparent);
+    font: 400 9px/1.3 var(--font-mono);
+    color: var(--color-fg-dim);
+    white-space: nowrap;
+    pointer-events: none;
+    user-select: none;
+  }
+  .zf-scene-label[hidden] {
+    display: none;
+  }
+  .zf-scene-label b {
+    font: 600 11px/1.2 var(--font-body);
+    color: var(--color-fg);
+  }
+  .zf-scene-label[data-selected="true"] {
+    border-color: var(--color-focus);
+  }
+  .zf-scene-label[data-selected="true"] b {
+    color: var(--color-fg-strong);
+  }
+  .zf-scene-pick {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 4px 16px;
+    border: 0;
+    background: none;
+    color: var(--color-fg);
+    font: 400 12px/1.4 var(--font-body);
+    text-align: left;
+    cursor: pointer;
+  }
+  .zf-scene-pick:hover,
+  .zf-scene-pick:focus-visible {
+    background: var(--color-line-active);
+    outline: none;
+  }
+  .zf-scene-pick[aria-pressed="true"] {
+    background: var(--color-line-active);
+    box-shadow: inset 2px 0 0 var(--color-focus);
+    color: var(--color-fg-strong);
+  }
+
   /* ── export sheet (paper, Modernist light tokens) ──────────── */
   .zf-sheet {
     width: 680px;

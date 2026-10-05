@@ -18,6 +18,8 @@ export const routes = {
     const search = new URLSearchParams(Object.entries(query).filter(([, value]) => Boolean(value)));
     return search.size > 0 ? `/catalog?${search}` : "/catalog";
   },
+  /** The GLB of one catalog 3D asset version. Its content never changes. */
+  modelAsset: (assetId: string) => `/assets/models/${encodeURIComponent(assetId)}/model.glb`,
   factory,
   editFactory: (factoryId: string) => `${factory(factoryId)}/edit`,
   designer: (factoryId: string) => `${factory(factoryId)}/designer`,

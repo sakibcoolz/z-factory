@@ -219,3 +219,22 @@ Services in `lib/services/event-service.ts` and `lib/services/live-service.ts`; 
 | `acknowledgeAlarmAction(factoryId, alarmId, …)` | `acknowledgeAlarm` |
 
 The stream is one-way. Nothing is written through it.
+
+### `catalog 3D assets` and the `scene` (TASK-402, ADR-0012)
+Services in `lib/services/asset-service.ts` and `lib/services/scene-service.ts`.
+
+| Operation | Entry point | Rules |
+|---|---|---|
+| register an asset | `registerCatalogAsset({ db, storage }, { deviceModelId, provider, providerJobId?, scale?, rotationYDeg? }, glb)` | server-side authoring only, not reachable from a request; validates the GLB, stores it as the model's next version and makes it active; a refused file changes nothing |
+| asset versions | `listCatalogAssets(db, deviceModelId)` | newest first, with which one is active |
+| asset file | `readCatalogAsset({ db, storage }, assetId)` | only a `READY` version; a record without its file is not found |
+| factory scene | `getFactoryScene(db, actor, factoryId)` | devices, connections and states of `getTopology`, plus position on the floor, the model's asset, the instance's rotation and scale, and the category's placeholder |
+| place in scene | `setDeviceSceneTransform(db, actor, deviceId, { rotationDeg, scale })`, `changeDeviceSceneTransform(…, change)` | appearance only; scale 0.25 to 4 |
+
+| Route | Returns |
+|---|---|
+| `GET /assets/models/[assetId]/model.glb` | the GLB (`model/gltf-binary`), `Cache-Control: private, max-age=31536000, immutable`, ETag from the checksum; 304 on a matching `If-None-Match`; 404 for an unknown, malformed or not-ready asset and for a missing file |
+
+| Action (`app/factories/[factoryId]/view-3d/actions.ts`) | Effect |
+|---|---|
+| `sceneTransformAction(factoryId, …)` with `deviceId`, `operation` = `rotate-left` \| `rotate-right` \| `scale-up` \| `scale-down` \| `reset` | one step of 45° or ×1.25 from where the device is |

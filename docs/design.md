@@ -150,9 +150,25 @@ Source: Claude Design project `2fc6a75c-7a5d-4a8c-a17c-17afa2d37f6c`, file `Z-Fa
 | 2n | Runtime / Containers | `/factories/[factoryId]/runtime`, per PLC `/plcs/[plcId]/runtime` |
 | 2o | 2D Network / Wiring Topology | `/factories/[factoryId]/topology` |
 | 2p | PLC Export / Print | `/factories/[factoryId]/plcs/[plcId]/export`, `/export/report` (print) |
-| 2q | 3D Factory View | `/factories/[factoryId]/view-3d` |
+| 2q | 3D Factory View | `/factories/[factoryId]/view-3d` (database) |
 
-Screens 2a–2c and the factory overview/edit read the database (TASK-103), and so does 2e, the device catalog (TASK-301). For stored factories 2f, 2g, 2h and 2j read the database too (TASK-302), together with the PLC connections screen `/factories/[factoryId]/plcs/[plcId]/connections`, and so do 2d (designer) and 2o (topology) (TASK-303), 2p (export) (TASK-304) 2i, 2k and 2n (program, versions, simulator and runtime) (TASK-305), and 2l and 2m (live tags and events) (TASK-401). For the design fixtures, screens 2d and 2f–2q still read fixtures: `factory_001` (Pump House Demo, PLC `dev_001`) and, for 2g only, `factory_003`; they are reachable from the "Design fixtures" section of the factory explorer. Unknown IDs return the not-found screen.
+Screens 2a–2c and the factory overview/edit read the database (TASK-103), and so does 2e, the device catalog (TASK-301). For stored factories 2f, 2g, 2h and 2j read the database too (TASK-302), together with the PLC connections screen `/factories/[factoryId]/plcs/[plcId]/connections`, and so do 2d (designer) and 2o (topology) (TASK-303), 2p (export) (TASK-304) 2i, 2k and 2n (program, versions, simulator and runtime) (TASK-305), 2l and 2m (live tags and events) (TASK-401), and 2q (3D view) (TASK-402). For the design fixtures, screens 2d and 2f–2q still read fixtures: `factory_001` (Pump House Demo, PLC `dev_001`) and, for 2g only, `factory_003`; they are reachable from the "Design fixtures" section of the factory explorer. Unknown IDs return the not-found screen.
+
+### 3D view as built (TASK-402)
+For a stored factory, `/factories/[factoryId]/view-3d` shows a WebGL scene beside an inspector:
+
+- **Scene:** a floor grid with every device of the factory where the designer has it (the designer's default spacing is 2 m). A device is drawn from the 3D asset of its catalog model, fitted into the space of its category, or as that category's generic shape while the model has no asset or the asset cannot be loaded. Above each device: its name and stored runtime state.
+- **Connections:** one line on the floor per relationship between two devices, the same relationships and line styles as the 2D topology (solid signal, dashed network, dotted feedback).
+- **Camera:** drag to orbit, scroll to zoom, right-drag to pan; buttons for an isometric, a top and a front view.
+- **Inspector:** the list of devices, each marked "asset v<n>" or "placeholder". A device is selected in the scene or in the list. The selection shows type, model, role, state, asset and placing, with buttons to turn it by 45°, make it smaller or larger (×0.25 to ×4) and reset it, and links to the PLC's screens and the catalog model.
+- **Without WebGL** the scene is replaced by a message; the list and the selection still work.
+- The view re-reads its data when the factory records an event.
+
+Differences from wireframe 2q:
+- Devices are not coloured by state and nothing moves: runtime colouring, outlines and motion are TASK-404.
+- Positions are not edited here; the layout is the designer's. Only rotation and size are set in this view.
+- No "external device" styling and no saved camera positions.
+- The catalog models have no 3D assets until TASK-403 generates them; until then every device is a generic shape.
 
 ### Live tags and events as built (TASK-401)
 For a stored factory:

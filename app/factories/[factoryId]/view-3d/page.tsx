@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import { ScenePlaceholder } from "@/components/canvas/scene-placeholder";
 import { AppShell } from "@/components/shell/app-shell";
 import { EditorTabs } from "@/components/shell/editor";
@@ -10,8 +9,12 @@ import { RuntimeStatePill, StatePill } from "@/components/ui/state-pill";
 import { demoContext, isDemoFactory } from "@/lib/fixtures";
 import { devices, factory, scene } from "@/lib/fixtures/pump-house-demo";
 import { routes } from "@/lib/navigation/routes";
+import { StoredView3d } from "./stored-view-3d";
 
 export const metadata: Metadata = { title: "3D view" };
+
+// Stored factories read the database on every request.
+export const dynamic = "force-dynamic";
 
 type View3dPageProps = {
   params: Promise<{ factoryId: string }>;
@@ -31,7 +34,8 @@ const monoRows = (rows: ReadonlyArray<readonly [string, string]>) =>
 /** 2q — 3D Factory View. Visualization only; it never owns device state. */
 export default async function View3dPage({ params }: View3dPageProps) {
   const { factoryId } = await params;
-  if (!isDemoFactory(factoryId)) notFound();
+  // Stored factories render their real scene; the demo factory keeps its fixture screen.
+  if (!isDemoFactory(factoryId)) return StoredView3d({ factoryId });
 
   return (
     <AppShell

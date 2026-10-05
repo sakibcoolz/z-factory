@@ -72,6 +72,7 @@ All variables are read through `lib/env.ts`, which validates them with Zod and f
 | `RUNTIME_BIND_ADDRESSES` | no | `lib/docker/policy.ts` | Comma-separated IPv4 addresses runtime ports may bind to (default `127.0.0.1`). Must include `127.0.0.1`; add a LAN address to let external gateways reach a PLC's Modbus port |
 | `SIMULATION_TICK_MS` | no | `lib/services/runtime-deps.ts` | Device-simulator cycle time in milliseconds, 20–5000 (default `100`) |
 | `SIMULATION_SNAPSHOT_MS` | no | `lib/services/runtime-deps.ts` | How often the simulator stores a state snapshot per device, 1000–3600000 ms (default `10000`) |
+| `ASSET_STORAGE_DIR` | no | `lib/assets/storage.ts` | Directory the catalog's 3D asset files are stored in (default `./data/assets`, relative to the server's working directory; ignored by Git). Back it up with the database (ADR-0012) |
 | `TAG_POLL_MS` | no | `lib/services/runtime-deps.ts` | How often the tags of a running PLC are read for live values, 100–60000 ms (default `500`) |
 | `TELEMETRY_MIN_INTERVAL_MS` | no | `lib/services/runtime-deps.ts` | A tag is stored as telemetry at most this often, 100–3600000 ms (default `1000`) |
 | `TELEMETRY_MAX_INTERVAL_MS` | no | `lib/services/runtime-deps.ts` | A tag is stored at least this often even when unchanged, 1000–86400000 ms (default `60000`) |

@@ -266,6 +266,18 @@ enum Severity {
   CRITICAL
 }
 
+/// Life of one version of a catalog model's 3D asset.
+enum Catalog3dAssetStatus {
+  /// Being generated or not yet validated; has no usable file.
+  PENDING
+  /// Stored and validated; can be rendered.
+  READY
+  /// Generation or validation failed; kept for the record.
+  FAILED
+  /// Replaced on purpose and no longer offered.
+  RETIRED
+}
+
 enum FaultResetBehavior {
   AUTO
   MANUAL
@@ -329,10 +341,14 @@ model DeviceModel {
   sourceRetrievedAt  DateTime?
   verifiedAt         DateTime?
   metadataJson       Json               @default("{}")
+  /// The 3D asset version every instance of this model renders; null means the category placeholder.
+  active3dAssetId    String?            @unique @db.Uuid
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
   family              DeviceFamily                 @relation(fields: [familyId], references: [id], onDelete: Restrict)
+  active3dAsset       Catalog3dAsset?              @relation("Active3dAsset", fields: [active3dAssetId], references: [id], onDelete: SetNull)
+  assets3d            Catalog3dAsset[]             @relation("Model3dAssets")
   electricalProfile   ElectricalProfile?
   communicationPorts  CommunicationPort[]
   ioDefinitions       DeviceIoDefinition[]
@@ -345,6 +361,39 @@ model DeviceModel {
 
   @@unique([familyId, modelName])
   @@index([sku])
+}
+
+/// One version of the reusable 3D asset of a catalog model. Authored once (TASK-403),
+/// stored under Z-Factory's control and rendered by every factory instance of the model.
+/// The file itself is in asset storage (ADR-0012); this row is its record.
+model Catalog3dAsset {
+  id             String               @id @default(uuid(7)) @db.Uuid
+  deviceModelId  String               @db.Uuid
+  version        Int
+  status         Catalog3dAssetStatus @default(PENDING)
+  /// Path of the GLB inside asset storage, relative to its root; null until a file is stored.
+  storageKey     String?
+  contentSha256  String?
+  sizeBytes      Int?
+  /// Where the asset came from, e.g. `MESHY` or `MANUAL`.
+  provider       String
+  /// The provider's own task or job id, when it has one.
+  providerJobId  String?
+  /// Uniform scale applied to the file's units; null fits the model to its category's footprint.
+  scale          Float?
+  /// Rotation about the vertical axis, in degrees, that turns the file's front to the scene's front.
+  rotationYDeg   Float                @default(0)
+  /// Bounding box and anchor of the file, when known: `{ min, max, anchor }` in file units.
+  boundsJson     Json?
+  /// What validation found: `{ ok, checks, message }`.
+  validationJson Json?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  deviceModel DeviceModel  @relation("Model3dAssets", fields: [deviceModelId], references: [id], onDelete: Cascade)
+  activeFor   DeviceModel? @relation("Active3dAsset")
+
+  @@unique([deviceModelId, version])
 }
 
 model ElectricalProfile {
@@ -569,6 +618,10 @@ model DeviceInstance {
   /// Position of the device on the designer canvas; null until it is placed.
   canvasX           Float?
   canvasY           Float?
+  /// Rotation of this instance in the 3D view, in degrees about the vertical axis.
+  sceneRotationDeg  Float         @default(0)
+  /// Size of this instance in the 3D view relative to its catalog asset.
+  sceneScale        Float         @default(1)
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 

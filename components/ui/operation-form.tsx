@@ -26,6 +26,8 @@ type OperationFormProps = {
   pendingHint?: string;
   /** Accessible name of the button group. */
   label: string;
+  /** Values submitted with every operation, e.g. what the operation applies to. */
+  fields?: Readonly<Record<string, string>>;
 };
 
 /** Seconds since `running` became true; long operations show that they are still going. */
@@ -48,7 +50,7 @@ function useElapsedSeconds(running: boolean): number {
  * button is disabled, the pressed one says what is happening and for how long, and the
  * result (or the reason for a failure) is announced below.
  */
-export function OperationForm({ action, buttons, size = "md", pendingHint, label }: OperationFormProps) {
+export function OperationForm({ action, buttons, size = "md", pendingHint, label, fields }: OperationFormProps) {
   const [state, formAction, pending] = useActionState(action, EMPTY_OPERATION_STATE);
   const [pressed, setPressed] = useState<string>();
   const [confirming, setConfirming] = useState<string>();
@@ -57,6 +59,9 @@ export function OperationForm({ action, buttons, size = "md", pendingHint, label
 
   return (
     <form action={formAction} className="flex flex-col gap-1.5" aria-label={label}>
+      {Object.entries(fields ?? {}).map(([name, value]) => (
+        <input key={name} type="hidden" name={name} value={value} />
+      ))}
       <div className="flex flex-wrap items-center gap-1.5">
         {buttons.map((button) => {
           const running = pending && pressed === button.operation;

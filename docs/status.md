@@ -34,7 +34,8 @@ Last architecture documentation update: 2026-10-05
 - PLC configuration implemented (TASK-302 done): create a compact or modular PLC from the catalog, install modules, wire peripherals to channels with tags and Modbus addresses, data-driven pin view and I/O mapping for stored factories.
 - Device catalog implemented (TASK-301 done): four PLC targets and eight I/O modules verified against manufacturer documents with stored provenance, 26 generic simulated models, 35 categories, compatibility filtering, and the catalog screen reading the database.
 - Events and live telemetry implemented (TASK-401 done, ADR-0011): one ordered recording path for runtime events, alarms with acknowledgement, a tag monitor reading running PLCs, sampled telemetry with retention, and a server-sent event stream with replay after a reconnect. Live Tags and Events screens read live data for stored factories; designer, topology and runtime screens follow the stream. Verified in a browser and against a real OpenPLC runtime.
-- The 3D view still reads fixtures; container logs are not shown.
+- 3D factory view implemented (TASK-402 done, ADR-0012): a three.js scene of a stored factory built from the same devices, connections and positions as the designer; catalog models carry versioned GLB assets stored on the server and served by the application; devices without an asset are drawn as the generic shape of their category. No catalog model has an asset yet (TASK-403).
+- Container logs are not shown.
 - Post-MVP process-module architecture documented: generic devices remain catalog-backed, while process modules compose factory devices and allocate module-specific PLC I/O.
 - Phase 06 includes TASK-605 for an authoritative module PLC I/O registry.
 - ADR-0008 accepts a separate Go process-simulation service in Phase 06+ only; it does not alter current MVP Phase 02–05 implementation.
@@ -46,4 +47,4 @@ Last architecture documentation update: 2026-10-05
 Phase task Markdown remains the execution unit. Existing Linear Phase 00–05 items remain synchronized. Newly documented Phase 06–07 tasks, including TASK-605 and TASK-701–704, must be mirrored to Linear before either phase becomes active. Phase 00 is closed.
 
 ## Next technical gate
-TASK-401 is done. The rest of Phase 04 is the 3D work: TASK-402 (factory view, ready), TASK-403 (catalog assets) and TASK-404 (live state in 3D, which consumes the stream of TASK-401). Before TASK-402 starts: decide which task owns the catalog asset reference and its schema, where GLB files are stored (an ADR), and mirror TASK-403 and TASK-404 to Linear.
+TASK-402 is done. Next in Phase 04: TASK-403 (generate catalog assets with Meshy and register them through the path TASK-402 built) and TASK-404 (runtime colouring and motion in the 3D view, from the live stream). Both still have to be mirrored to Linear before they start.

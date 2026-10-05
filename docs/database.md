@@ -27,7 +27,9 @@ Examples: PLC, VFD, MOTOR, PUMP, FAN, BLOWER, CONVEYOR, MIXER, COMPRESSOR, VALVE
 `id, manufacturerId, name, deviceCategoryId`
 
 ### DeviceModel
-`id, familyId, modelName, sku, architectureType, runtimeSupport, controlCapability, lifecycleStatus, verificationStatus, sourceUrl, sourceTitle, sourceRevision, sourceRetrievedAt, verifiedAt, metadataJson, createdAt, updatedAt`
+`id, familyId, modelName, sku, architectureType, runtimeSupport, controlCapability, lifecycleStatus, verificationStatus, sourceUrl, sourceTitle, sourceRevision, sourceRetrievedAt, verifiedAt, metadataJson, active3dAssetId, createdAt, updatedAt`
+
+`active3dAssetId` names the `Catalog3dAsset` version every instance of the model renders; null means the generic shape of the category.
 
 `verificationStatus = UNVERIFIED | VERIFIED | GENERIC`. `GENERIC` marks a simulated profile that makes no vendor claim. Unique: `(familyId, modelName)`.
 
@@ -79,11 +81,20 @@ Optional model-level register definition for smart devices.
 
 `status = DRAFT | ACTIVE | ARCHIVED` is the desired/configuration status; `runtimeStatus` is the last persisted runtime state. `ownerId` is an opaque owner identity until an authentication provider is chosen. Unique: `slug`, `dockerNetworkName`, `subnetCidr`, `(ownerId, name)`.
 
+### Catalog3dAsset
+One version of the reusable 3D asset of a catalog model (TASK-402, ADR-0012). The file is in asset storage; this row is its record.
+`id, deviceModelId, version, status, storageKey, contentSha256, sizeBytes, provider, providerJobId, scale, rotationYDeg, boundsJson, validationJson, createdAt, updatedAt`
+
+`status = PENDING | READY | FAILED | RETIRED`; only `READY` is rendered and served. `storageKey` is the file's path inside asset storage (`models/<model id>/v<version>/model.glb`). `provider` says where the file came from (`MESHY`, `MANUAL`); `providerJobId` is the provider's own id. `scale` is a uniform factor for the file's units; null fits the model into the space of its category. `rotationYDeg` turns the file's front to the scene's front. `boundsJson` is the box around the vertex positions the file states (`{ min, max }`, file units, an estimate). `validationJson` is what the check at registration found. Unique: `(deviceModelId, version)`. Deleting a model deletes its asset records; deleting an asset clears `DeviceModel.active3dAssetId`.
+
+That the active asset belongs to the same model and is ready is kept by the asset service, not by a constraint.
+
 ### DeviceInstance
 A named device created inside one factory.
-`id, factoryId, deviceModelId, name, role, location, runtimeType, runtimeStatus, simulatorType, dockerContainerId, hostName, configJson, canvasX, canvasY, createdAt, updatedAt`
+`id, factoryId, deviceModelId, name, role, location, runtimeType, runtimeStatus, simulatorType, dockerContainerId, hostName, configJson, canvasX, canvasY, sceneRotationDeg, sceneScale, createdAt, updatedAt`
 
-`canvasX` / `canvasY` are the device's position on the designer canvas; both are null until it is placed there.
+`canvasX` / `canvasY` are the device's position on the designer canvas; both are null until it is placed there. The 3D view uses the same position.
+`sceneRotationDeg` (0 to below 360, default 0) and `sceneScale` (default 1) are how this instance is turned and sized in the 3D view. They are appearance only.
 
 MVP uniqueness: `unique(factoryId, name)`.
 
@@ -288,6 +299,9 @@ Prisma cannot express CHECK or EXCLUDE constraints, so these live as hand-writte
 | `Factory_name_check`, `Factory_slug_check`, `DeviceInstance_name_check` | non-blank names, URL-safe slug |
 | `Factory_subnet_no_overlap` | no two factories have overlapping subnets (GiST exclusion on `subnetCidr::inet`), across owners — Docker networks share the host's address space |
 | `AlarmEvent_cleared_after_started_check`, `TelemetrySample_value_check` | history sanity |
+| `Catalog3dAsset_version_check`, `Catalog3dAsset_scale_check` | version >= 1; scale null or positive |
+| `Catalog3dAsset_ready_file_check` | a `READY` asset has a storage key, a checksum and a size |
+| `DeviceInstance_scene_transform_check` | `sceneScale` between 0.1 and 10, `sceneRotationDeg` from 0 to below 360 |
 
 Rules that span tables are enforced in the service layer (`lib/services/`, `lib/validation/`): compact vs modular I/O sources, module/CPU/slot compatibility, signal/point-type compatibility, I/O point ownership and availability, drive → motor categories, multi-word register overlap, process-module same-factory device assignment, required module roles/signals, module-to-PLC mapping compatibility, PLC-to-PLC same-factory validation, client/server role validation, writable-target validation, and inter-PLC register-span compatibility. `lib/db/errors.ts` turns constraint failures into typed domain errors without leaking driver messages.
 
