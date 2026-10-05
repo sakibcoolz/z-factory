@@ -1,11 +1,11 @@
 # Phase 03 — Factory Designer, Device Modeling & PLC Export
 
-Status: **PLANNED**
+Status: **IN PROGRESS**
 
 | Task | Status |
 |---|---|
-| TASK-301 Device catalog & provenance | READY |
-| TASK-302 Compact/modular PLC form | PLANNED |
+| TASK-301 Device catalog & provenance | DONE |
+| TASK-302 Compact/modular PLC form | READY |
 | TASK-303 React Flow topology | PLANNED |
 | TASK-304 PLC engineering export | PLANNED |
 
