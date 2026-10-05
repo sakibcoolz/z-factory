@@ -136,10 +136,18 @@ Source: Claude Design project `2fc6a75c-7a5d-4a8c-a17c-17afa2d37f6c`, file `Z-Fa
 | 2m | Events / Alarms / Logs | `/factories/[factoryId]/events` |
 | 2n | Runtime / Containers | `/factories/[factoryId]/runtime` |
 | 2o | 2D Network / Wiring Topology | `/factories/[factoryId]/topology` |
-| 2p | PLC Export / Print | `/factories/[factoryId]/plcs/[plcId]/export` |
+| 2p | PLC Export / Print | `/factories/[factoryId]/plcs/[plcId]/export`, `/export/report` (print) |
 | 2q | 3D Factory View | `/factories/[factoryId]/view-3d` |
 
-Screens 2a–2c and the factory overview/edit read the database (TASK-103), and so does 2e, the device catalog (TASK-301). For stored factories 2f, 2g, 2h and 2j read the database too (TASK-302), together with the PLC connections screen `/factories/[factoryId]/plcs/[plcId]/connections`, and so do 2d (designer) and 2o (topology) (TASK-303). For the design fixtures, screens 2d and 2f–2q still read fixtures: `factory_001` (Pump House Demo, PLC `dev_001`) and, for 2g only, `factory_003`; they are reachable from the "Design fixtures" section of the factory explorer. Unknown IDs return the not-found screen.
+Screens 2a–2c and the factory overview/edit read the database (TASK-103), and so does 2e, the device catalog (TASK-301). For stored factories 2f, 2g, 2h and 2j read the database too (TASK-302), together with the PLC connections screen `/factories/[factoryId]/plcs/[plcId]/connections`, and so do 2d (designer) and 2o (topology) (TASK-303) and 2p (export) (TASK-304). For the design fixtures, screens 2d and 2f–2q still read fixtures: `factory_001` (Pump House Demo, PLC `dev_001`) and, for 2g only, `factory_003`; they are reachable from the "Design fixtures" section of the factory explorer. Unknown IDs return the not-found screen.
+
+### PLC export as built (TASK-304)
+For a stored PLC the export screen shows the configuration revision, the program and mapping versions, download buttons (JSON, three CSV schedules), a switch to include the stored runtime status, and a preview of the whole report. "Open printable report" shows the report alone on a paper-like page with a print button.
+
+Differences from wireframe 2p:
+- No section picker: the report always contains all 15 sections.
+- "Generate PDF" is the browser's print dialog on the report page, not a server-made file.
+- No configuration package download.
 
 ### Designer and topology as built (TASK-303)
 For a stored factory the designer (`/factories/[factoryId]/designer`) is a React Flow canvas with a palette and an inspector:
@@ -182,7 +190,7 @@ Differences from wireframes 2f, 2g, 2h and 2j:
 - No draft state and no "Next" step: each step is saved when submitted.
 - The channel panel is read-only; wiring is done from Connections, not by editing a pin.
 - Creating and connecting a peripheral is one action. Removing it deletes the device.
-- Section list of the PLC: Overview, Hardware, Connections and I/O Mapping are wired. Program, Simulator, Live Tags, Events, Logs, Versions, Runtime and Export are listed but not wired for stored PLCs yet (TASK-305 proposed for Program, Versions, Runtime and Simulator; TASK-401 for Events and Live Tags; TASK-304 for Export).
+- Section list of the PLC: Overview, Hardware, Connections and I/O Mapping are wired. Export is wired too since TASK-304. Program, Simulator, Live Tags, Events, Logs, Versions and Runtime are listed but not wired for stored PLCs yet (TASK-305 proposed for Program, Versions, Runtime and Simulator; TASK-401 for Events and Live Tags).
 - The Pump House Demo and the modular bench keep their fixture screens.
 
 ### Device Catalog differences from wireframe 2e
