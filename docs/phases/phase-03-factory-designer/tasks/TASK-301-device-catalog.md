@@ -1,6 +1,6 @@
 # TASK-301 — Device Catalog & Provenance
 
-Status: **PLANNED**
+Status: **READY**
 Linear: [ZFA-12](https://linear.app/recruit-verse/issue/ZFA-12)
 
 ## Objective

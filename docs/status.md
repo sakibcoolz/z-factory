@@ -26,7 +26,9 @@ Last architecture documentation update: 2026-10-05
 - Docker Engine integration implemented (TASK-201 done): server-only policy-checked network and container lifecycle with an image allow-list, tested against a real engine.
 - OpenPLC runtime adapter implemented (TASK-202 done, ADR-0009): Structured Text is compiled with STruC++, deployed to the official OpenPLC Runtime v4 container and executed; program versions, runtime metadata, state and events are persisted; raw tag access over Modbus TCP works. Not wired to any screen yet.
 - Modbus tag mapping implemented (TASK-203 done): tag registry with derived Modbus addresses, typed read/write with permissions by role, command records, and a configurable, validated host endpoint per PLC. Not wired to any screen yet.
-- The remaining screens still read fixtures: device simulation and live data are NOT STARTED.
+- Device simulator implemented (TASK-204 done, ADR-0010): shared in-process simulator for VFD, motor, pump and other motor-driven loads, valve, sensor and switch; PLC bridge over Modbus; fault injection, reset and forced inputs; events and snapshots. Closed loop verified against a real OpenPLC runtime. Not wired to any screen yet.
+- Phase 02 complete.
+- The remaining screens still read fixtures: live data in the UI is NOT STARTED.
 - Post-MVP process-module architecture documented: generic devices remain catalog-backed, while process modules compose factory devices and allocate module-specific PLC I/O.
 - Phase 06 includes TASK-605 for an authoritative module PLC I/O registry.
 - ADR-0008 accepts a separate Go process-simulation service in Phase 06+ only; it does not alter current MVP Phase 02–05 implementation.
@@ -38,4 +40,4 @@ Last architecture documentation update: 2026-10-05
 Phase task Markdown remains the execution unit. Existing Linear Phase 00–05 items remain synchronized. Newly documented Phase 06–07 tasks, including TASK-605 and TASK-701–704, must be mirrored to Linear before either phase becomes active. Phase 00 is closed.
 
 ## Next technical gate
-Phase 02 is in progress. Next is TASK-204 (device simulator runtime), the last task of the phase: the shared simulator for VFD, motor, pump, valve, sensor and switch instances, closing the loop with PLC logic.
+Phase 02 is complete. Next is Phase 03, starting with TASK-301 (device catalog and provenance). TASK-302 must account for ADR-0010: simulated feedback reaches PLC programs on memory addresses, not input addresses.

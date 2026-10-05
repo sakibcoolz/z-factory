@@ -123,7 +123,7 @@ Supported located addresses and data types:
 Every create or delete bumps `PlcInstanceProfile.modbusMappingVersion`. Each program deployment stores the tag map in its `ConfigurationVersion` snapshot.
 
 ### Modbus map contract
-`getModbusMap` returns what the PLC inspector shows and the engineering export contains: the mapping version, the conventions (`zero-based`, `BIG_ENDIAN`, `HIGH_WORD_FIRST`), the host endpoint, and one row per tag with name, role, data type, direction, located address, area, zero-based address, word count, access mode, orders, scale, offset, unit and source device. `displayAddress` (`40001`, `42049`, …) is derived for people and never stored.
+`getModbusMap` returns what the PLC inspector shows and the engineering export contains: the mapping version, the conventions (`zero-based`, `BIG_ENDIAN`, `HIGH_WORD_FIRST`), the host endpoint, and one row per tag with name, role, data type, direction, located address, area, zero-based address, word count, access mode, orders, scale, offset, unit, source device and the device signal it is wired to (`docs/device-simulation.md`). `displayAddress` (`40001`, `42049`, …) is derived for people and never stored.
 
 ### Typed values
 Engineering value = raw × scale + offset. `readTag` / `readTags` decode register words into numbers or booleans and report a quality: `GOOD`, or `DISCONNECTED` / `BAD` with no value when the PLC cannot be read. `writeTag` encodes and range-checks the value (single coil, single register, or function 16 for two-word values).

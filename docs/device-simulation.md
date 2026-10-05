@@ -80,3 +80,82 @@ Device models may define supported fault types. Injection/reset must be explicit
 
 ## Fidelity rule
 Simulation behavior is an approximation for software/control testing. Never present it as electrical/mechanical/process certification or exact manufacturer physics.
+
+## Implementation (TASK-204)
+Code: `lib/domain/simulation.ts` (vocabulary), `lib/runtimes/device-sim/` (models, engine, PLC bridge, runtime), `lib/services/simulation-service.ts`. Decisions: ADR-0010.
+
+### Runtime
+One simulator object in the server process hosts all factories. Each factory simulation has its own devices, PLC bridge and timer. A cycle (default 100 ms, `SIMULATION_TICK_MS`):
+
+1. read the tags PLC logic drives (grouped into few Modbus requests);
+2. advance every device by the real elapsed time (capped at 1 s per cycle);
+3. write feedback tags that changed, plus a full refresh every 50 cycles;
+4. emit events for meaningful changes; store snapshots at the snapshot interval.
+
+A cycle that is still talking to a PLC makes the next timer tick a no-op. A PLC that cannot be reached is retried every 2 s; meanwhile the device inputs it drives are de-energized (false / 0), as with a stopped PLC. Simulations are not resumed after a server restart.
+
+### What is simulated
+A device instance is simulated when its model's runtime is `DEVICE_SIM` and its category's simulator type is one of the following. `RELAY`, `GENERIC` and `NONE` are skipped.
+
+| Type | Driven by | Signals from the PLC (IN) | Signals to the PLC (OUT) |
+|---|---|---|---|
+| VFD | — | `run`, `reverse`, `frequencySetpoint` (Hz), `faultReset` | `running`, `atSetpoint`, `faulted`, `actualFrequency` (Hz), `outputCurrent` (A) |
+| MOTOR | its VFD (`DRIVES`), else `run` | `run`, `faultReset` | `running`, `faulted`, `actualSpeed` (rpm), `current` (A) |
+| PUMP | its motor (`MECHANICALLY_DRIVES`) | — | `running`, `faulted`, `flow`, `pressure` |
+| FAN, CONVEYOR, MIXER, COMPRESSOR | its motor | — | `running`, `faulted`, `output` |
+| VALVE | — | `open`, `close`, `positionSetpoint` (%), `faultReset` | `position` (%), `opened`, `closed`, `faulted` |
+| SENSOR | profile, or the device it `MEASURES` | — | `value`, `faulted` |
+| SWITCH | profile, or the device it `MEASURES` | — | `state` |
+
+### Wiring to a PLC
+A tag with `sourceDeviceInstanceId` and `sourceSignal` wires one device signal. Rules, checked when the tag is created:
+
+- The device must be simulated and have that signal; a BOOL signal needs a BOOL tag, a number a numeric tag.
+- The tag must be read-only for gateways and the UI (any role except `COMMAND` / `SETPOINT`). PLC logic alone drives devices.
+- An IN signal takes a `%Q` or `%M` address the program assigns.
+- An OUT signal takes a `%M` address. The runtime does not accept external values on `%I` (ADR-0010), so programs read simulated feedback from memory variables.
+- One tag per device signal.
+
+The tag's scale and offset convert between the simulated engineering value and the PLC's raw value. A value outside the tag's range saturates.
+
+### Parameters
+From the device's `SimulationProfile` (`docs/database.md`); every value has a generic default. Defaults are not vendor data.
+
+| Type | Parameters (default) |
+|---|---|
+| VFD | `maxFrequencyHz` (50), `accelTimeS` (5), `decelTimeS` (5) |
+| MOTOR | `ratedSpeedRpm` (1450), `ratedFrequencyHz` (50), `ratedCurrentA` (10), `noLoadCurrentRatio` (0.35), `timeConstantS` (0.5), `coastTimeConstantS` (2) |
+| PUMP | `ratedFlow` (100), `ratedPressure` (4) |
+| other loads | `ratedOutput` (100), `loadProfile` (`QUADRATIC` for fans, else `CONSTANT`) |
+| VALVE | `travelTimeS` (5), `initialPosition` (0) |
+| SENSOR | `source`, `rangeMin`, `rangeMax`, `timeConstantS` (0), `initialValue`, `eventDeadband` |
+| SWITCH | `source` |
+
+Sensor sources: `CONSTANT {value}`, `RAMP {from, to, periodS}`, `SINE {min, max, periodS}`, `RANDOM {min, max, intervalS, seed}`, `MEASURED {signal, gain, offset}`. Switch sources: `CONSTANT {state}`, `MEASURED {signal, onAbove, offBelow}`. A `MEASURED` source needs a `MEASURES` connection from the sensor or switch to the measured device.
+
+### Approximations
+- **VFD:** linear ramp at `maxFrequencyHz / accelTimeS` (or `decelTimeS`). The setpoint is limited to 0…`maxFrequencyHz`. A change of direction ramps through zero. No V/f curve, current limit, DC bus or braking model.
+- **Motor:** speed = rated speed × supply frequency / rated frequency, reached with a first-order lag. Slip, inrush current and thermal behaviour are not modelled. Current = rated × (no-load share + remaining share × load torque).
+- **Pump:** affinity laws against a fixed system: flow ∝ speed, pressure ∝ speed². No pump curve, no interaction with valves or tanks (that is process simulation, Phase 06).
+- **Other loads:** output ∝ speed; torque is quadratic (fan) or constant.
+- **Valve:** constant travel speed. With only `open` wired it returns to closed when the command drops; with `close` also wired it holds position when neither is present; `positionSetpoint` takes precedence.
+- **Sensor:** ideal source, optional first-order lag, limited to its range. No noise or drift unless a `RANDOM` source is configured.
+
+### Faults
+| Type | Code | Effect | Latching |
+|---|---|---|---|
+| VFD | `OVERCURRENT`, `OVERTEMPERATURE` | output removed at once; the motor coasts | yes |
+| MOTOR | `OVERLOAD` | motor de-energized even while its drive runs | yes |
+| PUMP | `DRY_RUN` | no flow or pressure; motor load drops | no |
+| VALVE | `STUCK` | does not move; not reported on `faulted` | no |
+| SENSOR | `BAD_QUALITY` | reads bottom of range, `faulted` true, quality BAD | no |
+| SENSOR, SWITCH | `STUCK` | value frozen; not reported | no |
+
+A latching fault trips the device: it stays faulted after the cause is cleared until it is reset, by a rising edge on its `faultReset` signal from the PLC or by an operator reset. A catalog `DeviceFaultDefinition` with the same code overrides severity and latching (`MANUAL` = latching).
+
+### Limits
+- No screen uses the simulation services yet.
+- A motor drives one load; a second `MECHANICALLY_DRIVES` connection from the same motor refuses the start.
+- The measured signal of a sensor is named in its profile, not on the `MEASURES` connection.
+- Device faults are stored as events; they do not raise `AlarmEvent` rows yet.
+- Relays and contactors are not simulated.

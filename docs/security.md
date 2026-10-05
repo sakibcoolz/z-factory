@@ -16,6 +16,7 @@ Z-Factory controls Docker and industrial command paths, so it crosses privileged
 - Validate PLC tag/register write permissions and data types.
 - External gateway writes are restricted to explicitly writable PLC command/setpoint mappings.
 - Gateway/API paths must never directly mutate downstream motor/pump/VFD/valve simulator state.
+- Enforced by wiring (TASK-204): a device signal can only be bound to a tag that gateways and the UI cannot write, so device inputs come from the PLC program alone. Fault injection, device reset and forced sensor values are separate, authenticated operator actions on the simulated equipment and are always recorded as events.
 - Force-input/fault-injection/debug operations require explicit authorization and audit events.
 - Do not expose host paths, Docker socket details, credentials or secrets in PLC exports.
 

@@ -38,9 +38,9 @@ PostgreSQL                 Docker Engine
 - `lib/auth/`: the authorization boundary `requireActor()` (ADR-0007); server-only.
 - `lib/db/`: Prisma client, repositories and database-error translation; server-only.
 - `lib/docker/`: Docker Engine integration (dockerode): policy and image allow-list, hardened container specs, factory networks, port validation, lifecycle; server-only. See `docs/docker-runtime.md` → Implementation.
-- `lib/runtimes/`: runtime adapters; `openplc/` holds the OpenPLC Runtime v4 adapter, its REST client, the STruC++ compile worker and the bundle composer (ADR-0009); the device-simulator adapter follows with TASK-204; server-only.
+- `lib/runtimes/`: runtime adapters; `openplc/` holds the OpenPLC Runtime v4 adapter, its REST client, the STruC++ compile worker and the bundle composer (ADR-0009); `device-sim/` holds the shared device simulator: behaviour models, the per-factory engine, the PLC bridge and the tick runtime (ADR-0010); server-only.
 - `lib/protocols/`: Modbus abstractions: TCP client, typed register codecs and the located-address → Modbus mapping of the OpenPLC runtime; gateway and PLC-to-PLC mappings follow (Phase 05, Phase 07); server-only.
-- `lib/events/`: internal event bus and SSE/WebSocket transport.
+- `lib/events/`: in-process event bus; the SSE transport follows; server-only.
 - `lib/catalog/`: normalized PLC/peripheral catalog access.
 - `lib/validation/`: Zod schemas for untrusted input plus pure compatibility, I/O occupancy and domain invariants.
 - `lib/export/`: engineering report/config package generation.
@@ -51,7 +51,7 @@ PostgreSQL                 Docker Engine
 Next.js 16 (App Router, Turbopack) · React 19 · TypeScript 6 strict · Tailwind CSS 4 (theme tokens in `app/globals.css`) · Prisma 7 with the `pg` driver adapter · dockerode 5 · STruC++ 0.7 (separate process) · fflate · Zod 4 · ESLint 9 with `eslint-config-next` · Prettier 3 · Vitest 5 + Testing Library (jsdom). Screens are server components; client components are limited to interactive leaves (the factory form and delete confirmation) that receive server actions as props. Versions, commands and the environment contract are fixed in `docs/bootstrap.md`.
 
 ## Server-only boundary
-Modules under `lib/db/`, `lib/services/`, `lib/auth/`, `lib/docker/`, `lib/runtimes/`, `lib/protocols/` and `lib/env.ts` import `server-only`. `components/**` may not import them (ESLint `no-restricted-imports`); pages under `app/` load data on the server and pass plain props down.
+Modules under `lib/db/`, `lib/services/`, `lib/auth/`, `lib/docker/`, `lib/runtimes/`, `lib/protocols/`, `lib/events/` and `lib/env.ts` import `server-only`. `components/**` may not import them (ESLint `no-restricted-imports`); pages under `app/` load data on the server and pass plain props down.
 
 ## Factory isolation
 Each factory receives one isolated Docker network by default, e.g. `zfactory_<factory_id>`.
@@ -133,6 +133,8 @@ Rules:
 
 ## Device simulation architecture
 MVP uses a shared device-simulator runtime capable of hosting many factory-specific state machines. Avoid one container per simple peripheral unless isolation or protocol fidelity requires it.
+
+Implemented in TASK-204 (ADR-0010): the simulator runs inside the server process and reaches each PLC through its published Modbus endpoint. Per cycle it reads the tags PLC logic drives, advances the device models, and writes feedback to memory-address tags. See `docs/device-simulation.md` → Implementation.
 
 Generic device simulation and process simulation are separate concerns. A process module composes existing factory device instances and allocates its logical PLC I/O.
 

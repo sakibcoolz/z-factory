@@ -48,3 +48,11 @@ Telemetry persistence is configurable by tag/device. Use sampling, change thresh
 
 ## Quality
 Live values should carry quality/state such as GOOD, STALE, BAD, DISCONNECTED and a timestamp so the UI can distinguish a valid value from an old one.
+
+## Implementation (TASK-204)
+- Envelope type: `lib/domain/events.ts`. In-process bus: `lib/events/bus.ts` (`getEventBus()`); it keeps no history. The SSE transport is not built yet.
+- The device simulator emits: `SIMULATION_STARTED`, `SIMULATION_STOPPED`, `VFD_STATE_CHANGED`, `MOTOR_STATE_CHANGED`, `PUMP_STATE_CHANGED`, `VALVE_STATE_CHANGED`, `SENSOR_VALUE_CHANGED`, `DEVICE_STATE_CHANGED`, `FAULT_INJECTED`, `FAULT_CLEARED`, `DEVICE_RESET`, `SIMULATED_INPUT_FORCED`, `SIMULATED_INPUT_RELEASED`, `CONNECTION_UP`, `CONNECTION_DOWN` (PLC link of the simulator; `deviceId` is the PLC).
+- State-change payload: `{ from, to, outputs }`. Fault payload: `{ code, name, latching, source }`.
+- Every emitted event is stored as a `RuntimeEvent` and published on the bus. Events are emitted on state changes, faults, operator actions and link changes, never per tick. A sensor emits value events only when its `eventDeadband` is configured.
+- Snapshots: one `DeviceRuntimeSnapshot` row per device, overwritten every `SIMULATION_SNAPSHOT_MS` and when the simulation stops.
+- Not yet: `AlarmEvent` rows for device faults, `TelemetrySample` sampling, live quality `STALE`.
