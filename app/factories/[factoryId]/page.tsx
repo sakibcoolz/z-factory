@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { DeleteFactory } from "@/components/factories/delete-factory";
+import { DeviceTree } from "@/components/factories/device-tree";
 import { FactoryExplorer } from "@/components/factories/factory-explorer";
 import { AppShell } from "@/components/shell/app-shell";
 import { Content, EditorTabs } from "@/components/shell/editor";
@@ -8,9 +8,10 @@ import { Button } from "@/components/ui/button";
 import { SectionRule } from "@/components/ui/primitives";
 import { RuntimeStatePill } from "@/components/ui/state-pill";
 import { getDb } from "@/lib/db/client";
+import { flattenDeviceTree } from "@/lib/domain/device-tree";
 import { formatUtc } from "@/lib/factories/format";
 import { routes } from "@/lib/navigation/routes";
-import { listFactoryDevices } from "@/lib/services/plc-config-service";
+import { getFactoryDeviceTree } from "@/lib/services/plc-config-service";
 import { deleteFactoryAction } from "../actions";
 import { loadFactory } from "./load-factory";
 
@@ -26,7 +27,8 @@ type FactoryPageProps = {
 export default async function FactoryPage({ params }: FactoryPageProps) {
   const { factoryId } = await params;
   const { factory, factories, docker, actor } = await loadFactory(factoryId);
-  const devices = await listFactoryDevices(getDb(), actor, factory.id);
+  const devices = await getFactoryDeviceTree(getDb(), actor, factory.id);
+  const deviceTotal = flattenDeviceTree(devices).length;
 
   return (
     <AppShell
@@ -89,41 +91,10 @@ export default async function FactoryPage({ params }: FactoryPageProps) {
           </div>
         </div>
         <SectionRule>
-          <span className="zf-k">{`Devices · ${devices.length}`}</span>
+          <span className="zf-k">{`Devices · ${deviceTotal}`}</span>
         </SectionRule>
         {devices.length > 0 ? (
-          <table className="zf-tbl">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Type</th>
-                <th>Model</th>
-                <th>Role</th>
-                <th>State</th>
-              </tr>
-            </thead>
-            <tbody>
-              {devices.map((device) => (
-                <tr key={device.id}>
-                  <td className="mono">
-                    {device.architectureType ? (
-                      <Link href={routes.plc(factory.id, device.id)}>{device.name}</Link>
-                    ) : (
-                      device.name
-                    )}
-                  </td>
-                  <td>
-                    {device.architectureType ? `PLC · ${device.architectureType.toLowerCase()}` : device.categoryName}
-                  </td>
-                  <td>{`${device.manufacturer} ${device.modelName}`}</td>
-                  <td>{device.role ?? "—"}</td>
-                  <td>
-                    <RuntimeStatePill state={device.runtimeStatus} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <DeviceTree factoryId={factory.id} nodes={devices} />
         ) : (
           <p className="zf-sub">No devices yet. Start with a PLC, then connect peripherals to it.</p>
         )}

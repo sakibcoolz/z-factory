@@ -12,7 +12,7 @@ import type { PrismaClient } from "@/lib/generated/prisma/client";
 import { GatewayEndpointRuntime } from "@/lib/runtimes/gateway-endpoint/runtime";
 import { createDemoFactory } from "@/lib/services/demo-service";
 import { type GatewayDeps, getGatewayMap } from "@/lib/services/gateway-service";
-import { getPlcConfiguration } from "@/lib/services/plc-config-service";
+import { getFactoryDeviceTree, getPlcConfiguration } from "@/lib/services/plc-config-service";
 import { buildPlcExport } from "@/lib/services/plc-export-service";
 import { checkProgram, listProgramVersions } from "@/lib/services/plc-runtime-service";
 import { planSimulation } from "@/lib/services/simulation-service";
@@ -121,6 +121,32 @@ describeDb("the pump station demo factory", () => {
       ["VFD_01_RUN", "STATUS", "READ_ONLY"],
       ["VFD_01_RUNNING", "STATUS", "READ_ONLY"],
     ]);
+  });
+
+  it("reads as a hierarchy: the PLC with what is connected to it, each device once", async () => {
+    const demo = await createDemoFactory(deps, alice);
+    const loose = await db.deviceInstance.findFirstOrThrow({ where: { name: "PT-101" } });
+    await db.deviceInstance.create({
+      data: {
+        factoryId: demo.factoryId,
+        deviceModelId: loose.deviceModelId,
+        name: "PT-900",
+        runtimeType: loose.runtimeType,
+        simulatorType: loose.simulatorType,
+      },
+    });
+
+    type Node = Awaited<ReturnType<typeof getFactoryDeviceTree>>[number];
+    const text = (nodes: Node[]): string =>
+      nodes.map((node) => node.device.name + (node.children.length ? `(${text(node.children)})` : "")).join(", ");
+
+    const tree = await getFactoryDeviceTree(db, alice, demo.factoryId);
+    // The pump is found in its drive chain, not under the transmitter that measures it.
+    expect(text(tree)).toBe("PLC-01(GATEWAY-01, PT-101, VFD-01(MOTOR-01(PUMP-01))), PT-900");
+    expect(tree[0]?.device).toMatchObject({ name: "PLC-01", architectureType: "MODULAR", categoryCode: "PLC" });
+    await expect(getFactoryDeviceTree(db, { ownerId: "bob" }, demo.factoryId)).rejects.toMatchObject({
+      code: "NOT_FOUND",
+    });
   });
 
   it("gives the PLC a program that compiles and declares every tag where the wiring put it", async () => {
