@@ -112,13 +112,14 @@ The tag monitor reads every PLC with a started runtime every `TAG_POLL_MS`. A re
 |---|---|---|
 | `event` | the event id | the event envelope |
 | `tags` | — | `{ kind, factoryId, plcId, at, confirmed, readings }`: changed readings of one PLC; `confirmed` means the PLC answered at `at`, so its other good values are that fresh |
+| `devices` | — | `{ kind, factoryId, at, devices }`: the state of every device, sent about 120 ms after recorded events (one message for a burst). Worked out by the server from runtime memory, so a client never derives state from events (TASK-404) |
 | `snapshot` | — | `{ kind, snapshot: { factoryId, at, tags, devices, activeAlarms } }` |
 | `heartbeat` | — | `{ kind, at }`, every 15 s |
 | `reset` | — | `{ kind, reason }`: missed events cannot be replayed (`UNKNOWN_EVENT`, `TOO_MANY_EVENTS`) |
 
 On connect: the events after `Last-Event-ID` (or `?lastEventId=`), then `snapshot`, then live messages. Without an id: `snapshot`, then live. `retry` is 3 s. An unchanged PLC is confirmed about once a second.
 
-A device in `snapshot.devices` has a `source`: `LIVE` (simulator memory), `SNAPSHOT` (the simulation is not running; `at` is when `DeviceRuntimeSnapshot` was taken and the status is stopped) or `STORED` (a PLC runtime's last stored state).
+A device in `snapshot.devices` and in a `devices` message has a `source`: `LIVE` (simulator memory), `SNAPSHOT` (the simulation is not running; `at` is when `DeviceRuntimeSnapshot` was taken and the status is stopped) or `STORED` (a PLC runtime's last stored state).
 
 ### Telemetry
 For every monitored tag a `TelemetrySample` is stored when the value moved by at least the deadband since the last stored sample (`TELEMETRY_DEADBAND_PERCENT` of that value, never less than the tag's resolution: its scale, or 1 for a BOOL), not more often than `TELEMETRY_MIN_INTERVAL_MS`, at least every `TELEMETRY_MAX_INTERVAL_MS`, and whenever its quality changes. A BOOL is stored as 0 or 1.

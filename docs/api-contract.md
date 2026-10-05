@@ -207,7 +207,7 @@ Services in `lib/services/event-service.ts` and `lib/services/live-service.ts`; 
 | live tags | `getLiveTags(deps, actor, factoryId)` | every tag of the factory's PLCs with its reading from the monitor's memory |
 | device states | `getDeviceStates(deps, factoryId)` | simulator memory while a simulation runs; otherwise marked as snapshot or stored |
 | monitoring | `syncFactoryMonitoring(deps, factoryId)`, `stopPlcMonitoring(deps, actor, plcId)` | one pass at a time per factory |
-| stream | `openLiveStream(deps, actor, factoryId, lastEventId, send)` | replay, snapshot, then live; returns the function that ends it |
+| stream | `openLiveStream(deps, actor, factoryId, lastEventId, send)` | replay, snapshot, then live; every recorded event is followed by a `devices` message with the resulting device states; returns the function that ends it |
 
 | Route | Returns |
 |---|---|

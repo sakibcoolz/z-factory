@@ -198,7 +198,7 @@ Rules:
 - `getFactoryScene` builds the scene from `getTopology`: the same devices, connections and stored states as the designer and the 2D view, each device where the designer has it. The scene adds the model's asset and the instance's rotation and scale.
 - The renderer loads each asset file once and draws a copy per instance, fitted into the space of the device's category. A model without a ready asset, or an asset that fails to load, is drawn as the category's generic shape.
 - Registration of a file (`registerCatalogAsset`) validates and versions it. Generating files with Meshy, normalizing them and the authoring workflow are TASK-403.
-- Runtime colouring, outlines and motion are TASK-404; the scene shows the stored state as text.
+- Runtime state (TASK-404): the server follows recorded events with a `devices` message on the live stream; `lib/scene/state.ts` turns each device's state, and whether the stream vouches for it, into an appearance with the same tone rules as the pills and the 2D topology (`runtimeStateTone`, `edgeTone`). The renderer draws it as overlays around the model and along connections. The loaded asset is never modified.
 
 ## Live-state boundary
 - Runtime/OpenPLC/device simulator: authoritative live state.

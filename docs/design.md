@@ -162,10 +162,27 @@ For a stored factory, `/factories/[factoryId]/view-3d` shows a WebGL scene besid
 - **Camera:** drag to orbit, scroll to zoom, right-drag to pan; buttons for an isometric, a top and a front view.
 - **Inspector:** the list of devices, each marked "asset v<n>" or "placeholder". A device is selected in the scene or in the list. The selection shows type, model, role, state, asset and placing, with buttons to turn it by 45°, make it smaller or larger (×0.25 to ×4) and reset it, and links to the PLC's screens and the catalog model.
 - **Without WebGL** the scene is replaced by a message; the list and the selection still work.
-- The view re-reads its data when the factory records an event.
+- The view re-reads its own data (the factory's overall state, the layout) when the factory records an event.
+
+**Runtime state in the scene (TASK-404).** State is drawn around a device and along its connections, never into its model:
+
+| State | Device | Text under the name |
+|---|---|---|
+| Running | green ring on the floor and green frame around the device | Running |
+| Faulted | red ring that pulses, thicker red frame | Faulted |
+| Degraded | amber ring and frame | Degraded |
+| Not answering (a started PLC that Z-Factory cannot reach) | purple ring and frame | No answer |
+| Starting, stopping | blue ring, no frame | Starting / Stopping |
+| Stopped | nothing | Stopped |
+| Not confirmed (the stream is interrupted, or has not reported the device) | amber, when the last known state was running, starting or stopping; a fault stays red; otherwise as last known | e.g. "Running · stale" |
+
+Connections follow the rule of the 2D topology: red when either end is faulted, green with dashes flowing from source to target when both ends run, plain otherwise. A connection to a device that does not answer, or whose state is not confirmed, is never shown as active. Nothing else in the scene moves; when a fault or a lost confirmation ends the flow, the scene stands still.
+
+The colours are the design system's state colours, the same as the state pills and the 2D topology. A pill in the corner of the scene says whether the state is live; the legend names the four colours. States arrive over the factory's live stream as the server works them out; the page is not reloaded for them. The device list and the inspector show the same state, and the inspector says where it comes from (simulator memory, last snapshot, last stored).
 
 Differences from wireframe 2q:
-- Devices are not coloured by state and nothing moves: runtime colouring, outlines and motion are TASK-404.
+- State is shown as a ring, a frame and a line colour around the device, not by recolouring the model: an asset is shared by all its instances and is not changed.
+- Devices themselves do not move (no spinning rotor, no travelling valve): only connections flow and faults pulse.
 - Positions are not edited here; the layout is the designer's. Only rotation and size are set in this view.
 - No "external device" styling and no saved camera positions.
 - The catalog models have no 3D assets until TASK-403 generates them; until then every device is a generic shape.
