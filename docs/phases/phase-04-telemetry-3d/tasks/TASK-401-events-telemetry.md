@@ -1,6 +1,6 @@
 # TASK-401 — Events & Live Telemetry
 
-Status: **PLANNED**
+Status: **READY**
 Linear: [ZFA-16](https://linear.app/recruit-verse/issue/ZFA-16)
 
 ## Objective

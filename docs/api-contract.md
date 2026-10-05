@@ -121,6 +121,8 @@ Services in `lib/services/simulation-service.ts`; dependencies from `getSimulati
 | reset device | `resetSimulatedDevice(deps, actor, deviceId)` | refused while a latching fault is still active |
 | force simulated input | `forceSimulatedValue(deps, actor, deviceId, value)` | sensors (number) and switches (true/false); `null` releases |
 
+| simulator screen | `getSimulationView(deps, actor, factoryId)` | every simulated device with its command and feedback signals, wired tags, faults and, while running, live values; says what blocks a start |
+
 A device signal is wired by creating a tag with `sourceDeviceInstanceId` and `sourceSignal` (`createTag`).
 
 ### `catalog` (TASK-301)
@@ -177,3 +179,18 @@ Service: `buildPlcExport(db, actor, plcId, { includeRuntime })` in `lib/services
 | `GET …/export/files/io.csv`, `tags.csv`, `devices.csv` | CSV schedules |
 
 Attachments with `Cache-Control: no-store`. 404 for an unknown file, a malformed id, a PLC of another factory or owner; 500 without detail when the redaction check stops an export.
+
+### `program`, `runtime` and `simulator` screens (TASK-305)
+Server actions. Each passes `requireActor()` first, stays on the page and returns `{ notice?, message?, diagnostics?, savedVersion? }` (`lib/plc/operation-state.ts`): what happened, or why it did not. They answer when the operation has finished; starting a runtime can take minutes.
+
+| Action | Input | Effect |
+|---|---|---|
+| `programAction(factoryId, plcId, …)` | `intent` = `check` \| `save` \| `deploy`, `sourceText` | `checkProgram`, `createProgramVersion` or `saveAndDeployProgram`; CRLF line ends are stored as LF; compiler findings come back as `diagnostics` |
+| `programVersionAction(factoryId, plcId, versionId, …)` | `operation` = `select` \| `deploy` | `selectProgramVersion` or `deployProgramVersion` for that version |
+| `runtimeAction(factoryId, plcId, …)` | `operation` = `start` \| `deploy` \| `restart` \| `stop` \| `remove` \| `refresh` | the matching function of the PLC runtime service |
+| `simulationAction(factoryId, …)` | `operation` = `start` \| `stop` | `startFactorySimulation` / `stopFactorySimulation` |
+| `deviceFaultAction(factoryId, deviceId, …)` | `operation` = `inject:<code>` \| `clear:<code>` \| `reset` | fault injection, clearing or operator reset on one simulated device; recorded as events |
+
+The first two live in `app/factories/[factoryId]/plcs/runtime-actions.ts` with `runtimeAction`, the last two in `app/factories/[factoryId]/simulator/actions.ts`. None of them writes a PLC tag: the simulator actions act on the simulated equipment, and PLC logic stays the only source of device commands.
+
+Read models: `getPlcProgramView`, `getPlcVersionsView`, `getPlcRuntimeView` and `readLivePlcState` (`lib/services/plc-runtime-view-service.ts`, see `docs/openplc-runtime.md`), and `getSimulationView`. A PLC or factory of another owner is not found.

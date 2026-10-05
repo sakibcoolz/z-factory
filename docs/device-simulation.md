@@ -154,7 +154,8 @@ Sensor sources: `CONSTANT {value}`, `RAMP {from, to, periodS}`, `SINE {min, max,
 A latching fault trips the device: it stays faulted after the cause is cleared until it is reset, by a rising edge on its `faultReset` signal from the PLC or by an operator reset. A catalog `DeviceFaultDefinition` with the same code overrides severity and latching (`MANUAL` = latching).
 
 ### Limits
-- No screen uses the simulation services yet.
+- The simulator screen of a stored factory (TASK-305) starts and stops the simulation, shows each device's command and feedback signals with the tags they are wired to, and injects, clears and resets faults. Forcing a sensor or switch value has a service but no control on the screen yet.
+- A simulation lives in the server process. After a server restart it is gone and has to be started again; the device states stored in the database still say what they were until then.
 - A motor drives one load; a second `MECHANICALLY_DRIVES` connection from the same motor refuses the start.
 - The measured signal of a sensor is named in its profile, not on the `MEASURES` connection.
 - Device faults are stored as events; they do not raise `AlarmEvent` rows yet.
