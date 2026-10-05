@@ -191,3 +191,18 @@ Assets are made on the server with `npm run assets` (`scripts/catalog-assets.ts`
 **Cost.** One generation is a mesh job (20 credits) and, unless `--no-texture`, a texture job (10), by Meshy's price list of 2026-10-05. `generate` states the expected total and does nothing without `--yes`.
 
 **Status.** The catalog screen shows per model whether it has an asset, is getting one, or failed to, and lists the versions with their state, source and the provider's last word. A failed or missing asset changes nothing else: the model is drawn as the generic shape of its category.
+
+
+## Programming and configuration capabilities
+Programming behavior is model-specific and capability-driven.
+
+Catalog models may declare capabilities such as `PROGRAMMABLE`, `IEC_61131_3`, `SCRIPTABLE`, `PARAMETER_CONFIGURABLE`, `LOCAL_CONTROL`, `MODBUS_CLIENT`, `MODBUS_SERVER`, `DATA_LOGGING` and `REMOTE_IO`.
+
+Rules:
+- PLCs commonly expose a full program workflow when their simulation/runtime adapter supports it.
+- RTUs may expose full logic, scripts, or configuration depending on the exact model.
+- VFDs/drives default to parameter/register configuration; a program editor appears only for a profile that explicitly supports programmable logic.
+- PID/temperature controllers are usually parameter/configuration driven unless the exact model says otherwise.
+- A vendor catalog profile never implies vendor firmware emulation.
+
+See `docs/programmable-devices.md`.
