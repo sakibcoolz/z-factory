@@ -42,13 +42,15 @@ PostgreSQL                 Docker Engine
 - `lib/protocols/`: Modbus abstractions: TCP client, typed register codecs and the located-address → Modbus mapping of the OpenPLC runtime; gateway and PLC-to-PLC mappings follow (Phase 05, Phase 07); server-only.
 - `lib/events/`: in-process event bus, ordered event ids and the server-sent-events encoding (ADR-0011); server-only.
 - `lib/catalog/`: normalized PLC/peripheral catalog access.
+- `lib/assets/`: catalog 3D asset files: the storage directory behind an interface and the GLB check (ADR-0012); server-only.
+- `lib/scene/`: pure rules of the 3D view: floor layout from the designer's canvas, generic shapes and footprints per category.
 - `lib/validation/`: Zod schemas for untrusted input plus pure compatibility, I/O occupancy and domain invariants.
 - `lib/export/`: engineering report/config package generation.
 - `lib/navigation/`: route builders; every screen URL is built here from Z-Factory IDs.
 - `lib/fixtures/`: static design fixtures behind the wireframe screens (TASK-104). Temporary: each fixture is replaced by its owning service/task and nothing outside `app/` and `components/` may depend on it.
 
 ## Frontend toolchain
-Next.js 16 (App Router, Turbopack) · React 19 · TypeScript 6 strict · Tailwind CSS 4 (theme tokens in `app/globals.css`) · React Flow 12 (`@xyflow/react`, designer canvas) · Prisma 7 with the `pg` driver adapter · dockerode 5 · STruC++ 0.7 (separate process) · fflate · Zod 4 · ESLint 9 with `eslint-config-next` · Prettier 3 · Vitest 5 + Testing Library (jsdom). Screens are server components; client components are limited to interactive leaves (the factory form and delete confirmation) that receive server actions as props. Versions, commands and the environment contract are fixed in `docs/bootstrap.md`.
+Next.js 16 (App Router, Turbopack) · React 19 · TypeScript 6 strict · Tailwind CSS 4 (theme tokens in `app/globals.css`) · React Flow 12 (`@xyflow/react`, designer canvas) · three.js with React Three Fiber 9 and drei 10 (3D view, loaded only on that screen) · Prisma 7 with the `pg` driver adapter · dockerode 5 · STruC++ 0.7 (separate process) · fflate · Zod 4 · ESLint 9 with `eslint-config-next` · Prettier 3 · Vitest 5 + Testing Library (jsdom). Screens are server components; client components are limited to interactive leaves (the factory form and delete confirmation) that receive server actions as props. Versions, commands and the environment contract are fixed in `docs/bootstrap.md`.
 
 ## Server-only boundary
 Modules under `lib/db/`, `lib/services/`, `lib/auth/`, `lib/docker/`, `lib/runtimes/`, `lib/protocols/`, `lib/events/` and `lib/env.ts` import `server-only`. `components/**` may not import them (ESLint `no-restricted-imports`); pages under `app/` load data on the server and pass plain props down.
@@ -190,6 +192,13 @@ Rules:
 - Asset absence/failure uses a category fallback rather than blocking the catalog or factory.
 - Meshy credentials and provider calls remain server/developer-side.
 - Process/module-specific 3D authoring is deferred beyond Phase 04.
+
+### As built (TASK-402, ADR-0012)
+- The asset reference is `Catalog3dAsset` (versions per catalog model) with `DeviceModel.active3dAssetId`; files are in `ASSET_STORAGE_DIR` and go out through `GET /assets/models/<asset id>/model.glb`.
+- `getFactoryScene` builds the scene from `getTopology`: the same devices, connections and stored states as the designer and the 2D view, each device where the designer has it. The scene adds the model's asset and the instance's rotation and scale.
+- The renderer loads each asset file once and draws a copy per instance, fitted into the space of the device's category. A model without a ready asset, or an asset that fails to load, is drawn as the category's generic shape.
+- Registration of a file (`registerCatalogAsset`) validates and versions it. Generating files with Meshy, normalizing them and the authoring workflow are TASK-403.
+- Runtime colouring, outlines and motion are TASK-404; the scene shows the stored state as text.
 
 ## Live-state boundary
 - Runtime/OpenPLC/device simulator: authoritative live state.

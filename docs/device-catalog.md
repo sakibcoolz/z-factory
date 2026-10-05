@@ -163,3 +163,6 @@ Occupancy of a specific PLC instance is checked when a device is wired (TASK-302
 
 ### Relationships
 `DRIVES` accepts a VFD, servo drive or soft starter as source and a motor or servo motor as target; a servo motor needs a servo drive. One drive drives one motor. `CONTROLS`, `COMMUNICATES_WITH`, `MEASURES` and `FEEDS_BACK_TO` are unrestricted, so controller, remote-I/O and gateway chains and direct sensor-to-PLC wiring are all representable.
+
+## 3D assets (TASK-402, ADR-0012)
+A catalog model may have a reusable 3D asset: versions of a GLB recorded as `Catalog3dAsset`, one of them active. Every factory instance of the model is drawn from the active version. A model without one is drawn as the generic shape of its category (`lib/scene/placeholders.ts`), which also gives the space an asset is fitted into. Shapes and sizes are generic; none is a vendor dimension, and an asset must not imitate a manufacturer's housing. Generating assets is TASK-403.
