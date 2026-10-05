@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import { AppShell } from "@/components/shell/app-shell";
 import { Content, EditorTabs } from "@/components/shell/editor";
 import { SideBar, SideSection, Tree } from "@/components/shell/side-bar";
@@ -7,17 +6,25 @@ import { Button } from "@/components/ui/button";
 import { KeyValue } from "@/components/ui/primitives";
 import { demoContext, isDemoPlc } from "@/lib/fixtures";
 import { devices, plc, plcExport } from "@/lib/fixtures/pump-house-demo";
+import { StoredPlcExport } from "../stored-screens";
 
 export const metadata: Metadata = { title: "PLC export" };
 
+// Stored PLCs read the database on every request.
+export const dynamic = "force-dynamic";
+
 type ExportPageProps = {
   params: Promise<{ factoryId: string; plcId: string }>;
+  searchParams?: Promise<{ runtime?: string | string[] }>;
 };
 
 /** 2p — PLC Export / Print: report preview, section picker, CSV / JSON / package. */
-export default async function ExportPage({ params }: ExportPageProps) {
+export default async function ExportPage({ params, searchParams }: ExportPageProps) {
   const { factoryId, plcId } = await params;
-  if (!isDemoPlc(factoryId, plcId)) notFound();
+  // Stored PLCs export their real configuration; the demo PLC keeps its fixture screen.
+  if (!isDemoPlc(factoryId, plcId)) {
+    return StoredPlcExport({ factoryId, plcId, runtime: (await searchParams)?.runtime === "1" });
+  }
 
   const { sections, sheet } = plcExport;
   const included = sections.filter((section) => section.included).length;

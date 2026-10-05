@@ -1,3 +1,4 @@
+import { PlcReport } from "@/components/export/plc-report";
 import { PinDetails, PinView } from "@/components/plc/pin-view";
 import { ModuleInstallForm } from "@/components/plc/module-install-form";
 import { PeripheralForm } from "@/components/plc/peripheral-form";
@@ -9,13 +10,14 @@ import { StatePill } from "@/components/ui/state-pill";
 import { signalTypeLabel } from "@/lib/catalog/format";
 import { isDomainError } from "@/lib/domain/errors";
 import type { PlcConfigurationView } from "@/lib/domain/plc-config-view";
-import { routes } from "@/lib/navigation/routes";
+import { type PlcExportFile, routes } from "@/lib/navigation/routes";
 import { modbusDisplayAddress, parseLocatedAddress, toModbusLocation } from "@/lib/protocols/modbus/located-address";
 import {
   getPeripheralOptions,
   listAddablePeripherals,
   listInstallableModules,
 } from "@/lib/services/plc-config-service";
+import { buildPlcExport } from "@/lib/services/plc-export-service";
 import {
   addPeripheralAction,
   deletePlcAction,
@@ -383,6 +385,74 @@ export async function StoredPlcIoMapping({ factoryId, plcId }: Ids) {
       ) : (
         <p className="zf-sub">No I/O yet. Install a module to get channels.</p>
       )}
+    </StoredPlcShell>
+  );
+}
+
+/** 2p — export: the report preview with its revision, and the downloads. */
+export async function StoredPlcExport({ factoryId, plcId, runtime }: Ids & { runtime: boolean }) {
+  const { actor, db, factory, view } = await loadPlc(factoryId, plcId);
+  const document = await buildPlcExport(db, actor, plcId, { includeRuntime: runtime });
+  const files: ReadonlyArray<readonly [PlcExportFile, string]> = [
+    ["plc.json", "JSON · full configuration"],
+    ["io.csv", "CSV · I/O schedule"],
+    ["tags.csv", "CSV · tags & Modbus map"],
+    ["devices.csv", "CSV · connected devices"],
+  ];
+
+  return (
+    <StoredPlcShell factory={factory} view={view} section="export">
+      <Header view={view} title="Engineering export" />
+      <div className="grid grid-cols-3 gap-2.5">
+        <div className="zf-cell">
+          <span className="zf-k">Configuration revision</span>
+          <span className="mono text-fg-strong">{document.revision.configuration}</span>
+          <span className="mono text-fg-dim">{`I/O v${document.revision.ioMapping} · Modbus v${document.revision.modbusMapping}`}</span>
+        </div>
+        <div className="zf-cell">
+          <span className="zf-k">Program</span>
+          <span className="mono">
+            {document.revision.program
+              ? `v${document.revision.program.version} · ${document.revision.program.status.toLowerCase()}`
+              : "no program yet"}
+          </span>
+          <span className="mono text-fg-dim">
+            {document.revision.deployedSnapshot
+              ? `deployed snapshot v${document.revision.deployedSnapshot.version}`
+              : "never deployed"}
+          </span>
+        </div>
+        <div className="zf-cell">
+          <span className="zf-k">Security</span>
+          <span className="mono">no secrets · no Docker details · no host paths</span>
+          <span className="mono text-fg-dim">checked before every export</span>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant="primary" href={routes.plcExportReport(factoryId, plcId, runtime)}>
+          Open printable report
+        </Button>
+        {files.map(([file, label]) => (
+          // A plain link: the route answers with a file download.
+          <a
+            key={file}
+            className="zf-btn"
+            href={`${routes.plcExportFile(factoryId, plcId, file)}${runtime && file === "plc.json" ? "?runtime=1" : ""}`}
+            download
+          >
+            {label}
+          </a>
+        ))}
+        <Button variant="ghost" href={`${routes.plcExport(factoryId, plcId)}${runtime ? "" : "?runtime=1"}`}>
+          {runtime ? "Leave out runtime status" : "Include runtime status"}
+        </Button>
+      </div>
+      <SectionRule>
+        <span className="zf-k">Report preview · 15 sections</span>
+      </SectionRule>
+      <div className="flex justify-center">
+        <PlcReport document={document} />
+      </div>
     </StoredPlcShell>
   );
 }

@@ -7,7 +7,7 @@ import { RuntimeStatePill } from "@/components/ui/state-pill";
 import type { PlcConfigurationView } from "@/lib/domain/plc-config-view";
 import { routes } from "@/lib/navigation/routes";
 
-export type StoredPlcSection = "overview" | "hardware" | "connections" | "io-mapping";
+export type StoredPlcSection = "overview" | "hardware" | "connections" | "io-mapping" | "export";
 
 type StoredPlcShellProps = {
   factory: { id: string; name: string };
@@ -21,6 +21,7 @@ const SECTION_LABELS: Record<StoredPlcSection, string> = {
   hardware: "Hardware / Pinout",
   connections: "Connections",
   "io-mapping": "I/O Mapping",
+  export: "Export",
 };
 
 /** Sections of the PLC edit view (docs/design.md → PLC edit). Those without a screen for stored PLCs yet are listed, not linked. */
@@ -56,7 +57,7 @@ function sections(view: PlcConfigurationView, active: StoredPlcSection): TreeNod
     pending("Logs"),
     pending("Versions"),
     pending("Runtime"),
-    pending("Export"),
+    { label: SECTION_LABELS.export, href: routes.plcExport(factoryId, id), active: active === "export" },
   ];
 }
 

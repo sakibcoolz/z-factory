@@ -149,6 +149,15 @@ export const plcRepository = {
   },
 
   /** Runtime states of the factory's OpenPLC devices, for the factory-level summary. */
+  /** The configuration snapshot recorded at the PLC's most recent deployment. */
+  latestConfigurationVersion(db: Db, factoryId: string, plcId: string) {
+    return db.configurationVersion.findFirst({
+      where: { factoryId, scopeType: "PLC", scopeId: plcId },
+      orderBy: { version: "desc" },
+      select: { version: true, createdAt: true },
+    });
+  },
+
   async plcRuntimeStates(db: Db, factoryId: string): Promise<RuntimeState[]> {
     const devices = await db.deviceInstance.findMany({
       where: { factoryId, runtimeType: "OPENPLC" },
