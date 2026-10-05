@@ -6,7 +6,7 @@ Status: **IN PROGRESS**
 |---|---|
 | TASK-401 Event stream & live telemetry | DONE |
 | TASK-402 Three.js factory view | DONE |
-| TASK-403 Meshy MCP catalog 3D asset generation | PLANNED |
+| TASK-403 Meshy MCP catalog 3D asset generation | IN PROGRESS |
 | TASK-404 Live 3D runtime-state visualization | DONE |
 
 ## Scope

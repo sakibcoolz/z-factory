@@ -42,7 +42,8 @@ PostgreSQL                 Docker Engine
 - `lib/protocols/`: Modbus abstractions: TCP client, typed register codecs and the located-address → Modbus mapping of the OpenPLC runtime; gateway and PLC-to-PLC mappings follow (Phase 05, Phase 07); server-only.
 - `lib/events/`: in-process event bus, ordered event ids and the server-sent-events encoding (ADR-0011); server-only.
 - `lib/catalog/`: normalized PLC/peripheral catalog access.
-- `lib/assets/`: catalog 3D asset files: the storage directory behind an interface and the GLB check (ADR-0012); server-only.
+- `lib/assets/`: catalog 3D asset files: the storage directory behind an interface and the GLB check (ADR-0012); and what authoring an asset needs: the prompt built from catalog metadata, normalization of a GLB, and the Meshy client (TASK-403); server-only.
+- `scripts/`: commands a developer runs on the server. `catalog-assets.ts` (`npm run assets`) is the only caller of the asset authoring service.
 - `lib/scene/`: pure rules of the 3D view: floor layout from the designer's canvas, generic shapes and footprints per category.
 - `lib/validation/`: Zod schemas for untrusted input plus pure compatibility, I/O occupancy and domain invariants.
 - `lib/export/`: engineering report/config package generation.
@@ -197,8 +198,28 @@ Rules:
 - The asset reference is `Catalog3dAsset` (versions per catalog model) with `DeviceModel.active3dAssetId`; files are in `ASSET_STORAGE_DIR` and go out through `GET /assets/models/<asset id>/model.glb`.
 - `getFactoryScene` builds the scene from `getTopology`: the same devices, connections and stored states as the designer and the 2D view, each device where the designer has it. The scene adds the model's asset and the instance's rotation and scale.
 - The renderer loads each asset file once and draws a copy per instance, fitted into the space of the device's category. A model without a ready asset, or an asset that fails to load, is drawn as the category's generic shape.
-- Registration of a file (`registerCatalogAsset`) validates and versions it. Generating files with Meshy, normalizing them and the authoring workflow are TASK-403.
+- Registration of a file (`registerCatalogAsset`) validates and versions it.
 - Runtime state (TASK-404): the server follows recorded events with a `devices` message on the live stream; `lib/scene/state.ts` turns each device's state, and whether the stream vouches for it, into an appearance with the same tone rules as the pills and the 2D topology (`runtimeStateTone`, `edgeTone`). The renderer draws it as overlays around the model and along connections. The loaded asset is never modified.
+
+### Authoring as built (TASK-403)
+```text
+npm run assets -- generate <model>            (a developer, on the server)
+        |
+        v
+asset-authoring-service
+  prompt from catalog metadata (generic shape; never a vendor's name)
+  -> Catalog3dAsset version, PENDING           (the model keeps rendering what it had)
+  -> Meshy text-to-3D: mesh job, then texture job   (job ids and progress on the row)
+  -> download GLB from the provider's host
+  -> check (lib/assets/glb.ts) -> normalize (lib/assets/normalize.ts) -> check again
+  -> file into ASSET_STORAGE_DIR, version READY and active
+     or version FAILED with the reason        (the model keeps rendering what it had)
+```
+- **Who calls the provider.** Only `lib/services/asset-authoring-service.ts`, and only `scripts/catalog-assets.ts` calls that. No page, route handler, server action or component imports either; a test checks the import graph. Opening the 3D view or the catalog therefore cannot generate anything or spend credits.
+- **Normalization** adds one root node to the file that carries the whole transform; geometry and textures stay byte for byte. Afterwards Y is up, the front faces +Z, one unit is one metre, the model fills the space of its device category (`lib/scene/placeholders.ts`) and stands with the middle of its footprint on the origin. The renderer applies nothing more to such a file (`scale` 1).
+- **Jobs survive interruptions.** The provider's job ids are stored on the pending version; `resume` continues from them without requesting, or paying for, anything again. A model has one pending job at a time.
+- **Other sources.** A file made in another tool, or generated through the Meshy tools of a coding session, enters through `import` with the same check and normalization. `share` gives a model the file another model of the same shape already has.
+- **Versions.** Every generation, import or share is a new version. `retire` takes a version out of use; the newest other ready version, or the category's generic shape, is rendered instead. `activate` goes back to an earlier ready version.
 
 ## Live-state boundary
 - Runtime/OpenPLC/device simulator: authoritative live state.

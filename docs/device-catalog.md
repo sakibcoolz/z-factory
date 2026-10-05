@@ -165,4 +165,29 @@ Occupancy of a specific PLC instance is checked when a device is wired (TASK-302
 `DRIVES` accepts a VFD, servo drive or soft starter as source and a motor or servo motor as target; a servo motor needs a servo drive. One drive drives one motor. `CONTROLS`, `COMMUNICATES_WITH`, `MEASURES` and `FEEDS_BACK_TO` are unrestricted, so controller, remote-I/O and gateway chains and direct sensor-to-PLC wiring are all representable.
 
 ## 3D assets (TASK-402, ADR-0012)
-A catalog model may have a reusable 3D asset: versions of a GLB recorded as `Catalog3dAsset`, one of them active. Every factory instance of the model is drawn from the active version. A model without one is drawn as the generic shape of its category (`lib/scene/placeholders.ts`), which also gives the space an asset is fitted into. Shapes and sizes are generic; none is a vendor dimension, and an asset must not imitate a manufacturer's housing. Generating assets is TASK-403.
+A catalog model may have a reusable 3D asset: versions of a GLB recorded as `Catalog3dAsset`, one of them active. Every factory instance of the model is drawn from the active version. A model without one is drawn as the generic shape of its category (`lib/scene/placeholders.ts`), which also gives the space an asset is fitted into. Shapes and sizes are generic; none is a vendor dimension, and an asset must not imitate a manufacturer's housing.
+
+### Authoring assets (TASK-403)
+Assets are made on the server with `npm run assets` (`scripts/catalog-assets.ts`), never from a screen. `<model>` is a catalog model id or its exact name.
+
+| Command | Does |
+|---|---|
+| `npm run assets -- list` | every model with its asset state; a pending or failed version with its reason and asset id |
+| `npm run assets -- prompt <model>` | the prompt, shape key and space of a model |
+| `npm run assets -- generate <model>… [--yes]` | without `--yes`: what would be requested and what it costs. With it: generates with Meshy and registers. `--missing` takes every model without an asset. Options: `--ai-model`, `--polycount`, `--no-texture`, `--hint "…"`, `--up Y\|Z`, `--yaw <degrees>`, `--no-share` |
+| `npm run assets -- resume <asset id>` | continues a pending job |
+| `npm run assets -- import <model> --file <file.glb> [--job <provider task id>]` | registers a file made elsewhere |
+| `npm run assets -- share <asset id> <model>…` | gives other models the same file |
+| `npm run assets -- activate <asset id>` / `retire <asset id> [--purge] [--reason "…"]` | goes back to an earlier version / takes a version out of use |
+
+`generate` and `resume` need `MESHY_API_KEY` in the environment (`.env`, never Git). The other commands need no key. The same steps can be done from a coding session that has the Meshy tools: `prompt`, generate with the tool, download the GLB, `import --job <task id>`.
+
+**Prompt.** Built from the model's category and, for a generic model, its name without the electrical detail (`Generic pressure transmitter, 4–20 mA` → a pressure transmitter). A vendor record contributes only its category and, for a PLC, whether it is compact or modular: a compact PLC is a rail-mounted controller module with terminal rows under covers, a small display, a serial port and a terminal block, as such devices are generally built; a modular PLC is a two-door control cabinet. Each form describes how a kind of device is really built (the heat sink and keypad of a drive, the diaphragm actuator and positioner of a control valve) without the features of any one product. Manufacturer, family, model name and order number are never part of a prompt, and words an author adds with `--hint` are refused when they name a manufacturer or a product of the catalog. Every prompt asks for an unbranded object without logo, text, label or nameplate.
+
+**Shapes.** Models that would get the same prompt have the same shape key and share one generated file (the two generic VFDs, the two pressure transmitters, the compact PLCs, the modular PLCs): 30 models need 26 generations. Each model still has its own asset version and file.
+
+**Normalization.** Every file is made to stand the same way before it is stored: Y up, front to +Z, metres, scaled without distortion into the space of its category, origin under the middle of its footprint. A file lying along the wrong horizontal axis is turned a quarter when it then comes out at least a quarter larger; a model about as wide as it is deep keeps the front it came with. Front and back cannot be told apart, so `--yaw 180` is for the author. `--up Z` is for a file exported without the glTF axis conversion. A model with more than 200,000 triangles is refused.
+
+**Cost.** One generation is a mesh job (20 credits) and, unless `--no-texture`, a texture job (10), by Meshy's price list of 2026-10-05. `generate` states the expected total and does nothing without `--yes`.
+
+**Status.** The catalog screen shows per model whether it has an asset, is getting one, or failed to, and lists the versions with their state, source and the provider's last word. A failed or missing asset changes nothing else: the model is drawn as the generic shape of its category.

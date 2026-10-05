@@ -48,6 +48,7 @@ prisma/schema.prisma    database schema
 prisma/migrations/      committed migrations
 prisma/seed.ts          generic category seed (never vendor facts)
 prisma.config.ts        Prisma CLI configuration (schema, migrations, datasource)
+scripts/                commands run on the server by a developer (asset authoring)
 test/                   global test setup, stubs and integration tests
 docs/                   engineering documentation
 ```
@@ -57,6 +58,7 @@ docs/                   engineering documentation
 - `components/**` may not import those paths; ESLint enforces it (`no-restricted-imports`).
 - Client components are opt-in (`"use client"`) and receive plain serializable props from server components.
 - Vitest aliases `server-only` to an empty module so server modules stay testable.
+- A script that uses server modules runs with `tsx --conditions=react-server`, which makes `server-only` importable outside Next.js (`npm run assets`).
 
 ## Environment variable contract
 All variables are read through `lib/env.ts`, which validates them with Zod and fails fast with the variable name (never the value). `.env.example` lists every variable; real `.env*` files are git-ignored.
@@ -73,6 +75,7 @@ All variables are read through `lib/env.ts`, which validates them with Zod and f
 | `SIMULATION_TICK_MS` | no | `lib/services/runtime-deps.ts` | Device-simulator cycle time in milliseconds, 20–5000 (default `100`) |
 | `SIMULATION_SNAPSHOT_MS` | no | `lib/services/runtime-deps.ts` | How often the simulator stores a state snapshot per device, 1000–3600000 ms (default `10000`) |
 | `ASSET_STORAGE_DIR` | no | `lib/assets/storage.ts` | Directory the catalog's 3D asset files are stored in (default `./data/assets`, relative to the server's working directory; ignored by Git). Back it up with the database (ADR-0012) |
+| `MESHY_API_KEY` | no | `scripts/catalog-assets.ts` | Key of the Meshy account that generates catalog 3D assets (`npm run assets -- generate`, `resume`). Spends credits. The application itself never reads or sends it; it must never be prefixed `NEXT_PUBLIC_` |
 | `TAG_POLL_MS` | no | `lib/services/runtime-deps.ts` | How often the tags of a running PLC are read for live values, 100–60000 ms (default `500`) |
 | `TELEMETRY_MIN_INTERVAL_MS` | no | `lib/services/runtime-deps.ts` | A tag is stored as telemetry at most this often, 100–3600000 ms (default `1000`) |
 | `TELEMETRY_MAX_INTERVAL_MS` | no | `lib/services/runtime-deps.ts` | A tag is stored at least this often even when unchanged, 1000–86400000 ms (default `60000`) |
@@ -98,6 +101,7 @@ A task that introduces a variable adds it to this table, to `.env.example` and t
 | `npm run db:migrate` | create/apply migrations in development |
 | `npm run db:deploy` | apply committed migrations (CI, production) |
 | `npm run db:seed` | load the device categories and the shipped catalog (verified vendor records, generic simulated models); safe to repeat |
+| `npm run assets -- <command>` | author catalog 3D assets: `list`, `prompt`, `generate`, `resume`, `import`, `share`, `activate`, `retire` (`docs/device-catalog.md` → Authoring assets). `generate` spends Meshy credits and asks for `--yes` |
 
 ## Docker development prerequisites
 - Docker Engine with the Compose plugin; the developer's user can reach the Docker daemon.

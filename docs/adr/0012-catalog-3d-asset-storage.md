@@ -26,3 +26,9 @@ Three places were possible:
 - **Nothing is deleted yet.** Earlier versions accumulate. Retiring and removing versions belongs to the authoring task (TASK-403).
 - **Licensing stays with the author.** Only generic shapes and assets the owner may store belong here. An asset that imitates a manufacturer's housing, or a vendor's CAD file, does not (`docs/references/plc-source-policy.md`).
 - **Generation is not part of this decision.** How assets are produced, normalized and approved is TASK-403; it writes through the same registration.
+
+## Follow-up (TASK-403, 2026-10-05)
+The decision stands. TASK-403 added what this record left to it, without changing where records and files live:
+- **Retiring and removing.** `retireCatalogAsset` marks a version `RETIRED`; it is then neither rendered nor served, and the newest other ready version (or the category's generic shape) takes its place. Its file stays unless the author asks for it to be deleted (`--purge`); the record always stays.
+- **Normalized files.** Files that come through the authoring path are stored already normalized (metres, upright, standing on their origin). The stored file is still written once and never changed.
+- **Jobs.** A version exists as `PENDING` while it is generated and as `FAILED` when that did not work; neither has a file, and neither changes what is rendered.
