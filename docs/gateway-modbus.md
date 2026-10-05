@@ -177,7 +177,7 @@ A write that is accepted means the PLC took the value. What the device then does
 
 ### Network prerequisites
 1. **An address the device can reach.** An endpoint listens on one of the addresses in `RUNTIME_BIND_ADDRESSES`. The default is `127.0.0.1` only, which no other machine can reach. Add the LAN address of the Docker host, e.g. `RUNTIME_BIND_ADDRESSES=127.0.0.1,192.168.0.103`, and restart the server. `127.0.0.1` must stay in the list. Do not use `0.0.0.0`: an endpoint is bound to one address on purpose.
-2. **A port.** Any free port of `RUNTIME_PORT_RANGE` (default 15000–15999); the screen suggests one. Ports below 1024 are not offered: the server does not run as root. A device that can only use port 502 needs a port forward on the host or router from 502 to the endpoint's port.
+2. **A port.** Any free port of `RUNTIME_PORT_RANGE` (default 15000–15999); the screen suggests the highest free one, because PLC runtimes are given ports from the bottom of the range. A gateway connection's port is reserved: no PLC runtime is given it. Ports below 1024 are not offered: the server does not run as root. A device that can only use port 502 needs a port forward on the host or router from 502 to the endpoint's port.
 3. **The host firewall.** Allow TCP to that port from the device's address only, for example with firewalld: `firewall-cmd --add-rich-rule='rule family=ipv4 source address=192.168.0.50/32 port port=15000 protocol=tcp accept'` (add `--permanent` to keep it). With ufw: `ufw allow from 192.168.0.50 to any port 15000 proto tcp`. Do not open the range to the whole network.
 4. **The same network.** The device and the host must be able to route to each other; a guest Wi-Fi or client-isolation setting on an access point prevents that.
 5. **Nothing else is needed, and nothing else should be opened.** The device needs no access to the PLC's own Modbus port, to the runtime's management port, to the web interface or to Docker. Keep `DOCKER_HOST` and the PLC ports on loopback.
@@ -199,8 +199,11 @@ client.close()
 
 The first lines succeed only while the PLC runtime is started; otherwise they answer exception 0B. The last line is always refused.
 
+`scripts/edge-client.mjs` does the same from Node.js with the register map file and no other dependency: `node scripts/edge-client.mjs map.json read`, `write <name> <value>`, `watch [seconds]` (`docs/demo-runbook.md`).
+
 ### Limits
-- Endpoints live in the server process and are opened from the stored connections when the factory's Gateways screen is read or a gateway is configured. After a server restart nothing listens until then.
+- Endpoints live in the server process and are opened from the stored connections when the factory's Gateways screen is read, a gateway is configured or the factory is started. After a server restart nothing listens until then.
+- The gateway device shows the state of its endpoints in the designer, the topology and the 3D view: running while they are open, faulted when one could not be opened.
 - Modbus TCP does not authenticate a client. Who may connect is decided by the bind address and the firewall.
 - Up to 4 connections per endpoint; a connection that is silent for 2 minutes is closed. Every read is forwarded to the PLC as one request.
 - A device that opens a connection per request is recorded as one visit: `GATEWAY_CLIENT_CONNECTED` when it first appears and `GATEWAY_CLIENT_DISCONNECTED` after 15 seconds without a connection.

@@ -43,6 +43,7 @@ lib/runtimes/           OpenPLC and device-simulator adapters (server-only, Phas
 lib/protocols/          Modbus codecs and mappings (Phase 02)
 lib/events/             event bus and SSE transport (Phase 04)
 lib/catalog/            catalog access (Phase 03)
+lib/demo/               the MVP demo factory as data and program text (Phase 05)
 lib/export/             engineering export (Phase 03)
 prisma/schema.prisma    database schema
 prisma/migrations/      committed migrations

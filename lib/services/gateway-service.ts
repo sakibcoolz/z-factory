@@ -111,21 +111,14 @@ async function loadConnection(deps: GatewayDeps, actor: Actor, connectionId: str
   return connection;
 }
 
-/** Every host port something is published or configured on, except one gateway connection. */
-async function takenPorts(deps: GatewayDeps, exceptConnectionId?: string): Promise<PublishedPort[]> {
-  const [published, reserved, endpoints] = await Promise.all([
+/** Every host port something is published on or reserved for: containers, PLC runtimes, gateway endpoints. */
+async function takenPorts(deps: GatewayDeps): Promise<PublishedPort[]> {
+  const [published, reserved] = await Promise.all([
     // Without the engine nothing is published by a container; the listener itself reports a port in use.
     listPublishedPorts(deps.docker).catch(() => []),
     plcRepository.listReservedHostPorts(deps.db, NO_DEVICE),
-    gatewayRepository.listEndpoints(deps.db),
   ]);
-  return [
-    ...published,
-    ...reserved,
-    ...endpoints
-      .filter((endpoint) => endpoint.id !== exceptConnectionId)
-      .map((endpoint) => ({ hostPort: endpoint.port, bindAddress: endpoint.host })),
-  ];
+  return [...published, ...reserved];
 }
 
 /** How long a refusal of the same request is not recorded again: a polling gateway repeats itself. */
@@ -268,8 +261,9 @@ export async function getGatewaysView(deps: GatewayDeps, actor: Actor, factoryId
   ]);
   const { portRange, bindAddresses } = deps.policy;
   const used = new Set(taken.map((port) => port.hostPort));
+  // From the top of the range: PLC runtimes are given ports from the bottom.
   let suggestedPort: number | null = null;
-  for (let port = portRange.min; port <= portRange.max && suggestedPort === null; port += 1) {
+  for (let port = portRange.max; port >= portRange.min && suggestedPort === null; port -= 1) {
     if (!used.has(port)) suggestedPort = port;
   }
 

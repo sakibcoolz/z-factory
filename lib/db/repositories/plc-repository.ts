@@ -90,7 +90,7 @@ export const plcRepository = {
     db: Db,
     exceptDeviceId: string,
   ): Promise<Array<{ hostPort: number; bindAddress: string }>> {
-    const [ports, profiles] = await Promise.all([
+    const [ports, profiles, gatewayEndpoints] = await Promise.all([
       db.runtimePort.findMany({
         where: { deviceInstanceId: { not: exceptDeviceId }, hostPort: { not: null } },
         select: { hostPort: true, bindAddress: true },
@@ -99,12 +99,15 @@ export const plcRepository = {
         where: { deviceInstanceId: { not: exceptDeviceId }, apiHostPort: { not: null } },
         select: { apiHostPort: true },
       }),
+      // A gateway endpoint listens on a host port too (ADR-0013): a PLC must not be given it.
+      db.gatewayPlcConnection.findMany({ select: { host: true, port: true } }),
     ]);
     return [
       ...ports.flatMap((port) => (port.hostPort ? [{ hostPort: port.hostPort, bindAddress: port.bindAddress }] : [])),
       ...profiles.flatMap((profile) =>
         profile.apiHostPort ? [{ hostPort: profile.apiHostPort, bindAddress: "127.0.0.1" }] : [],
       ),
+      ...gatewayEndpoints.map((endpoint) => ({ hostPort: endpoint.port, bindAddress: endpoint.host })),
     ];
   },
 

@@ -98,11 +98,6 @@ export const gatewayRepository = {
     return db.gatewayPlcConnection.findMany({ where: { gateway: { factoryId } }, include: connectionInclude });
   },
 
-  /** Every address a gateway endpoint is configured on, in any factory: they share the host. */
-  listEndpoints(db: Db): Promise<Array<{ id: string; host: string; port: number }>> {
-    return db.gatewayPlcConnection.findMany({ select: { id: true, host: true, port: true } });
-  },
-
   setEnabled(db: Db, connectionId: string, enabled: boolean) {
     return db.gatewayPlcConnection.update({ where: { id: connectionId }, data: { enabled } });
   },
@@ -133,7 +128,11 @@ export const gatewayRepository = {
     return db.gatewayTagMapping.deleteMany({ where: { id: mappingId, gatewayPlcConnectionId: connectionId } });
   },
 
+  /** The state of a gateway and of the device that stands for it: every view of the factory shows the same. */
   setGatewayStatus(db: Db, gatewayId: string, status: "RUNNING" | "STOPPED" | "FAULTED") {
-    return db.gateway.update({ where: { id: gatewayId }, data: { status } });
+    return db.gateway.update({
+      where: { id: gatewayId },
+      data: { status, deviceInstance: { update: { runtimeStatus: status } } },
+    });
   },
 };

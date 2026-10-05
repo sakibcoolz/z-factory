@@ -211,7 +211,7 @@ For a stored PLC:
 - **Versions** (`plcs/[plcId]/versions`): every program version with status (draft, compiled, deployed, failed), which one is selected for the next start, and per version "Use for next start" and "Deploy now". Below, the configuration snapshot recorded at each deployment.
 - **Runtime** (`plcs/[plcId]/runtime`): state read from the runtime when the page is opened, program, Modbus TCP endpoint, runtime version and image, and the operations Start, Deploy, Restart, Stop, Remove (asks first) and Refresh state. The last runtime events of the PLC are listed, failures included. The page re-reads itself every 5 seconds while a runtime exists.
 - **Simulator** (`/factories/[factoryId]/simulator`, factory-wide): start and stop the device simulation; one card per simulated device with its command/setpoint signals (from PLC logic) and its feedback signals (from the simulator) kept apart, each with the tag it is wired to; per device, inject and clear its faults and reset it. Live values refresh every 2 seconds.
-- **Factory runtime** (`/factories/[factoryId]/runtime`): the factory's PLCs with their last stored state, the simulation state and the Docker host status, linking to each PLC's Runtime screen.
+- **Factory runtime** (`/factories/[factoryId]/runtime`): the factory's PLCs with their last stored state, the simulation state and the Docker host status, linking to each PLC's Runtime screen. Since TASK-502 it has **Start factory** (every PLC runtime, then the device simulation, then the gateway endpoints) and **Stop factory** (asks first; simulation, then PLCs).
 
 Feedback for slow operations: while an operation runs, its button names it and counts the seconds, the other buttons are disabled and a line says why it can take minutes (image download, program build). The result or the reason for a failure appears under the buttons.
 
@@ -220,7 +220,7 @@ Differences from wireframes 2i, 2k and 2n:
 - Versions are a screen of their own. Rollback is "Deploy now" on an earlier version.
 - The runtime screen is per PLC and shows the service name, never a container id; no CPU/memory figures and no container log viewer.
 - The simulator shows every device as a card instead of one selected device, has no trend sparklines, and does not force sensor values (the service supports it; no control yet).
-- No "Start factory": each PLC is started from its own Runtime screen and the simulation from the Simulator.
+- "Start factory" and "Stop factory" are on the factory's Runtime screen (TASK-502), not on the simulator; a single PLC is still started from its own Runtime screen and the simulation alone from the Simulator.
 
 ### PLC export as built (TASK-304)
 For a stored PLC the export screen shows the configuration revision, the program and mapping versions, download buttons (JSON, three CSV schedules), a switch to include the stored runtime status, and a preview of the whole report. "Open printable report" shows the report alone on a paper-like page with a print button.
@@ -255,7 +255,7 @@ The topology screen (`/factories/[factoryId]/topology`) shows the same canvas re
 
 Differences from wireframes 2d and 2o:
 - No Save or Validate button: every change is validated and saved when made.
-- No Start/Stop factory and no Export on the toolbar: a PLC is started from its Runtime screen and the simulation from the Simulator (TASK-305); export is on the PLC (TASK-304).
+- No Start/Stop factory and no Export on the toolbar: the factory is started from its Runtime screen (TASK-502), a single PLC from its own Runtime screen and the simulation from the Simulator (TASK-305); export is on the PLC (TASK-304).
 - No zones, layers or manual edge routing. Removing a wired edge disconnects the device from the PLC as a whole.
 - The state overlay shows the stored state and is refreshed when the factory records an event (TASK-401).
 
@@ -297,7 +297,7 @@ A catalog model's screen has a **3D asset** section: a pill with what is rendere
 ### Create Factory differences from wireframe 2c
 - The network name is `zfactory_<id>` and is assigned on create, so it is shown but not editable.
 - No published-port field: published ports belong to runtime ports of devices (Phase 02).
-- No template picker: the demo template needs the verified catalog (TASK-301) and JSON import has no task yet. Factories start empty.
+- No template picker. One template exists since TASK-502: "Create pump station demo" below the form builds the MVP demo factory (`docs/demo-runbook.md`) and opens its Runtime screen. JSON import has no task yet.
 - The submit button creates the factory and opens its overview; the designer for stored factories arrives with TASK-303.
 - Host status shows only what is real today: PostgreSQL connected; Docker Engine and OpenPLC are marked "phase 02".
 
