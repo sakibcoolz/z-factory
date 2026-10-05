@@ -1,6 +1,7 @@
 # TASK-308 — Capability-Driven Programmable Device UI & Runtime
 
 Status: **PLANNED**
+Linear: [ZFA-35](https://linear.app/recruit-verse/issue/ZFA-35)
 
 ## User stories
 - As a user, when I open a programmable PLC or RTU I can write, version, validate and deploy its supported logic from the Z-Factory UI.
