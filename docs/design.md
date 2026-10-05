@@ -126,8 +126,8 @@ Source: Claude Design project `2fc6a75c-7a5d-4a8c-a17c-17afa2d37f6c`, file `Z-Fa
 | — | Edit factory | `/factories/[factoryId]/edit` (database) |
 | 2d | Factory Designer | `/factories/[factoryId]/designer` |
 | 2e | Device Catalog | `/catalog` (`?model=`, `?type=`) |
-| 2f | Device Configuration — compact | `/factories/[factoryId]/devices/new/compact` |
-| 2g | Device Configuration — modular | `/factories/[factoryId]/devices/new/modular` |
+| 2f | Device Configuration — compact | `/factories/[factoryId]/devices/new/compact`, then `/plcs/[plcId]/hardware` |
+| 2g | Device Configuration — modular | `/factories/[factoryId]/devices/new/modular`, then `/plcs/[plcId]/hardware` |
 | 2h | PLC Details / Edit | `/factories/[factoryId]/plcs/[plcId]` |
 | 2i | PLC Program & Versions | `/factories/[factoryId]/plcs/[plcId]/program` |
 | 2j | PLC I/O Mapping / Pinout | `/factories/[factoryId]/plcs/[plcId]/io-mapping` |
@@ -139,7 +139,22 @@ Source: Claude Design project `2fc6a75c-7a5d-4a8c-a17c-17afa2d37f6c`, file `Z-Fa
 | 2p | PLC Export / Print | `/factories/[factoryId]/plcs/[plcId]/export` |
 | 2q | 3D Factory View | `/factories/[factoryId]/view-3d` |
 
-Screens 2a–2c and the factory overview/edit read the database (TASK-103), and so does 2e, the device catalog (TASK-301). Screens 2d and 2f–2q still read fixtures: `factory_001` (Pump House Demo, PLC `dev_001`) and, for 2g only, `factory_003`; they are reachable from the "Design fixtures" section of the factory explorer. Unknown IDs return the not-found screen.
+Screens 2a–2c and the factory overview/edit read the database (TASK-103), and so does 2e, the device catalog (TASK-301). For stored factories 2f, 2g, 2h and 2j read the database too (TASK-302), together with the PLC connections screen `/factories/[factoryId]/plcs/[plcId]/connections`. For the design fixtures, screens 2d and 2f–2q still read fixtures: `factory_001` (Pump House Demo, PLC `dev_001`) and, for 2g only, `factory_003`; they are reachable from the "Design fixtures" section of the factory explorer. Unknown IDs return the not-found screen.
+
+### PLC configuration as built (TASK-302)
+For a stored factory the wireframe's single wizard is split into steps that each save:
+
+1. **Create** (`devices/new/compact|modular`): catalog model, instance name, process role. Reached from the factory overview, which lists the factory's devices.
+2. **Hardware** (`plcs/[plcId]/hardware`): pin view drawn from the PLC's I/O points; selecting a pin (`?pin=`) shows its signal, program address, vendor address, tag and device. A modular PLC also shows its rack, its installed modules, and a form that offers only compatible modules and free slots.
+3. **Connections** (`plcs/[plcId]/connections`): connected devices with terminal → channel → address → tag, and the catalog peripherals the PLC still has room for. "Add" (`?add=`) opens a form with a name and, per terminal, the free compatible channels.
+4. **I/O mapping** (`plcs/[plcId]/io-mapping`): every channel with program address, Modbus address, tag and device.
+
+Differences from wireframes 2f, 2g, 2h and 2j:
+- No draft state and no "Next" step: each step is saved when submitted.
+- The channel panel is read-only; wiring is done from Connections, not by editing a pin.
+- Creating and connecting a peripheral is one action. Removing it deletes the device.
+- Section list of the PLC: Overview, Hardware, Connections and I/O Mapping are wired. Program, Simulator, Live Tags, Events, Logs, Versions, Runtime and Export are listed but not wired for stored PLCs yet (TASK-305 proposed for Program, Versions, Runtime and Simulator; TASK-401 for Events and Live Tags; TASK-304 for Export).
+- The Pump House Demo and the modular bench keep their fixture screens.
 
 ### Device Catalog differences from wireframe 2e
 - No "Use in factory" button: the catalog has no factory context; devices are created from the designer (TASK-302).

@@ -60,7 +60,7 @@ Compact PLC channel definition.
 ### RackProfile / ModuleModel / ModuleCompatibility / ModuleChannel
 Used for modular PLC rack/slot/module/channel modeling.
 
-- `RackProfile`: `id, familyId, name, slotCount, notes` — a rack/backplane a modular family can be built on.
+- `RackProfile`: `id, familyId, name, slotCount, notes` — a rack/backplane a modular family can be built on. `slotCount` is the number of slots for modules next to the CPU; the CPU takes none of them.
 - `ModuleModel`: `id, familyId, modelName, sku, moduleType, powerConsumption, verificationStatus, sourceUrl, sourceTitle, sourceRevision, sourceRetrievedAt, verifiedAt, metadataJson`. `moduleType = POWER_SUPPLY | DIGITAL_INPUT | DIGITAL_OUTPUT | DIGITAL_MIXED | ANALOG_INPUT | ANALOG_OUTPUT | ANALOG_MIXED | COMMUNICATION | OTHER`.
 - `ModuleCompatibility`: `id, moduleModelId, cpuModelId, minSlot, maxSlot, notes` — the module may be installed with that modular CPU model, optionally only in a slot range. Unique: `(moduleModelId, cpuModelId)`.
 - `ModuleChannel`: `id, moduleModelId, ioType, channelIndex, terminalLabel, signalType, acceptedSignalTypes, electricalLimitsJson`. Unique: `(moduleModelId, ioType, channelIndex)`.
@@ -95,11 +95,15 @@ PLC-specific instance configuration.
 Selected rack and module placement for modular PLCs.
 
 - `FactoryRack`: `id, plcInstanceId, rackProfileId, rackIndex`. Unique: `(plcInstanceId, rackIndex)`.
-- `FactoryModule`: `id, factoryRackId, moduleModelId, slotIndex`. Unique: `(factoryRackId, slotIndex)` — one module per slot.
+- `FactoryModule`: `id, factoryRackId, moduleModelId, slotIndex`. Unique: `(factoryRackId, slotIndex)` — one module per slot. Slots are numbered from 1 to the rack's `slotCount`.
+
+A PLC gets its rack (index 0, the first rack profile of its family) when it is created.
 
 ### PlcIoPoint
 Resolved available/occupied PLC endpoint.
 `id, plcInstanceId, sourceType, builtInChannelId, factoryModuleId, moduleChannelId, logicalAddress, status`
+
+`logicalAddress` is the address a program running in Z-Factory uses, not the vendor's: outputs in `%QX` / `%QW`, inputs in `%MX` / `%MW` (ADR-0010; see `docs/openplc-runtime.md` → I/O point addresses). The vendor's own terminal and address stay on the catalog channel. A compact PLC gets one point per built-in channel when it is created; a module's points are created when it is installed and deleted with it.
 
 `sourceType = BUILT_IN | MODULE`, `status = FREE | OCCUPIED | RESERVED | DISABLED`. Unique: `(plcInstanceId, logicalAddress)`, `(plcInstanceId, builtInChannelId)`, `(factoryModuleId, moduleChannelId)`.
 

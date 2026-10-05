@@ -32,6 +32,14 @@ export const tagRepository = {
     });
   },
 
+  /** The PLC's I/O point at a located address, if that address belongs to one. */
+  findIoPointByAddress(db: Db, plcInstanceId: string, logicalAddress: string) {
+    return db.plcIoPoint.findUnique({
+      where: { plcInstanceId_logicalAddress: { plcInstanceId, logicalAddress } },
+      select: { id: true },
+    });
+  },
+
   /** The tag already wired to a device signal, if any. */
   findBySignal(db: Db, sourceDeviceInstanceId: string, sourceSignal: string): Promise<Tag | null> {
     return db.tag.findFirst({ where: { sourceDeviceInstanceId, sourceSignal } });

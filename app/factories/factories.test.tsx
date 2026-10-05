@@ -20,10 +20,12 @@ const service = vi.hoisted(() => ({
   updateFactory: vi.fn(),
   deleteFactory: vi.fn(),
 }));
+const plcConfig = vi.hoisted(() => ({ listFactoryDevices: vi.fn() }));
 const actor = vi.hoisted(() => ({ requireActor: vi.fn() }));
 const dockerStatus = vi.hoisted(() => ({ getDockerEngineStatus: vi.fn() }));
 
 vi.mock("@/lib/services/factory-service", () => service);
+vi.mock("@/lib/services/plc-config-service", () => plcConfig);
 vi.mock("@/lib/auth/actor", () => actor);
 vi.mock("@/lib/db/client", () => ({ getDb: () => ({}) }));
 vi.mock("@/lib/docker/client", () => ({ getDocker: () => ({}) }));
@@ -212,12 +214,59 @@ describe("factory view and edit", () => {
   const params = Promise.resolve({ factoryId: FACTORY_ID });
 
   it("shows configuration and last persisted runtime state separately", async () => {
+    plcConfig.listFactoryDevices.mockResolvedValue([]);
     render(await FactoryPage({ params }));
 
     expect(screen.getByRole("heading", { name: "Pump House" })).toBeInTheDocument();
     expect(screen.getByText("configuration draft")).toBeInTheDocument();
     expect(screen.getByText("6 devices · 1 PLCs")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Edit" })).toHaveAttribute("href", `/factories/${FACTORY_ID}/edit`);
+    expect(screen.getByText("No devices yet. Start with a PLC, then connect peripherals to it.")).toBeInTheDocument();
+  });
+
+  it("lists the factory's devices, links PLCs to their screens and offers both PLC paths", async () => {
+    const device = { role: null, manufacturer: "Generic / simulated", runtimeStatus: "STOPPED" };
+    plcConfig.listFactoryDevices.mockResolvedValue([
+      {
+        ...device,
+        id: "01a10a0d-e48d-744e-ba58-dfb344f7e883",
+        name: "PLC-01",
+        role: "Pump station",
+        manufacturer: "Siemens",
+        modelName: "CPU 1214C DC/DC/DC",
+        categoryCode: "PLC",
+        categoryName: "PLC / programmable controller",
+        architectureType: "COMPACT",
+      },
+      {
+        ...device,
+        id: "01a10a0d-e48d-744e-ba58-dfb344f7e884",
+        name: "XV-101",
+        modelName: "Generic on/off valve, 24 V DC",
+        categoryCode: "VALVE",
+        categoryName: "Valve",
+        architectureType: null,
+      },
+    ]);
+    render(await FactoryPage({ params }));
+
+    expect(screen.getByRole("link", { name: "PLC-01" })).toHaveAttribute(
+      "href",
+      `/factories/${FACTORY_ID}/plcs/01a10a0d-e48d-744e-ba58-dfb344f7e883`,
+    );
+    expect(screen.getByText("PLC · compact")).toBeInTheDocument();
+    expect(screen.getByText("Pump station")).toBeInTheDocument();
+    // A peripheral is listed but has no screen of its own.
+    expect(screen.getByText("XV-101")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "XV-101" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Add compact PLC" })).toHaveAttribute(
+      "href",
+      `/factories/${FACTORY_ID}/devices/new/compact`,
+    );
+    expect(screen.getByRole("link", { name: "Add modular PLC" })).toHaveAttribute(
+      "href",
+      `/factories/${FACTORY_ID}/devices/new/modular`,
+    );
   });
 
   it("answers unknown, foreign and malformed ids with not-found", async () => {

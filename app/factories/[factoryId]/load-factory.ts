@@ -28,7 +28,7 @@ export async function loadFactory(factoryId: string) {
       listFactories(db, actor),
       getDockerEngineStatus(getDocker()),
     ]);
-    return { factory, factories, docker };
+    return { factory, factories, docker, actor };
   } catch (error) {
     if (isDomainError(error, "NOT_FOUND")) notFound();
     throw error;

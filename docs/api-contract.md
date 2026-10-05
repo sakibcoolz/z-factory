@@ -133,3 +133,22 @@ Services in `lib/services/catalog-service.ts`. The catalog is shared reference d
 | peripherals of a PLC | `listCompatiblePeripherals(db, plcModelId, { compatibleOnly })` | per peripheral model: the PLC point class each terminal needs, whether it fits (built-in channels or installable modules), and shared protocols |
 
 Writing the catalog is not an API: `ingestCatalog(db, loadCatalog())` runs from `npm run db:seed`.
+
+### `plc configuration` (TASK-302)
+Services in `lib/services/plc-config-service.ts`; server actions in `app/factories/[factoryId]/plcs/actions.ts`. Every function takes the `Actor`; a PLC of another owner is not found.
+
+| Operation | Entry point | Rules |
+|---|---|---|
+| PLC models for the form | `listPlcModels(db, architecture)` | catalog PLC models of one architecture |
+| create PLC | `createPlc(db, actor, { factoryId, deviceModelId, name, role })` | name unique in the factory; compact gets built-in I/O points, modular gets its rack |
+| delete PLC | `deletePlc(db, actor, plcId)` | refused while a runtime container exists |
+| configuration | `getPlcConfiguration(db, actor, plcId)` | hardware, rack and slots, every I/O point with device and tag, peripherals |
+| installable modules | `listInstallableModules(db, actor, plcId)` | only modules the catalog allows with the CPU |
+| install / remove module | `installModule(…, { moduleModelId, slotIndex })`, `removeModule(…, moduleId)` | compatibility, slot range 1…slot count, slot free; a module in use cannot be removed |
+| addable peripherals | `listAddablePeripherals(db, actor, plcId)` | each catalog peripheral with whether the PLC has room now, and why not |
+| options for one model | `getPeripheralOptions(db, actor, plcId, deviceModelId)` | suggested name; per terminal the free compatible channels |
+| add peripheral | `addPeripheral(…, { deviceModelId, name, role, assignments })` | creates the device, wires each terminal, creates tags; all or nothing |
+| remove peripheral | `removePeripheral(db, actor, plcId, deviceId)` | frees channels, deletes their tags and the device |
+| devices of a factory | `listFactoryDevices(db, actor, factoryId)` | for the factory overview |
+
+Wiring creates a `DeviceConnection` per terminal (`FEEDS_BACK_TO` device → PLC, `CONTROLS` PLC → device) and a tag bound to the I/O point: BOOL or INT16, read-only for gateways, with the device and, for simulated devices, the simulator signal. A protocol device gets one `COMMUNICATES_WITH` connection between ports.
