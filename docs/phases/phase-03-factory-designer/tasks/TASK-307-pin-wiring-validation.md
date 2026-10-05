@@ -1,6 +1,7 @@
 # TASK-307 — Pin-to-Pin Wiring Editor & Validation
 
 Status: **PLANNED**
+Linear: [ZFA-34](https://linear.app/recruit-verse/issue/ZFA-34)
 
 ## Objective
 Replace the PLC-centric compact mapping workflow with one authoritative pin-to-pin wiring workflow in the Phase 03 Factory Designer.
