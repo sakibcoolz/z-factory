@@ -80,3 +80,11 @@ This file is mandatory reading for Claude Code, GitHub Copilot, OpenAI Codex, an
 
 ## Definition of Done
 A task is Done only when code, tests, docs, task status, Linear issue status, and Graphify impact/refresh requirements are complete.
+
+
+## Programmable-device rules
+- Programmability is capability-driven, never inferred only from category or device name.
+- PLC and RTU may share the program/version framework only when the exact model/runtime capability supports it.
+- VFDs, PID controllers and temperature controllers default to parameter/configuration flows unless their catalog profile explicitly supports logic.
+- Never imply vendor firmware is running when Z-Factory is using OpenPLC, a generic simulator, or another adapter.
+- TASK-307 canonical endpoint wiring is the single writable mapping source; program/runtime/tag views consume it rather than creating competing mappings.
