@@ -1,6 +1,6 @@
 # TASK-304 — PLC Engineering Export
 
-Status: **PLANNED**
+Status: **READY**
 Linear: [ZFA-15](https://linear.app/recruit-verse/issue/ZFA-15)
 
 ## Goal

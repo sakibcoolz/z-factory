@@ -139,7 +139,36 @@ Source: Claude Design project `2fc6a75c-7a5d-4a8c-a17c-17afa2d37f6c`, file `Z-Fa
 | 2p | PLC Export / Print | `/factories/[factoryId]/plcs/[plcId]/export` |
 | 2q | 3D Factory View | `/factories/[factoryId]/view-3d` |
 
-Screens 2a–2c and the factory overview/edit read the database (TASK-103), and so does 2e, the device catalog (TASK-301). For stored factories 2f, 2g, 2h and 2j read the database too (TASK-302), together with the PLC connections screen `/factories/[factoryId]/plcs/[plcId]/connections`. For the design fixtures, screens 2d and 2f–2q still read fixtures: `factory_001` (Pump House Demo, PLC `dev_001`) and, for 2g only, `factory_003`; they are reachable from the "Design fixtures" section of the factory explorer. Unknown IDs return the not-found screen.
+Screens 2a–2c and the factory overview/edit read the database (TASK-103), and so does 2e, the device catalog (TASK-301). For stored factories 2f, 2g, 2h and 2j read the database too (TASK-302), together with the PLC connections screen `/factories/[factoryId]/plcs/[plcId]/connections`, and so do 2d (designer) and 2o (topology) (TASK-303). For the design fixtures, screens 2d and 2f–2q still read fixtures: `factory_001` (Pump House Demo, PLC `dev_001`) and, for 2g only, `factory_003`; they are reachable from the "Design fixtures" section of the factory explorer. Unknown IDs return the not-found screen.
+
+### Designer and topology as built (TASK-303)
+For a stored factory the designer (`/factories/[factoryId]/designer`) is a React Flow canvas with a palette and an inspector:
+
+- **Palette:** every catalog model, by category, PLCs first. Dragging an item onto the canvas, or pressing its "+" button, creates a device instance with the next free numbered name (`VFD-01`). A PLC placed this way is a complete PLC with its I/O points or rack.
+- **Canvas:** one node per device with its unique name, kind, model and runtime state. Dragging a node saves its position. Devices never placed are laid out on a grid.
+- **Connecting:** draw from one device's handle to another. The relationship follows from the two devices and is stored in its own direction, whichever way it was drawn:
+
+  | Devices | Result |
+  |---|---|
+  | PLC and a device with terminals | every terminal wired to a free compatible PLC channel, with tags (`CONTROLS` PLC → device, `FEEDS_BACK_TO` device → PLC) |
+  | PLC and a protocol device | `COMMUNICATES_WITH` over the shared protocol |
+  | drive and motor | `DRIVES` |
+  | motor and motor-driven equipment | `MECHANICALLY_DRIVES` |
+  | sensor or switch and another device | `MEASURES` |
+  | controller, remote I/O, relay or contactor and another device | `CONTROLS` |
+
+  When more than one applies, the canvas asks which. A connection the rules refuse (no free channel, wrong signal, a second motor on a drive, no relationship at all) is not created and the reason is shown.
+- **Edges:** one edge per relationship between two devices, labelled with it and with the number of wires or the protocol. Solid: signal; dashed: network; dotted: feedback or measurement.
+- **State overlay:** nodes show the stored runtime state; an edge is green and animated when both ends run and red when either end is faulted. While anything is running the view reloads every 5 seconds.
+- **Inspector:** the selected device (rename, role, connections, delete with confirmation, link to a PLC's screens) or connection (wires, remove).
+
+The topology screen (`/factories/[factoryId]/topology`) shows the same canvas read-only.
+
+Differences from wireframes 2d and 2o:
+- No Save or Validate button: every change is validated and saved when made.
+- No Start/Stop factory and no Export on the toolbar: runtime control for stored factories is not wired (TASK-305), export is TASK-304.
+- No zones, layers or manual edge routing. Removing a wired edge disconnects the device from the PLC as a whole.
+- The state overlay uses the stored state, not a live stream (TASK-401).
 
 ### PLC configuration as built (TASK-302)
 For a stored factory the wireframe's single wizard is split into steps that each save:

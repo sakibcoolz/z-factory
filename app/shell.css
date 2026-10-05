@@ -1047,3 +1047,106 @@
     text-align: center;
   }
 }
+
+/* ── designer canvas (React Flow) ────────────────────────────── */
+@layer components {
+  .zf-flow {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    position: relative;
+    background-image:
+      linear-gradient(var(--color-gridline) 1px, transparent 1px),
+      linear-gradient(90deg, var(--color-gridline) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+  .zf-flow-notice {
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    top: 10px;
+    z-index: 5;
+  }
+  .zf-palette-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 3px 10px 3px 22px;
+    cursor: grab;
+  }
+  .zf-palette-item:hover {
+    background: rgb(255 255 255 / 0.04);
+  }
+}
+
+/*
+ * React Flow ships an unlayered stylesheet, which wins over anything in a cascade layer.
+ * Its overrides therefore live outside the layers, scoped to the canvas.
+ */
+.zf-flow .react-flow {
+  background: transparent;
+}
+/* The node look comes from .zf-node; React Flow positions its wrapper. */
+.zf-flow .zf-node {
+  position: relative;
+  width: 168px;
+}
+.zf-flow .react-flow__node {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.zf-flow .react-flow__handle {
+  width: 8px;
+  height: 8px;
+  border: 1px solid var(--color-line-strong);
+  border-radius: 0;
+  background: var(--color-side);
+}
+.zf-flow .react-flow__edge-path {
+  stroke: var(--color-line-strong);
+  stroke-width: 1.5;
+}
+.zf-flow .react-flow__edge[data-line="network"] .react-flow__edge-path {
+  stroke-dasharray: 5 4;
+}
+.zf-flow .react-flow__edge[data-line="feedback"] .react-flow__edge-path {
+  stroke: var(--color-info);
+  stroke-dasharray: 2 3;
+}
+.zf-flow .react-flow__edge[data-tone="active"] .react-flow__edge-path {
+  stroke: var(--color-ok);
+}
+.zf-flow .react-flow__edge[data-tone="fault"] .react-flow__edge-path {
+  stroke: var(--color-fault-fg);
+}
+.zf-flow .react-flow__edge.selected .react-flow__edge-path {
+  stroke: var(--color-focus);
+  stroke-width: 2;
+}
+.zf-flow .zf-edge-label {
+  position: absolute;
+  padding: 1px 5px;
+  border: 1px solid var(--color-line);
+  background: var(--color-editor);
+  color: var(--color-fg-muted);
+  font: 400 10px/1.3 var(--font-mono);
+  white-space: nowrap;
+  /* Clicks go through to the edge underneath. */
+  pointer-events: none;
+}
+.zf-flow .react-flow__controls {
+  box-shadow: none;
+}
+.zf-flow .react-flow__controls-button {
+  border: 1px solid var(--color-line);
+  background: var(--color-side);
+  color: var(--color-fg-muted);
+  fill: var(--color-fg-muted);
+}
+.zf-flow .react-flow__controls-button:hover {
+  background: var(--color-editor);
+}

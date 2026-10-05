@@ -566,6 +566,9 @@ model DeviceInstance {
   dockerContainerId String?
   hostName          String?
   configJson        Json          @default("{}")
+  /// Position of the device on the designer canvas; null until it is placed.
+  canvasX           Float?
+  canvasY           Float?
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
