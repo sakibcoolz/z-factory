@@ -152,3 +152,18 @@ Services in `lib/services/plc-config-service.ts`; server actions in `app/factori
 | devices of a factory | `listFactoryDevices(db, actor, factoryId)` | for the factory overview |
 
 Wiring creates a `DeviceConnection` per terminal (`FEEDS_BACK_TO` device → PLC, `CONTROLS` PLC → device) and a tag bound to the I/O point: BOOL or INT16, read-only for gateways, with the device and, for simulated devices, the simulator signal. A protocol device gets one `COMMUNICATES_WITH` connection between ports.
+
+### `topology` (TASK-303)
+Services in `lib/services/topology-service.ts`; server actions in `app/factories/[factoryId]/designer/actions.ts`, which return `{ ok, value | message }` to the canvas instead of redirecting. Every function takes the `Actor`.
+
+| Operation | Entry point | Rules |
+|---|---|---|
+| topology | `getTopology(db, actor, factoryId)` | nodes with position and runtime state, one typed edge per relationship between two devices, palette of catalog models; Z-Factory ids only |
+| place device | `placeDevice(…, { deviceModelId, x, y, name? })` | creates the instance (a PLC through `createPlc`); free numbered name when none is given |
+| move devices | `moveDevices(…, [{ deviceId, x, y }])` | every device must belong to the factory |
+| rename | `renameDevice(db, actor, deviceId, { name, role })` | name unique in the factory; existing tag names are kept |
+| delete device | `removeDevice(db, actor, deviceId)` | frees the PLC channels it used and their tags first; a PLC goes through `deletePlc` |
+| link | `linkDevices(…, { fromId, toId, kind? })` | relationship derived by `linkOptions`; returns `CHOOSE` with options when several apply; all connection rules enforced |
+| unlink | `unlinkDevices(…, { sourceId, targetId, relationship })` | a wired edge removes the device's whole wiring to that PLC |
+
+`wireExistingDevice` and `unwireDevice` (`lib/services/plc-config-service.ts`) wire and unwire a device that already exists, with the same checks as adding a peripheral.
