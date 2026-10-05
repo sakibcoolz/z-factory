@@ -151,6 +151,7 @@ Source: Claude Design project `2fc6a75c-7a5d-4a8c-a17c-17afa2d37f6c`, file `Z-Fa
 | 2o | 2D Network / Wiring Topology | `/factories/[factoryId]/topology` |
 | 2p | PLC Export / Print | `/factories/[factoryId]/plcs/[plcId]/export`, `/export/report` (print) |
 | 2q | 3D Factory View | `/factories/[factoryId]/view-3d` (database) |
+| — | External gateways | `/factories/[factoryId]/gateways` (database) |
 
 Screens 2a–2c and the factory overview/edit read the database (TASK-103), and so does 2e, the device catalog (TASK-301). For stored factories 2f, 2g, 2h and 2j read the database too (TASK-302), together with the PLC connections screen `/factories/[factoryId]/plcs/[plcId]/connections`, and so do 2d (designer) and 2o (topology) (TASK-303), 2p (export) (TASK-304) 2i, 2k and 2n (program, versions, simulator and runtime) (TASK-305), 2l and 2m (live tags and events) (TASK-401), and 2q (3D view) (TASK-402). For the design fixtures, screens 2d and 2f–2q still read fixtures: `factory_001` (Pump House Demo, PLC `dev_001`) and, for 2g only, `factory_003`; they are reachable from the "Design fixtures" section of the factory explorer. Unknown IDs return the not-found screen.
 
@@ -272,6 +273,16 @@ Differences from wireframes 2f, 2g, 2h and 2j:
 - Creating and connecting a peripheral is one action. Removing it deletes the device.
 - Section list of the PLC: Overview, Hardware, Connections and I/O Mapping are wired. Export is wired since TASK-304; Program, Versions, Runtime and Simulator since TASK-305. Live Tags and Events open the factory's screens narrowed to the PLC (TASK-401). Logs is listed but not wired.
 - The Pump House Demo and the modular bench keep their fixture screens.
+
+### Gateways as built (TASK-501)
+`/factories/[factoryId]/gateways`, reached from the factory overview and the runtime screen. No wireframe exists for it; it follows the shell's conventions.
+
+- **Header:** what the screen is for in one paragraph (an edge device connects to an endpoint of this host, reads mapped tags, writes only command and setpoint tags, PLC logic decides) and "Add gateway". While only `127.0.0.1` is allowed, a note says that nothing outside this machine can connect and what to change.
+- **Per gateway, per PLC connection:** the endpoint (`address:port`, unit id, expected read interval), a pill for the endpoint (open with the number of devices connected, open without a device, not open, closed), the PLC and its stored runtime state, request and refusal counters with the time of the last request, and the link to the register map. Actions: close or open the endpoint, map all tags, remove (asks first). A reason is shown when an endpoint could not be opened.
+- **Mapped tags:** name for the gateway, tag, role, type, Modbus area and address (with the `40001`-style address), what the gateway may do (read, or read and write in the warning colour) and "Unmap".
+- **Map a tag:** the unmapped tags of the PLC (those PLC logic produces are marked read only), access, an optional name for the gateway.
+- **Connect to a PLC:** PLC, an address of this host from the allowed ones, port (a free one is suggested), unit id, read interval.
+- The page refreshes every 5 seconds while an endpoint is open. Nothing on it writes a PLC tag.
 
 ### 3D asset status in the catalog (TASK-403)
 A catalog model's screen has a **3D asset** section: a pill with what is rendered and what is going on (`3D v2`, `generic shape`, `… · generating`, `… · generation failed`), a sentence saying whether instances are drawn from a version or as the generic shape of the category, and a table of the stored versions (version, state, source with the provider's task id, date, and a note: the provider's progress, the file size, or why it failed or was retired). In the model tree a model with an asset is marked `3D`, one being generated `3D …`, one whose last generation failed `3D failed`; the status bar counts the models with an asset. The screen has no control that generates, retires or uploads anything: it names the command (`npm run assets`).

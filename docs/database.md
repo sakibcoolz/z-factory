@@ -155,11 +155,17 @@ MVP invariant: one VFD instance has at most one primary motor relationship.
 ### Gateway
 `id, factoryId, deviceInstanceId, name, status, configJson`
 
+The record of an external gateway (TASK-501): one per gateway device instance (category `GATEWAY` or `EDGE_GATEWAY`), created when the device is first connected to a PLC. `status` is `RUNNING` while its endpoints are open, `FAULTED` when one could not be opened, `STOPPED` otherwise.
+
 ### GatewayPlcConnection
 `id, gatewayId, plcInstanceId, protocol, host, port, unitId, pollIntervalMs, enabled`
 
+Where the external device connects to reach that PLC's tags (ADR-0013): `host` and `port` are an address and port of the Z-Factory host on which the gateway endpoint listens, not the PLC's own Modbus port. `unitId` is the only unit id the endpoint answers for; `pollIntervalMs` is how often the device is expected to read. `enabled` says whether the endpoint is open. Unique: `(gatewayId, plcInstanceId, protocol)`. That an address and port are used by one connection only, and are allowed by the host policy, is kept by the gateway service.
+
 ### GatewayTagMapping
 `id, gatewayPlcConnectionId, tagId, externalName, accessMode, scalingJson`
+
+One tag the gateway is given. `externalName` is its name in the gateway's register map (the tag's own name by default); `accessMode` is `READ_ONLY` or `READ_WRITE`, the latter only for a command or setpoint tag (kept by the service). The tag keeps its own Modbus area and address. `scalingJson` is unused: the tag's own scale and offset apply. Unique: `(gatewayPlcConnectionId, tagId)`, `(gatewayPlcConnectionId, externalName)`.
 
 ### ProgramVersion
 `id, plcInstanceId, version, language, sourceText, compiledArtifactRef, checksum, status, createdAt`

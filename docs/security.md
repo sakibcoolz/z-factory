@@ -33,7 +33,15 @@ The MVP identifies one owner through `LOCAL_OWNER_ID` and does not authenticate 
 - API credentials are derived per device from `RUNTIME_SECRET` and never stored. Production must set the secret; changing it requires recreating the containers.
 - Program source is untrusted input: it is size-limited, compiled in a separate process with a time and memory cap, and built inside the runtime container, never on the host.
 - Writes through Z-Factory go by tag: only `COMMAND` and `SETPOINT` tags are writable, values are type- and range-checked, and each write is recorded as a `DeviceCommand`. Raw Modbus access refuses read-only areas before anything is sent.
-- **Limit:** the runtime's Modbus server itself has no per-register permissions. A client that reaches the published Modbus port directly can write any coil or holding register, including ones Z-Factory treats as read-only. Publish that port only where the client is trusted (default: loopback), and let PLC logic overwrite feedback values every scan. Enforcing tag permissions for external gateways needs a filtering proxy, which belongs to Phase 05.
+- **Limit:** the runtime's Modbus server itself has no per-register permissions. A client that reaches the published Modbus port directly can write any coil or holding register, including ones Z-Factory treats as read-only. Keep that port on loopback (the default). An external gateway does not use it: it connects to a gateway endpoint, which enforces the tag permissions (below).
+
+## Gateway endpoints (TASK-501, ADR-0013)
+- An external device reaches a PLC only through a gateway endpoint: a Modbus TCP listener of the server process on an address from `RUNTIME_BIND_ADDRESSES` and a port from `RUNTIME_PORT_RANGE`. It is never given the PLC's own Modbus port, the runtime's management port, the web interface or anything of Docker.
+- The endpoint hands out the tags mapped to that gateway and nothing else. A read that touches an unmapped address is refused, so a client cannot sweep a PLC. A write is accepted only for a tag mapped as writable, and only command and setpoint tags can be mapped that way; the write then goes through the tag service like any other and is recorded as a command with source `GATEWAY`.
+- Refused writes are recorded (`COMMAND_REJECTED`, rule `gateway-unmapped`, `gateway-read-only` or `gateway-partial-value`). A device that came or went is recorded too.
+- Requests are untrusted input: frame length, function, quantity and unit id are checked before anything is done, a connection that does not speak Modbus TCP is closed, and an endpoint takes at most 4 connections.
+- **Limit:** Modbus TCP has no authentication. Anyone who can reach an endpoint's port can do what its mappings allow. Bind endpoints to a specific address, allow the port in the host firewall only from the device's address, and map only what the device needs.
+- The register map download carries the endpoint, the unit id and the mapped tags; no container id, management port or credential.
 
 ## Industrial-control warning
 Z-Factory is a simulation/development platform. It must not claim safety-rated behavior or be used as the sole safety-control layer for physical machinery.

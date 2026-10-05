@@ -74,7 +74,7 @@ Configuration events written inside a configuration transaction (`FACTORY_CREATE
 | Faults | `DEVICE_FAULTED`, `FAULT_INJECTED`, `FAULT_CLEARED`, `DEVICE_RESET` |
 | Alarms | `ALARM_RAISED`, `ALARM_ACKNOWLEDGED`, `ALARM_CLEARED` |
 | Commands | `COMMAND_ACCEPTED`, `COMMAND_FAILED`, `COMMAND_REJECTED`, `GATEWAY_COMMAND_RECEIVED` |
-| Connections | `CONNECTION_UP`, `CONNECTION_DOWN` (`payload.link`: `tag-monitor` or `device-simulator`) |
+| Connections | `CONNECTION_UP`, `CONNECTION_DOWN` (`payload.link`: `tag-monitor` or `device-simulator`), `GATEWAY_CLIENT_CONNECTED`, `GATEWAY_CLIENT_DISCONNECTED` (an edge device at a gateway endpoint; `deviceId` is the gateway, `payload.name` the device's address) |
 
 A type the vocabulary does not know is shown in the family "Other", never dropped. State-change payloads carry `activeFaults` in addition to `from`, `to` and `outputs`.
 
@@ -82,6 +82,8 @@ Tag values are not events. `PLC_TAG_UPDATED` and `PLC_FEEDBACK_UPDATED` from the
 
 ### Commands
 A write of a command or setpoint tag records `COMMAND_ACCEPTED` (the PLC took the value) or `COMMAND_FAILED`, next to its `DeviceCommand` row. A write to a tag that is not writable records `COMMAND_REJECTED` (warning) and reaches no PLC. A write with source `GATEWAY` records `GATEWAY_COMMAND_RECEIVED` first. Payload: `tag`, `value`, `source`, `commandId`.
+
+Since TASK-501 gateway writes arrive through a gateway endpoint (`docs/gateway-modbus.md`). A write the endpoint refuses reaches no PLC and records `COMMAND_REJECTED` with `source` `GATEWAY`, `rule` (`gateway-unmapped`, `gateway-read-only`, `gateway-partial-value`), the Modbus `area`, `address` and `count`, and the `tag` when one is concerned; the same refusal is recorded at most once in 30 seconds. Reads are not events.
 
 ### Alarms
 An alarm (`AlarmEvent`) begins and ends by these rules; one alarm per condition, however often it is reported.

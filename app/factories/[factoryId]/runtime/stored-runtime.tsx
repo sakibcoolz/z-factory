@@ -41,6 +41,7 @@ export async function StoredFactoryRuntime({ factoryId }: { factoryId: string })
           { label: factory.name, href: routes.factory(factory.id) },
           { label: "Runtime", active: true },
           { label: "Simulator", href: routes.simulator(factory.id) },
+          { label: "Gateways", href: routes.gateways(factory.id) },
         ]}
         crumb={`${factory.slug} › runtime`}
       />

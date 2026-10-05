@@ -38,8 +38,8 @@ PostgreSQL                 Docker Engine
 - `lib/auth/`: the authorization boundary `requireActor()` (ADR-0007); server-only.
 - `lib/db/`: Prisma client, repositories and database-error translation; server-only.
 - `lib/docker/`: Docker Engine integration (dockerode): policy and image allow-list, hardened container specs, factory networks, port validation, lifecycle; server-only. See `docs/docker-runtime.md` → Implementation.
-- `lib/runtimes/`: runtime adapters; `openplc/` holds the OpenPLC Runtime v4 adapter, its REST client, the STruC++ compile worker and the bundle composer (ADR-0009); `device-sim/` holds the shared device simulator: behaviour models, the per-factory engine, the PLC bridge and the tick runtime (ADR-0010); `tag-monitor/` holds the live-tag monitor that reads running PLCs and the telemetry sampling rule (ADR-0011); server-only.
-- `lib/protocols/`: Modbus abstractions: TCP client, typed register codecs and the located-address → Modbus mapping of the OpenPLC runtime; gateway and PLC-to-PLC mappings follow (Phase 05, Phase 07); server-only.
+- `lib/runtimes/`: runtime adapters; `openplc/` holds the OpenPLC Runtime v4 adapter, its REST client, the STruC++ compile worker and the bundle composer (ADR-0009); `device-sim/` holds the shared device simulator: behaviour models, the per-factory engine, the PLC bridge and the tick runtime (ADR-0010); `tag-monitor/` holds the live-tag monitor that reads running PLCs and the telemetry sampling rule (ADR-0011); `gateway-endpoint/` holds the endpoints external gateways connect to, which hand out mapped tags only (ADR-0013); server-only.
+- `lib/protocols/`: Modbus abstractions: TCP client, typed register codecs, the located-address → Modbus mapping of the OpenPLC runtime, and the Modbus TCP server external gateways talk to (ADR-0013); PLC-to-PLC mappings follow (Phase 07); server-only.
 - `lib/events/`: in-process event bus, ordered event ids and the server-sent-events encoding (ADR-0011); server-only.
 - `lib/catalog/`: normalized PLC/peripheral catalog access.
 - `lib/assets/`: catalog 3D asset files: the storage directory behind an interface and the GLB check (ADR-0012); and what authoring an asset needs: the prompt built from catalog metadata, normalization of a GLB, and the Meshy client (TASK-403); server-only.
@@ -242,6 +242,18 @@ runtime / simulation / tag services --events--> event service --> RuntimeEvent, 
 - The tag monitor and the simulator are the only sources of live values. The stream and the live screens read their memory; the database is written to, and read only for history.
 - Every runtime event passes through one recording path that fixes its order. A reconnecting browser is sent the events after the last one it saw, then the whole current state.
 - A stored state no runtime stands behind is not shown as live: a simulated device is stopped when no simulation runs, whatever was last stored, and the stored state is corrected.
+
+### External gateways (TASK-501, ADR-0013)
+```text
+edge device (LAN) --Modbus TCP--> gateway endpoint in the server process
+                                     reads of mapped tags  --> PLC Modbus server (loopback)
+                                     writes of writable mappings --> tag service (source GATEWAY)
+                                                                       --> DeviceCommand, events
+                                                                       --> PLC command/setpoint tag --> PLC logic
+```
+- An external device never reaches a PLC's own Modbus port, which cannot tell a command from a feedback value. It reaches an endpoint that knows the tag registry: unmapped addresses are refused, and a write is possible only where a command or setpoint tag was mapped as writable.
+- A gateway is a device of the factory; its connection to a PLC stores the endpoint's address, port and unit id, and its mappings the tags it is given. The rules are pure (`lib/domain/gateway.ts`).
+- Endpoints are state of the server process, like the simulator and the tag monitor, and are opened from the stored connections.
 
 ## Runtime adapter contract
 Adapters support the relevant subset of:
