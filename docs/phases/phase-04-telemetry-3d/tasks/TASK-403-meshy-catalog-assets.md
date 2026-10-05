@@ -1,6 +1,6 @@
 # TASK-403 — Meshy MCP Catalog 3D Asset Generation
 
-Status: **IN PROGRESS**
+Status: **DONE**
 Linear: [ZFA-21](https://linear.app/recruit-verse/issue/ZFA-21)
 
 ## Objective
@@ -58,8 +58,8 @@ Each catalog model may reference:
 - Asset metadata is associated with the catalog model, not a single factory device instance.
 - No module/process-specific 3D generation UX is introduced in Phase 04.
 
-## Why the task stays open (owner's decision, 2026-10-05)
-The authoring path is built and every model the catalog holds today has an asset, but the task is **kept IN PROGRESS**: further devices and models are still to be added to the catalog, and each needs its asset made through this path. The first pull request delivers the pipeline and its documentation; the task is closed by the owner once the catalog and its assets are complete.
+## Closed (owner's decision, 2026-10-05)
+The task was first kept open for devices and models still to be added to the catalog. On the owner's request it was then checked against the code: every acceptance criterion is implemented and tested, and all 30 models the catalog holds have a ready asset, so it is closed. A model added to the catalog later gets its asset through the same path (`npm run assets -- generate <model>`) as part of adding it. Weak shapes that may be regenerated as new versions are listed under Progress.
 
 ## Evidence (2026-10-05)
 - **Credentials stay server/developer-side.** The key is read from `MESHY_API_KEY` by `scripts/catalog-assets.ts` only and sent to Meshy's API host only. A test scans `app/`, `components/`, `lib/` and `scripts/` and finds the variable in `lib/env.ts` and the script alone, no `NEXT_PUBLIC_` form and no key-shaped string; another checks that no error of the Meshy client repeats the key. In this task the key never entered the repository at all: generation ran through the Meshy tools of the coding session.

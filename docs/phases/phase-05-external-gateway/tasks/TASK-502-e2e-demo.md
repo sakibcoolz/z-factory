@@ -1,6 +1,6 @@
 # TASK-502 — End-to-End MVP Demo
 
-Status: **IN PROGRESS**
+Status: **DONE**
 Linear: [ZFA-19](https://linear.app/recruit-verse/issue/ZFA-19)
 
 ## Objective
@@ -39,6 +39,9 @@ Two runs of the same scenario: `test/integration/e2e-demo.test.ts` against a rea
 - **Recorded by the persistence rules.** Events screen: gateway commands received and accepted, the refused write, state changes, the alarm. The test checks the event types, both alarms raised and cleared, `DeviceCommand` rows with source `GATEWAY` and no applied time, telemetry sampled (more than 10 rows, far fewer than one per scan), and at most one snapshot per simulated device.
 - **Engineering export.** The export screen and `plc.json` (31 kB) for `PLC-01`; the test checks it names the PLC, its model, the devices, the tags and the relationships, and no container id.
 - **Tests added:** 13 (4 for the demo factory against PostgreSQL, 9 end-to-end steps against a real OpenPLC runtime).
+
+## Closed (owner's decision, 2026-10-05)
+Checked against the code on the owner's request: all eleven acceptance criteria are implemented, and the end-to-end test against a real OpenPLC runtime passes on `develop`.
 
 ## Decisions made in this task
 - **The demo is an ordinary factory.** It is built by a service that calls the services the screens call, from catalog models. Nothing about it is special afterwards.

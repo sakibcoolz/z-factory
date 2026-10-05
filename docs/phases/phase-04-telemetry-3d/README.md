@@ -1,12 +1,12 @@
 # Phase 04 — Events, Telemetry & 3D
 
-Status: **IN PROGRESS**
+Status: **DONE**
 
 | Task | Status |
 |---|---|
 | TASK-401 Event stream & live telemetry | DONE |
 | TASK-402 Three.js factory view | DONE |
-| TASK-403 Meshy MCP catalog 3D asset generation | IN PROGRESS |
+| TASK-403 Meshy MCP catalog 3D asset generation | DONE |
 | TASK-404 Live 3D runtime-state visualization | DONE |
 
 ## Scope

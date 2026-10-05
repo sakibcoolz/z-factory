@@ -1,6 +1,7 @@
 # TASK-601 — Process Module Domain & Persistence
 
 Status: **PLANNED**
+Linear: [ZFA-24](https://linear.app/recruit-verse/issue/ZFA-24)
 
 ## Goal
 Add the reusable process-module domain without mixing process-specific concepts into the generic device catalog.
