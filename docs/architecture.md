@@ -38,9 +38,9 @@ PostgreSQL                 Docker Engine
 - `lib/auth/`: the authorization boundary `requireActor()` (ADR-0007); server-only.
 - `lib/db/`: Prisma client, repositories and database-error translation; server-only.
 - `lib/docker/`: Docker Engine integration (dockerode): policy and image allow-list, hardened container specs, factory networks, port validation, lifecycle; server-only. See `docs/docker-runtime.md` → Implementation.
-- `lib/runtimes/`: runtime adapters; `openplc/` holds the OpenPLC Runtime v4 adapter, its REST client, the STruC++ compile worker and the bundle composer (ADR-0009); `device-sim/` holds the shared device simulator: behaviour models, the per-factory engine, the PLC bridge and the tick runtime (ADR-0010); server-only.
+- `lib/runtimes/`: runtime adapters; `openplc/` holds the OpenPLC Runtime v4 adapter, its REST client, the STruC++ compile worker and the bundle composer (ADR-0009); `device-sim/` holds the shared device simulator: behaviour models, the per-factory engine, the PLC bridge and the tick runtime (ADR-0010); `tag-monitor/` holds the live-tag monitor that reads running PLCs and the telemetry sampling rule (ADR-0011); server-only.
 - `lib/protocols/`: Modbus abstractions: TCP client, typed register codecs and the located-address → Modbus mapping of the OpenPLC runtime; gateway and PLC-to-PLC mappings follow (Phase 05, Phase 07); server-only.
-- `lib/events/`: in-process event bus; the SSE transport follows; server-only.
+- `lib/events/`: in-process event bus, ordered event ids and the server-sent-events encoding (ADR-0011); server-only.
 - `lib/catalog/`: normalized PLC/peripheral catalog access.
 - `lib/validation/`: Zod schemas for untrusted input plus pure compatibility, I/O occupancy and domain invariants.
 - `lib/export/`: engineering report/config package generation.
@@ -195,6 +195,23 @@ Rules:
 - Runtime/OpenPLC/device simulator: authoritative live state.
 - PostgreSQL: catalog/configuration/mapping/version/audit/event/alarm/history and selected current-state snapshots.
 - SSE is the initial server-to-browser channel; WebSockets may be introduced when bidirectional low-latency behavior justifies them.
+
+### Live channel (TASK-401, ADR-0011)
+```text
+OpenPLC runtime --Modbus read--> tag monitor (memory: value, quality, read time)
+device simulator (memory: device state) ----.            |
+runtime / simulation / tag services --events--> event service --> RuntimeEvent, AlarmEvent
+                                             |            |            (PostgreSQL: history)
+                                             v            v
+                                        in-process bus  TelemetrySample (sampled)
+                                             |
+                             GET /factories/[id]/stream (SSE)
+                                             |
+                       browser: Live Tags, Events, topology and runtime screens
+```
+- The tag monitor and the simulator are the only sources of live values. The stream and the live screens read their memory; the database is written to, and read only for history.
+- Every runtime event passes through one recording path that fixes its order. A reconnecting browser is sent the events after the last one it saw, then the whole current state.
+- A stored state no runtime stands behind is not shown as live: a simulated device is stopped when no simulation runs, whatever was last stored, and the stored state is corrected.
 
 ## Runtime adapter contract
 Adapters support the relevant subset of:

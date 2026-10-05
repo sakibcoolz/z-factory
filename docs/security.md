@@ -19,6 +19,7 @@ Z-Factory controls Docker and industrial command paths, so it crosses privileged
 - Enforced by wiring (TASK-204): a device signal can only be bound to a tag that gateways and the UI cannot write, so device inputs come from the PLC program alone. Fault injection, device reset and forced sensor values are separate, authenticated operator actions on the simulated equipment and are always recorded as events.
 - Force-input/fault-injection/debug operations require explicit authorization and audit events.
 - Do not expose host paths, Docker socket details, credentials or secrets in PLC exports.
+- The live stream (TASK-401) is one-way and has the same authorization as the factory's screens; a factory of another owner is not found. It carries event payloads and tag values, never a container id, a management port or credentials. Every write of a tag is recorded as an event, and so is every refused write.
 - Runtime screens (TASK-305) identify a PLC runtime by its Z-Factory id and service name. Their read models carry no container id and no management port; a failed operation shows its domain message, while build logs and Docker causes stay in the server log.
 
 ## Single-owner mode (ADR-0007)

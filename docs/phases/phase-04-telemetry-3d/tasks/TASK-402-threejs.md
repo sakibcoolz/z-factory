@@ -1,6 +1,6 @@
 # TASK-402 — Three.js Factory View
 
-Status: **PLANNED**
+Status: **READY**
 Linear: [ZFA-17](https://linear.app/recruit-verse/issue/ZFA-17)
 
 ## Objective

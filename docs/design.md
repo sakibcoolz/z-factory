@@ -145,14 +145,30 @@ Source: Claude Design project `2fc6a75c-7a5d-4a8c-a17c-17afa2d37f6c`, file `Z-Fa
 | 2i | PLC Program & Versions | `/factories/[factoryId]/plcs/[plcId]/program` (`?version=`), `/plcs/[plcId]/versions` |
 | 2j | PLC I/O Mapping / Pinout | `/factories/[factoryId]/plcs/[plcId]/io-mapping` |
 | 2k | Simulator / Debug | `/factories/[factoryId]/simulator` |
-| 2l | Live Tags | `/factories/[factoryId]/tags` |
-| 2m | Events / Alarms / Logs | `/factories/[factoryId]/events` |
+| 2l | Live Tags | `/factories/[factoryId]/tags` (`?plc=`) |
+| 2m | Events / Alarms / Logs | `/factories/[factoryId]/events` (`?family=`, `?severity=`, `?device=`) |
 | 2n | Runtime / Containers | `/factories/[factoryId]/runtime`, per PLC `/plcs/[plcId]/runtime` |
 | 2o | 2D Network / Wiring Topology | `/factories/[factoryId]/topology` |
 | 2p | PLC Export / Print | `/factories/[factoryId]/plcs/[plcId]/export`, `/export/report` (print) |
 | 2q | 3D Factory View | `/factories/[factoryId]/view-3d` |
 
-Screens 2a–2c and the factory overview/edit read the database (TASK-103), and so does 2e, the device catalog (TASK-301). For stored factories 2f, 2g, 2h and 2j read the database too (TASK-302), together with the PLC connections screen `/factories/[factoryId]/plcs/[plcId]/connections`, and so do 2d (designer) and 2o (topology) (TASK-303), 2p (export) (TASK-304) and 2i, 2k and 2n (program, versions, simulator and runtime) (TASK-305). For the design fixtures, screens 2d and 2f–2q still read fixtures: `factory_001` (Pump House Demo, PLC `dev_001`) and, for 2g only, `factory_003`; they are reachable from the "Design fixtures" section of the factory explorer. Unknown IDs return the not-found screen.
+Screens 2a–2c and the factory overview/edit read the database (TASK-103), and so does 2e, the device catalog (TASK-301). For stored factories 2f, 2g, 2h and 2j read the database too (TASK-302), together with the PLC connections screen `/factories/[factoryId]/plcs/[plcId]/connections`, and so do 2d (designer) and 2o (topology) (TASK-303), 2p (export) (TASK-304) 2i, 2k and 2n (program, versions, simulator and runtime) (TASK-305), and 2l and 2m (live tags and events) (TASK-401). For the design fixtures, screens 2d and 2f–2q still read fixtures: `factory_001` (Pump House Demo, PLC `dev_001`) and, for 2g only, `factory_003`; they are reachable from the "Design fixtures" section of the factory explorer. Unknown IDs return the not-found screen.
+
+### Live tags and events as built (TASK-401)
+For a stored factory:
+
+- **Live Tags** (`/factories/[factoryId]/tags`): every tag of the factory's PLCs with role, type, address, value, quality and how long ago it was confirmed. Values arrive over the live stream; the page is not reloaded. A pill shows the stream's state (live, reconnecting, paused, offline) and the number of tags per quality. Command and setpoint tags have a write control (Set ON / Set OFF, or a number field); every other tag says "read-only". After a write the row says that the PLC accepted the value and that PLC logic decides what follows; the result is then seen in the feedback tags. The side bar narrows the list to one PLC and shows each PLC's runtime state.
+- **Events** (`/factories/[factoryId]/events`): the alarms (active first) with severity, what and where, when raised and cleared, their state (active or cleared, acknowledged or not) and an Acknowledge button; below, the recorded events, newest first, with new ones added on top as they are recorded. The side bar filters by event family and severity (with counts of the last 24 hours) and shows the retention. An alarm's device narrows the list to that device.
+- **Staleness is shown, not hidden.** A value that has not been confirmed for the stale time, and every value while the stream is interrupted, is shown as stale in the warning colour with its age. A PLC that is not started has no values.
+- **Other screens follow the stream.** The designer, the topology view and the runtime screens re-read their data when the factory records an event, instead of waiting for a poll. The simulator still polls every 2 seconds for its analogue values.
+- A tab in the background closes its stream and resumes, without losing events, when it is shown again.
+
+Differences from wireframes 2l and 2m:
+- No trend sparklines and no Trends tab: telemetry is stored but not drawn yet.
+- No free-text filter; filters are links.
+- The write control is always visible on writable tags instead of an edit mode, and there is no separate "last write" panel: the result is shown in the row.
+- No Logs tab: container logs are not delivered to the browser.
+- Alarms and events are one screen; "Problems" is the alarm list.
 
 ### Program, versions, runtime and simulator as built (TASK-305)
 For a stored PLC:
@@ -207,7 +223,7 @@ Differences from wireframes 2d and 2o:
 - No Save or Validate button: every change is validated and saved when made.
 - No Start/Stop factory and no Export on the toolbar: a PLC is started from its Runtime screen and the simulation from the Simulator (TASK-305); export is on the PLC (TASK-304).
 - No zones, layers or manual edge routing. Removing a wired edge disconnects the device from the PLC as a whole.
-- The state overlay uses the stored state, not a live stream (TASK-401).
+- The state overlay shows the stored state and is refreshed when the factory records an event (TASK-401).
 
 ### PLC configuration as built (TASK-302)
 For a stored factory the wireframe's single wizard is split into steps that each save:
@@ -221,7 +237,7 @@ Differences from wireframes 2f, 2g, 2h and 2j:
 - No draft state and no "Next" step: each step is saved when submitted.
 - The channel panel is read-only; wiring is done from Connections, not by editing a pin.
 - Creating and connecting a peripheral is one action. Removing it deletes the device.
-- Section list of the PLC: Overview, Hardware, Connections and I/O Mapping are wired. Export is wired since TASK-304; Program, Versions, Runtime and Simulator since TASK-305. Live Tags, Events and Logs are listed but not wired for stored PLCs yet (TASK-401).
+- Section list of the PLC: Overview, Hardware, Connections and I/O Mapping are wired. Export is wired since TASK-304; Program, Versions, Runtime and Simulator since TASK-305. Live Tags and Events open the factory's screens narrowed to the PLC (TASK-401). Logs is listed but not wired.
 - The Pump House Demo and the modular bench keep their fixture screens.
 
 ### Device Catalog differences from wireframe 2e
