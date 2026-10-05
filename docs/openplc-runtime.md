@@ -94,5 +94,19 @@ Every function takes the `Actor` and treats a PLC of another owner as not found.
 ### Identity
 The hardware profile (manufacturer, family, model) stays on the catalog model of the device instance. The runtime identity is recorded separately as `OpenPLC Runtime <version>` plus the image digest. Nothing claims vendor firmware, vendor timing or real-time behavior: in the container the runtime uses default scheduling.
 
+### I/O point addresses (TASK-302)
+Every PLC I/O point has the address a program uses for it. They are assigned by Z-Factory, per class, in channel order (`lib/validation/io-address.ts`):
+
+| Point class | Address | Modbus |
+|---|---|---|
+| DI | `%MX<byte>.<bit>` | coil `8192 + n` |
+| DO | `%QX<byte>.<bit>` | coil `n` |
+| AI | `%MW<n>` | holding register `1024 + n` |
+| AO | `%QW<n>` | holding register `n` |
+
+Inputs are in memory, not in `%I`: the runtime accepts simulated field values only there (ADR-0010). The vendor's terminal label and address (for example `Ia.0`, `%I0.0`) are kept on the catalog channel and shown next to the program address.
+
+A compact PLC's points are numbered by channel. A module's points start after everything already in use, digital blocks on a byte boundary, so existing addresses never move when modules are added or removed. Tags the user placed by hand are skipped, and a hand-made tag cannot take the address of an I/O point. A PLC has room for 1024 DI, 1024 DO, 256 AI and 256 AO.
+
 ### Not yet wired
 No screen calls these services yet; the Program, PLC overview and Runtime screens still render fixtures. The tag registry and its Modbus map exist (TASK-203); generating tags and I/O points from the PLC configuration form is TASK-302.
