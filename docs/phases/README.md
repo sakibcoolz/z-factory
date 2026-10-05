@@ -8,7 +8,7 @@
 | 03 | Factory Designer, Device Modeling & PLC Export | DONE | Phase 02 core runtime usable |
 | 04 | Events, Telemetry & 3D | DONE | Factory topology/runtime stable |
 | 05 | External Gateway MVP | DONE | Modbus runtime externally reachable |
-| 06 | Process Module Framework & Go Simulation Service | PLANNED | Phase 02–05 foundations stable; ADR-0008 |
+| 06 | Process Module Framework & Go Simulation Service | IN PROGRESS | Phase 02–05 foundations stable; ADR-0008 |
 | 07 | PLC-to-PLC Communication | PLANNED | Multi-PLC OpenPLC runtime + Modbus mapping stable |
 
 Cross-cutting requirements now included in the roadmap:

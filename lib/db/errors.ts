@@ -59,6 +59,27 @@ const CONSTRAINTS: Record<string, ConstraintRule> = {
     message: "This slot already holds a module.",
   },
   RuntimePort_bindAddress_hostPort_key: { code: "CONFLICT", message: "This host port is already published." },
+  ProcessModuleType_code_version_key: {
+    code: "CONFLICT",
+    message: "This version of the module type already exists. Publish the change as a new version.",
+  },
+  ProcessModuleInstance_factoryId_name_key: {
+    code: "CONFLICT",
+    message: "A process module with this name already exists in the factory.",
+  },
+  ProcessModuleInstance_name_check: { code: "VALIDATION", message: "Module name must not be blank." },
+  ModuleDevice_processModuleInstanceId_moduleRoleDefinitionId_key: {
+    code: "CONFLICT",
+    message: "This device already has this role in the module.",
+  },
+  ModuleInterlock_processModuleInstanceId_code_key: {
+    code: "CONFLICT",
+    message: "The module already has an interlock with this code.",
+  },
+  ModuleSignalDefinition_direction_role_check: {
+    code: "INVARIANT",
+    message: "An OUTPUT signal is a command or a setpoint, and only an OUTPUT is.",
+  },
 };
 
 type DriverCause = {

@@ -1,6 +1,6 @@
 # Phase 06 — Process Module Framework & Go Simulation Service
 
-Status: **PLANNED**
+Status: **IN PROGRESS**
 
 ## Purpose
 Add a process-module abstraction and an isolated Go simulation service without changing the completed/current MVP implementation path.
@@ -12,7 +12,7 @@ Phase 06 starts only after the Phase 02–05 runtime, device-modeling, telemetry
 
 | Task | Status |
 |---|---|
-| TASK-601 Process module domain & persistence | PLANNED |
+| TASK-601 Process module domain & persistence | DONE |
 | TASK-602 Go simulation service foundation | PLANNED |
 | TASK-603 Simulator/Modbus closed-loop bridge | PLANNED |
 | TASK-604 Process module designer & validation | PLANNED |

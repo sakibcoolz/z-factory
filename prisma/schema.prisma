@@ -278,6 +278,18 @@ enum Catalog3dAssetStatus {
   RETIRED
 }
 
+/// Direction of a process-module signal, seen from the PLC program.
+enum ModuleSignalDirection {
+  /// The PLC reads it: feedback, status or a process value.
+  INPUT
+  /// The PLC writes it: a command or a setpoint.
+  OUTPUT
+  /// Calculated by the process model; not wired to PLC I/O.
+  INTERNAL
+  /// An alarm or status point of the module.
+  ALARM
+}
+
 enum FaultResetBehavior {
   AUTO
   MANUAL
@@ -597,6 +609,7 @@ model Factory {
   devices               DeviceInstance[]
   connections           DeviceConnection[]
   gateways              Gateway[]
+  processModules        ProcessModuleInstance[]
   configurationVersions ConfigurationVersion[]
   commands              DeviceCommand[]
   events                RuntimeEvent[]
@@ -637,6 +650,7 @@ model DeviceInstance {
   gateway             Gateway?
   runtimePorts        RuntimePort[]
   simulationProfiles  SimulationProfile[]
+  moduleAssignments   ModuleDevice[]
   runtimeSnapshot     DeviceRuntimeSnapshot?
   sourcedTags         Tag[]                  @relation("TagSourceDevice")
   outgoingConnections DeviceConnection[]     @relation("ConnectionSource")
@@ -991,4 +1005,154 @@ model TelemetrySample {
 
   @@index([tagId, sampledAt])
   @@index([factoryId, sampledAt])
+}
+
+// ───────────────────────────── process modules ─────────────────────────────
+// A process module composes existing factory devices into a process-specific unit
+// (docs/process-modules.md). Types are reusable templates; instances belong to a factory.
+// Binding module signals to PLC endpoints is TASK-605.
+
+/// A reusable process template: the roles devices play in it and its logical I/O contract.
+/// A version is written once; a changed template is a new version.
+model ProcessModuleType {
+  id                 String   @id @default(uuid(7)) @db.Uuid
+  /// Stable code such as PUMP_HOUSE or TANK.
+  code               String
+  name               String
+  version            Int      @default(1)
+  description        String?
+  /// The process model that simulates this type (TASK-602); null until one exists.
+  simulatorModelType String?
+  /// Selectable variants of the template; a signal may apply to some of them only.
+  profiles           String[]
+  /// What an instance's `configJson` may contain. Extensible; nothing process-specific is a column.
+  configSchemaJson   Json     @default("{}")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  roles     ModuleRoleDefinition[]
+  signals   ModuleSignalDefinition[]
+  instances ProcessModuleInstance[]
+
+  @@unique([code, version])
+}
+
+/// A role a factory device plays in a module of this type: the process meaning, separate
+/// from the device's manufacturer and model.
+model ModuleRoleDefinition {
+  id                  String   @id @default(uuid(7)) @db.Uuid
+  processModuleTypeId String   @db.Uuid
+  /// Stable key within the type, e.g. PRESSURE_SENSOR.
+  key                 String
+  name                String
+  description         String?
+  /// Device categories that can fill the role; empty accepts any.
+  deviceCategoryCodes String[]
+  /// A module without a device in a required role is not ready to run.
+  required            Boolean  @default(true)
+  maxDevices          Int      @default(1)
+  /// Profiles the role applies to; empty means all.
+  profiles            String[]
+  /// Order within the type, as its author listed the roles.
+  position            Int      @default(0)
+
+  processModuleType ProcessModuleType        @relation(fields: [processModuleTypeId], references: [id], onDelete: Cascade)
+  signals           ModuleSignalDefinition[]
+  assignments       ModuleDevice[]
+
+  @@unique([processModuleTypeId, key])
+}
+
+/// One logical signal of a module type. It describes process I/O; it reserves no PLC endpoint.
+model ModuleSignalDefinition {
+  id                     String                @id @default(uuid(7)) @db.Uuid
+  processModuleTypeId    String                @db.Uuid
+  /// Stable key within the type, e.g. SPEED_SETPOINT.
+  key                    String
+  name                   String
+  description            String?
+  direction              ModuleSignalDirection
+  dataType               TagDataType
+  /// Semantic role, with the meaning tags have: COMMAND, SETPOINT, FEEDBACK, STATUS, ALARM, PROCESS_VALUE.
+  role                   TagRole
+  unit                   String?
+  /// Expected electrical signal or protocol class, when the template names one.
+  signalType             String?
+  /// A required signal has to be bound before the module can run (TASK-605).
+  required               Boolean               @default(true)
+  rangeMin               Float?
+  rangeMax               Float?
+  /// The role whose device carries the signal, when it belongs to one.
+  moduleRoleDefinitionId String?               @db.Uuid
+  /// Profiles the signal applies to; empty means all.
+  profiles               String[]
+  /// Order within the type, as its author listed the signals.
+  position               Int                   @default(0)
+  metadataJson           Json                  @default("{}")
+
+  processModuleType ProcessModuleType     @relation(fields: [processModuleTypeId], references: [id], onDelete: Cascade)
+  moduleRole        ModuleRoleDefinition? @relation(fields: [moduleRoleDefinitionId], references: [id], onDelete: SetNull)
+
+  @@unique([processModuleTypeId, key])
+}
+
+/// One module of a factory, created from a type. Its name is unique within the factory.
+model ProcessModuleInstance {
+  id                  String       @id @default(uuid(7)) @db.Uuid
+  factoryId           String       @db.Uuid
+  processModuleTypeId String       @db.Uuid
+  name                String
+  location            String?
+  /// Last stored runtime state; a module runs only once a process runtime exists (TASK-602).
+  status              RuntimeState @default(STOPPED)
+  /// The selected profile of the type; null when the type has none.
+  profile             String?
+  configJson          Json         @default("{}")
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  factory           Factory           @relation(fields: [factoryId], references: [id], onDelete: Cascade)
+  processModuleType ProcessModuleType @relation(fields: [processModuleTypeId], references: [id], onDelete: Restrict)
+  devices           ModuleDevice[]
+  interlocks        ModuleInterlock[]
+
+  @@unique([factoryId, name])
+  @@index([processModuleTypeId])
+}
+
+/// A factory device assigned to a role of a module. The device stays what it is; the
+/// assignment adds process meaning. Device and module belong to the same factory (service rule).
+model ModuleDevice {
+  id                      String   @id @default(uuid(7)) @db.Uuid
+  processModuleInstanceId String   @db.Uuid
+  moduleRoleDefinitionId  String   @db.Uuid
+  deviceInstanceId        String   @db.Uuid
+  metadataJson            Json     @default("{}")
+  createdAt               DateTime @default(now())
+
+  processModuleInstance ProcessModuleInstance @relation(fields: [processModuleInstanceId], references: [id], onDelete: Cascade)
+  moduleRole            ModuleRoleDefinition  @relation(fields: [moduleRoleDefinitionId], references: [id], onDelete: Restrict)
+  deviceInstance        DeviceInstance        @relation(fields: [deviceInstanceId], references: [id], onDelete: Cascade)
+
+  @@unique([processModuleInstanceId, moduleRoleDefinitionId, deviceInstanceId])
+  @@index([deviceInstanceId])
+}
+
+/// Interlock metadata of a module: for validation, simulation, documentation and tests.
+/// Never a safety function.
+model ModuleInterlock {
+  id                      String   @id @default(uuid(7)) @db.Uuid
+  processModuleInstanceId String   @db.Uuid
+  /// Stable code within the module, e.g. HIGH_PRESSURE_STOP.
+  code                    String
+  name                    String
+  description             String?
+  /// `{ when: [{ signal, operator, value? }], blocks: [signal] }` over the type's signal keys.
+  expressionJson          Json
+  severity                Severity @default(WARNING)
+  enabled                 Boolean  @default(true)
+
+  processModuleInstance ProcessModuleInstance @relation(fields: [processModuleInstanceId], references: [id], onDelete: Cascade)
+
+  @@unique([processModuleInstanceId, code])
 }
