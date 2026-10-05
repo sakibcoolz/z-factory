@@ -63,6 +63,7 @@ export async function StoredCanvas({ factoryId, mode }: StoredCanvasProps) {
           { label: factory.name, href: routes.factory(factory.id) },
           { label: "Designer", href: routes.designer(factory.id), active: designing },
           { label: "Topology", href: routes.topology(factory.id), active: !designing },
+          { label: "3D", href: routes.view3d(factory.id) },
         ]}
         crumb={`${factory.slug} › ${mode}`}
       />

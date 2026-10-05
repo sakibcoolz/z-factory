@@ -12,6 +12,7 @@ describe("server environment contract", () => {
       RUNTIME_BIND_ADDRESSES: "127.0.0.1",
       SIMULATION_TICK_MS: 100,
       SIMULATION_SNAPSHOT_MS: 10_000,
+      ASSET_STORAGE_DIR: "./data/assets",
       TAG_POLL_MS: 500,
       TELEMETRY_MIN_INTERVAL_MS: 1000,
       TELEMETRY_MAX_INTERVAL_MS: 60_000,

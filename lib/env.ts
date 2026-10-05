@@ -39,6 +39,15 @@ const serverEnvSchema = z.object({
   SIMULATION_TICK_MS: z.coerce.number().int().min(20).max(5000).default(100),
   /** How often the simulator persists a state snapshot of its devices, in milliseconds. */
   SIMULATION_SNAPSHOT_MS: z.coerce.number().int().min(1000).max(3_600_000).default(10_000),
+  /**
+   * Directory the catalog's 3D assets are stored in (ADR-0012). Relative paths start at the
+   * working directory of the server. Never served directly: files go out through a route.
+   */
+  ASSET_STORAGE_DIR: z
+    .string()
+    .min(1)
+    .refine((path) => !path.includes("\0"), "must be a directory path")
+    .default("./data/assets"),
   /** How often the tags of a running PLC are read for live values, in milliseconds. */
   TAG_POLL_MS: z.coerce.number().int().min(100).max(60_000).default(500),
   /** Telemetry: a tag is stored at most this often, in milliseconds. */
