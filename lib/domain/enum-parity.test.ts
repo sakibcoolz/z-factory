@@ -14,6 +14,7 @@ import {
   MOTOR_CATEGORY_CODES,
   PLC_ARCHITECTURES,
   PLC_CATEGORY_CODE,
+  TERMINAL_KINDS,
 } from "./device";
 import { PROGRAM_VERSION_STATUSES } from "./plc-runtime-view";
 import { MODULE_SIGNAL_DIRECTIONS } from "./process-module";
@@ -33,6 +34,7 @@ describe("domain enums match the database schema", () => {
     ["IoPointStatus", IO_POINT_STATUSES, prismaEnums.IoPointStatus],
     ["ConnectionRelationship", CONNECTION_RELATIONSHIPS, prismaEnums.ConnectionRelationship],
     ["EndpointType", ENDPOINT_TYPES, prismaEnums.EndpointType],
+    ["TerminalKind", TERMINAL_KINDS, prismaEnums.TerminalKind],
     ["RuntimeState", RUNTIME_STATES, prismaEnums.RuntimeState],
     ["ProgramVersionStatus", PROGRAM_VERSION_STATUSES, prismaEnums.ProgramVersionStatus],
     ["TagRole", TAG_ROLES, prismaEnums.TagRole],

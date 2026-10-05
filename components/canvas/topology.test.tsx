@@ -69,11 +69,34 @@ const nodes: TopologyNodeView[] = [
 
 const edges: TopologyEdgeView[] = [
   {
-    id: "plc|valve|CONTROLS",
-    relationship: "CONTROLS",
+    id: "plc|valve|WIRED_TO",
+    relationship: "WIRED_TO",
     sourceId: "plc",
     targetId: "valve",
-    wires: [{ terminalLabel: "Y1", pointLabel: "DO Qa.0", logicalAddress: "%QX0.0", tagName: "XV_101_Y1" }],
+    wires: [
+      {
+        id: "wire-1",
+        kind: "SIGNAL",
+        from: {
+          deviceId: "plc",
+          deviceName: "PLC-01",
+          type: "PLC_IO_POINT",
+          endpointId: "point-1",
+          label: "DO Qa.0",
+          name: "PLC-01 / DO Qa.0",
+        },
+        to: {
+          deviceId: "valve",
+          deviceName: "XV-101",
+          type: "DEVICE_IO",
+          endpointId: "terminal-1",
+          label: "Y1",
+          name: "XV-101 / Y1",
+        },
+        tagName: "XV_101_Y1",
+        logicalAddress: "%QX0.0",
+      },
+    ],
     protocol: null,
   },
   {
@@ -94,6 +117,12 @@ const actions = (overrides: Partial<CanvasActions> = {}): CanvasActions => ({
   unlink: vi.fn(ok),
   remove: vi.fn(ok),
   rename: vi.fn(ok),
+  wiring: {
+    load: vi.fn(async () => ({ ok: false as const, message: "not loaded in this test" })),
+    connect: vi.fn(async () => ({ ok: true as const, value: { wireId: "wire-2" } })),
+    reconnect: vi.fn(async () => ({ ok: true as const, value: { wireId: "wire-2" } })),
+    disconnect: vi.fn(ok),
+  },
   ...overrides,
 });
 
@@ -106,7 +135,7 @@ describe("canvas mapping", () => {
     ]);
     expect(edgeLine("COMMUNICATES_WITH")).toBe("network");
     expect(["FEEDS_BACK_TO", "MEASURES"].map((r) => edgeLine(r as never))).toEqual(["feedback", "feedback"]);
-    expect(edges.map(edgeLabel)).toEqual(["controls · 1 wire", "communicates with · Modbus TCP"]);
+    expect(edges.map(edgeLabel)).toEqual(["wired to · 1 wire", "communicates with · Modbus TCP"]);
     expect(edgeLabel({ relationship: "DRIVES", wires: [], protocol: null })).toBe("drives");
   });
 
@@ -121,7 +150,7 @@ describe("canvas mapping", () => {
 
   it("names what a node is and finds its edges", () => {
     expect(nodes.map(nodeKind)).toEqual(["PLC · compact", "Valve", "Variable-frequency drive"]);
-    expect(edgesOf("valve", edges).map((edge) => edge.id)).toEqual(["plc|valve|CONTROLS"]);
+    expect(edgesOf("valve", edges).map((edge) => edge.id)).toEqual(["plc|valve|WIRED_TO"]);
     expect(edgesOf("plc", edges)).toHaveLength(2);
   });
 });
@@ -186,6 +215,7 @@ describe("topology inspector", () => {
     onRename: vi.fn(),
     onRemoveDevice: vi.fn(),
     onRemoveEdge: vi.fn(),
+    onWiringChanged: vi.fn(),
   };
 
   it("explains how to use the canvas when nothing is selected", () => {
@@ -200,7 +230,7 @@ describe("topology inspector", () => {
     expect(screen.getByText("PLC · compact")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open PLC" })).toHaveAttribute("href", "/factories/f/plcs/plc");
     expect(screen.getByText("Connections (2)")).toBeInTheDocument();
-    expect(screen.getByText("PLC-01 controls · 1 wire XV-101")).toBeInTheDocument();
+    expect(screen.getByText("PLC-01 wired to · 1 wire XV-101")).toBeInTheDocument();
     expect(screen.getByText("PLC-01 communicates with · Modbus TCP VFD-01")).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "PLC-A" } });
@@ -223,21 +253,61 @@ describe("topology inspector", () => {
     expect(onRemoveDevice).toHaveBeenCalledWith("valve");
   });
 
-  it("shows a wired connection with its channels and removes it", () => {
+  it("shows the wires of a wiring edge pin to pin and removes them all", () => {
     const onRemoveEdge = vi.fn();
     render(
       <TopologyInspector
         {...base}
         onRemoveEdge={onRemoveEdge}
-        selection={{ kind: "edge", id: "plc|valve|CONTROLS" }}
+        selection={{ kind: "edge", id: "plc|valve|WIRED_TO" }}
       />,
     );
 
-    expect(screen.getByText("controls")).toBeInTheDocument();
-    expect(screen.getByText("Y1 → DO Qa.0 · %QX0.0")).toBeInTheDocument();
-    expect(screen.getByText(/disconnects the device from the PLC/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Remove connection" }));
+    expect(screen.getByText("wired to")).toBeInTheDocument();
+    expect(screen.getByText("PLC-01 / DO Qa.0 → XV-101 / Y1 · %QX0.0")).toBeInTheDocument();
+    expect(screen.getByText(/Removes every wire between these two devices/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Remove all wires" }));
     expect(onRemoveEdge).toHaveBeenCalledWith(edges[0]);
+  });
+
+  it("keeps a relationship edge a single connection that is removed as one", () => {
+    const onRemoveEdge = vi.fn();
+    render(
+      <TopologyInspector
+        {...base}
+        onRemoveEdge={onRemoveEdge}
+        selection={{ kind: "edge", id: "plc|vfd|COMMUNICATES_WITH" }}
+      />,
+    );
+
+    expect(screen.getByText("communicates with")).toBeInTheDocument();
+    expect(screen.getByText("Modbus TCP")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Remove connection" }));
+    expect(onRemoveEdge).toHaveBeenCalledWith(edges[1]);
+  });
+
+  it("opens pin-to-pin wiring for two devices that have no wire yet", async () => {
+    const load = vi.fn(async () => ({
+      ok: true as const,
+      value: {
+        first: { deviceId: "plc", name: "PLC-01", endpoints: [] },
+        second: { deviceId: "valve", name: "XV-101", endpoints: [] },
+        wires: [],
+        refusals: {},
+        replacingWireId: null,
+      },
+    }));
+    render(
+      <TopologyInspector
+        {...base}
+        wiring={{ ...actions().wiring, load }}
+        selection={{ kind: "pair", firstId: "plc", secondId: "valve" }}
+      />,
+    );
+
+    expect(screen.getByText("Between")).toBeInTheDocument();
+    expect(await screen.findByText(/Connecting them wires nothing by itself/)).toBeInTheDocument();
+    expect(load).toHaveBeenCalledWith("plc", "valve", undefined);
   });
 
   it("offers no edits in the read-only topology view", () => {

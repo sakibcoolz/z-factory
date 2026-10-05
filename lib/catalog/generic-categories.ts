@@ -70,6 +70,7 @@ export const GENERIC_CATEGORIES: readonly GenericCategory[] = [
   category("ACTUATOR", "Pneumatic actuator / cylinder", "VALVE"),
   category("HEATER", "Heater"),
   category("INDICATOR", "Stack light / alarm lamp / buzzer"),
+  category("POWER_SUPPLY", "Power supply"),
   category("SENSOR", "Sensor / transmitter", "SENSOR"),
   category("PROXIMITY_SENSOR", "Proximity / photoelectric sensor", "SWITCH"),
   category("SWITCH", "Switch / push button", "SWITCH"),

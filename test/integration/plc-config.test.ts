@@ -10,18 +10,16 @@ import {
   addPeripheral,
   createPlc,
   deletePlc,
-  getPeripheralOptions,
   getPlcConfiguration,
   installModule,
-  listAddablePeripherals,
   listFactoryDevices,
   listInstallableModules,
   listPlcModels,
   removeModule,
-  removePeripheral,
 } from "@/lib/services/plc-config-service";
 import { planSimulation } from "@/lib/services/simulation-service";
 import { createTag, getModbusMap } from "@/lib/services/tag-service";
+import { removeDevice } from "@/lib/services/topology-service";
 import { describeDb, openTestDb, resetDb } from "./harness";
 
 const alice = { ownerId: "alice" };
@@ -161,22 +159,6 @@ describeDb("PLC configuration against PostgreSQL", () => {
     expect(await deviceCount(factoryId)).toBe(1);
   });
 
-  it("shows which peripherals a compact PLC still has room for", async () => {
-    const { plcId } = await newPlc("CPU 1214C DC/DC/DC");
-    const rows = Object.fromEntries(
-      (await listAddablePeripherals(db, alice, plcId)).map((row) => [row.modelName, row]),
-    );
-
-    expect(rows["Generic push button, 24 V DC"]).toMatchObject({
-      fits: true,
-      connection: "DIRECT_IO",
-      detail: "1 × DI 24 V DC",
-    });
-    expect(rows["Generic pressure transmitter, 4–20 mA"]).toMatchObject({ fits: false, detail: "no free AI 4–20 mA" });
-    expect(rows["Generic VFD, hardwired control"]).toMatchObject({ fits: false, detail: "no free AO 0–10 V" });
-    expect(rows["Generic VFD, Modbus TCP"]).toMatchObject({ fits: true, connection: "PROTOCOL", detail: "Modbus TCP" });
-  });
-
   it("wires a peripheral to free compatible channels and gives each a tag and Modbus address", async () => {
     const { factoryId, plcId } = await newPlc("CPU 1214C DC/DC/DC");
     const { deviceId } = await add(plcId, "Generic on/off valve, 24 V DC", "XV-101");
@@ -227,16 +209,14 @@ describeDb("PLC configuration against PostgreSQL", () => {
 
   it("honours a chosen channel and never assigns an occupied or incompatible one", async () => {
     const { factoryId, plcId } = await newPlc("CPU 1214C DC/DC/DC");
-    const options = await getPeripheralOptions(db, alice, plcId, await modelId("Generic push button, 24 V DC"));
-    expect(options).toMatchObject({ suggestedName: "SWITCH-01", connection: "DIRECT_IO" });
-    const [terminal] = options.terminals;
-    expect(terminal).toMatchObject({ terminalLabel: "OUT", required: "DI", simulatorSignal: "state" });
-    expect(terminal?.options).toHaveLength(14);
-    expect(terminal?.suggestedPointId).toBe(terminal?.options[0]?.pointId);
-
-    const last = terminal?.options[13];
-    if (!terminal || !last) throw new Error("options missing");
-    expect(last).toMatchObject({ label: "DI Ib.5", logicalAddress: "%MX1.5" });
+    // The terminal of the catalog model and the channel it is to land on, both by id.
+    const terminal = await db.deviceIoDefinition.findFirstOrThrow({
+      where: { deviceModelId: await modelId("Generic push button, 24 V DC"), terminalLabel: "OUT" },
+    });
+    const inputs = bank(await config(plcId), "builtin-DI")?.points ?? [];
+    expect(inputs).toHaveLength(14);
+    const last = { ...inputs[13], pointId: inputs[13]?.id ?? "" };
+    expect(last).toMatchObject({ label: "Ib.5", logicalAddress: "%MX1.5", status: "FREE" });
     await add(plcId, "Generic push button, 24 V DC", "HS-01", { [terminal.id]: last.pointId });
     expect((await config(plcId)).peripherals[0]?.wires).toMatchObject([{ pointLabel: "Ib.5", tagName: "HS_01_OUT" }]);
 
@@ -256,10 +236,9 @@ describeDb("PLC configuration against PostgreSQL", () => {
     await expectDomainError(add(plcId, "Generic push button, 24 V DC", "HS-01"), "CONFLICT");
     expect(await deviceCount(factoryId)).toBe(2);
 
-    // The occupied channel is no longer offered.
-    const after = await getPeripheralOptions(db, alice, plcId, await modelId("Generic push button, 24 V DC"));
-    expect(after.terminals[0]?.options).toHaveLength(13);
-    expect(after.suggestedName).toBe("SWITCH-01");
+    // The chosen channel is the only one that is occupied: the refused devices left nothing behind.
+    const after = bank(await config(plcId), "builtin-DI")?.points ?? [];
+    expect(after.filter((point) => point.status === "OCCUPIED").map((point) => point.label)).toEqual(["Ib.5"]);
   });
 
   it("stops when the channels of a class are used up", async () => {
@@ -273,11 +252,6 @@ describeDb("PLC configuration against PostgreSQL", () => {
     );
     expect(await deviceCount(factoryId)).toBe(3);
 
-    const rows = await listAddablePeripherals(db, alice, plcId);
-    expect(rows.find((row) => row.modelName === "Generic pressure transmitter, 0–10 V")).toMatchObject({
-      fits: false,
-      detail: "no free AI 0–10 V",
-    });
     const tag = await db.tag.findFirstOrThrow({ where: { name: "PT_101_OUT" } });
     expect(tag).toMatchObject({
       dataType: "INT16",
@@ -305,14 +279,14 @@ describeDb("PLC configuration against PostgreSQL", () => {
   it("removes a peripheral and frees its channels and tags", async () => {
     const { factoryId, plcId } = await newPlc("CPU 1214C DC/DC/DC");
     const { deviceId } = await add(plcId, "Generic on/off valve, 24 V DC", "XV-101");
-    await removePeripheral(db, alice, plcId, deviceId);
+    await removeDevice(db, alice, deviceId);
 
     const view = await config(plcId);
     expect(view.occupancy.occupied).toBe(0);
     expect(view.peripherals).toEqual([]);
     expect(await db.tag.count({ where: { plcInstanceId: plcId } })).toBe(0);
     expect(await deviceCount(factoryId)).toBe(1);
-    await expectDomainError(removePeripheral(db, alice, plcId, deviceId), "NOT_FOUND");
+    await expectDomainError(removeDevice(db, alice, deviceId), "NOT_FOUND");
 
     // The freed channels are used again.
     await add(plcId, "Generic on/off valve, 24 V DC", "XV-102");
@@ -506,7 +480,7 @@ describeDb("PLC configuration against PostgreSQL", () => {
     expect(tags.PT_101_OUT).toMatchObject({ role: "PROCESS_VALUE", logicalAddress: "%MW0" });
 
     await expectDomainError(removeModule(db, alice, plcId, analogIn), "CONFLICT", "module-in-use");
-    await removePeripheral(db, alice, plcId, transmitter.deviceId);
+    await removeDevice(db, alice, transmitter.deviceId);
     await expectDomainError(removeModule(db, alice, plcId, analogIn), "CONFLICT", "module-in-use");
   });
 

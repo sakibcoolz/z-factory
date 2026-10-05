@@ -51,7 +51,8 @@ export const plcConfigRepository = {
       where: { id: deviceModelId },
       include: {
         family: { include: { category: true, manufacturer: true } },
-        ioDefinitions: { orderBy: { terminalLabel: "asc" } },
+        // Signal terminals only: supply, 0 V and earth terminals are never wired to a PLC channel.
+        ioDefinitions: { where: { kind: "SIGNAL" }, orderBy: { terminalLabel: "asc" } },
         communicationPorts: { orderBy: { name: "asc" } },
       },
     });

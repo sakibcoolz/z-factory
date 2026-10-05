@@ -81,6 +81,8 @@ const FORMS: Record<string, string> = {
   ACTUATOR: "pneumatic cylinder, round barrel with tie rods and a piston rod at the front, on two mounting feet",
   HEATER:
     "electric air heater battery, rectangular sheet-steel frame with rows of finned tubular heating elements across the opening and a terminal box at one end, on two feet",
+  POWER_SUPPLY:
+    "power supply unit for a mounting rail, compact upright rectangular housing with ventilation slots on the top and sides, a row of screw terminals at the top and at the bottom of the front and a small status light, clipped on a short piece of mounting rail",
   INDICATOR:
     "signal tower light, slim pole on a round base with three stacked cylindrical translucent lens segments in red, amber and green and a black cap on top",
   SENSOR: `process sensor, cylindrical housing with two round screw caps lying across a short neck, cable gland at the side, ${PIPE_STAND}`,
@@ -186,6 +188,7 @@ function paint(categoryCode: string, subject: string): string {
   }
   if (categoryCode === "CONVEYOR") return "realistic matte grey steel frame with a black rubber belt";
   if (categoryCode === "INDICATOR") return "black pole and base with glossy red, amber and green light segments";
+  if (categoryCode === "POWER_SUPPLY") return "realistic light grey metal housing with a silver mounting rail";
   if (categoryCode === "HEATER") return "realistic galvanised sheet steel with dark metal heating elements";
   if (["SENSOR", "TRANSMITTER", "PROXIMITY_SENSOR", "SWITCH", "ENCODER"].includes(categoryCode)) {
     return "realistic brushed stainless steel and light grey painted aluminium";

@@ -110,9 +110,12 @@ async function loadModel(db: PrismaClient, modelId: string): Promise<CatalogMode
 function toTerminals(model: { ioDefinitions: CatalogModelRecord["ioDefinitions"] }): CatalogTerminal[] {
   return model.ioDefinitions.map((terminal) => ({
     terminalLabel: terminal.terminalLabel,
-    direction: terminal.direction,
-    ioType: terminal.ioType,
-    signalType: terminal.signalType,
+    kind: terminal.kind,
+    maxConnections: terminal.maxConnections,
+    // The columns are filled for every kind; only what the kind has is shown.
+    direction: terminal.kind === "SIGNAL" || terminal.kind === "POWER" ? terminal.direction : null,
+    ioType: terminal.kind === "SIGNAL" ? terminal.ioType : null,
+    signalType: terminal.signalType || null,
     simulatorSignal: terminal.simulatorSignal,
   }));
 }
@@ -215,7 +218,13 @@ export async function listCompatiblePeripherals(
   }));
 
   const result = (await catalogRepository.listPeripherals(db)).map((peripheral): PeripheralCompatibility => {
-    const terminals = toTerminals(peripheral);
+    // Signal terminals only: these are what a PLC channel is needed for.
+    const terminals = peripheral.ioDefinitions.map(({ terminalLabel, direction, ioType, signalType }) => ({
+      terminalLabel,
+      direction,
+      ioType,
+      signalType,
+    }));
     let directIo: PeripheralCompatibility["directIo"] = null;
     if (terminals.length > 0) {
       if (modular) directIo = matchTerminalsToModules(terminals, modules);

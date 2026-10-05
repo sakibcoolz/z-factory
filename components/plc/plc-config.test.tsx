@@ -1,10 +1,9 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { DomainError } from "@/lib/domain/errors";
-import type { PeripheralOptionsView, PlcBankView, PlcPointView } from "@/lib/domain/plc-config-view";
+import type { PlcBankView, PlcPointView } from "@/lib/domain/plc-config-view";
 import { type ActionState, readForm, toActionState } from "@/lib/plc/form-state";
 import { ModuleInstallForm } from "./module-install-form";
-import { PeripheralForm } from "./peripheral-form";
 import { PinDetails, PinView } from "./pin-view";
 import { PlcCreateForm } from "./plc-create-form";
 
@@ -155,82 +154,6 @@ describe("module install form (modular path)", () => {
     render(<ModuleInstallForm action={noop} modules={modules} freeSlots={[]} />);
     expect(screen.getByRole("button", { name: "Install module" })).toBeDisabled();
     expect(screen.getByText("every slot is in use")).toBeInTheDocument();
-  });
-});
-
-describe("peripheral form", () => {
-  const options: PeripheralOptionsView = {
-    model: { id: "valve", modelName: "Generic on/off valve, 24 V DC", categoryName: "Valve" },
-    suggestedName: "VALVE-01",
-    connection: "DIRECT_IO",
-    protocols: [],
-    terminals: [
-      {
-        id: "t1",
-        terminalLabel: "Y1",
-        required: "DO",
-        signalType: "DC_24V",
-        simulatorSignal: "open",
-        options: [
-          { pointId: "q0", label: "DO Qa.0", logicalAddress: "%QX0.0" },
-          { pointId: "q1", label: "DO Qa.1", logicalAddress: "%QX0.1" },
-        ],
-        suggestedPointId: "q1",
-      },
-      {
-        id: "t2",
-        terminalLabel: "ZSO",
-        required: "DI",
-        signalType: "DC_24V",
-        simulatorSignal: "opened",
-        options: [{ pointId: "i0", label: "DI Ia.0", logicalAddress: "%MX0.0" }],
-        suggestedPointId: "i0",
-      },
-    ],
-  };
-
-  it("offers each terminal only its free compatible channels, with the suggestion selected", () => {
-    render(<PeripheralForm action={noop} options={options} cancelHref="/back" />);
-    expect(screen.getByLabelText("Name")).toHaveValue("VALVE-01");
-
-    const output = screen.getByLabelText("Y1");
-    expect(output).toHaveAttribute("name", "terminal:t1");
-    expect(output).toHaveValue("q1");
-    expect(
-      within(output)
-        .getAllByRole("option")
-        .map((option) => option.textContent),
-    ).toEqual(["DO Qa.0 · %QX0.0", "DO Qa.1 · %QX0.1"]);
-    expect(screen.getByLabelText("ZSO")).toHaveValue("i0");
-    expect(screen.getByText("DO · 24 V DC")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Add and wire" })).toBeEnabled();
-  });
-
-  it("blocks the form when a terminal has no free channel", () => {
-    const [first, second] = options.terminals;
-    if (!first || !second) throw new Error("fixture");
-    render(
-      <PeripheralForm
-        action={noop}
-        options={{ ...options, terminals: [first, { ...second, options: [], suggestedPointId: null }] }}
-        cancelHref="/back"
-      />,
-    );
-    expect(screen.getByText("no free DI channel for this signal")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Add and wire" })).toBeDisabled();
-  });
-
-  it("explains a protocol connection and uses no channel for it", () => {
-    render(
-      <PeripheralForm
-        action={noop}
-        options={{ ...options, connection: "PROTOCOL", protocols: ["MODBUS_TCP"], terminals: [] }}
-        cancelHref="/back"
-      />,
-    );
-    expect(screen.getByText("Connects over Modbus TCP; it uses no I/O channel.")).toBeInTheDocument();
-    expect(screen.queryByRole("table")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Add and wire" })).toBeEnabled();
   });
 });
 

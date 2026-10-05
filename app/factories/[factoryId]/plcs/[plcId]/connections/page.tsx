@@ -8,12 +8,10 @@ export const dynamic = "force-dynamic";
 
 type ConnectionsPageProps = {
   params: Promise<{ factoryId: string; plcId: string }>;
-  searchParams: Promise<{ add?: string | string[] }>;
 };
 
-/** Devices connected to a PLC and the catalog peripherals it can still take. */
-export default async function ConnectionsPage({ params, searchParams }: ConnectionsPageProps) {
+/** Devices wired to a PLC: a read-only projection of the factory's wiring. */
+export default async function ConnectionsPage({ params }: ConnectionsPageProps) {
   const { factoryId, plcId } = await params;
-  const { add } = await searchParams;
-  return StoredPlcConnections({ factoryId, plcId, add: typeof add === "string" ? add : undefined });
+  return StoredPlcConnections({ factoryId, plcId });
 }

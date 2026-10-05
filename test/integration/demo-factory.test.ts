@@ -79,12 +79,16 @@ describeDb("the pump station demo factory", () => {
     ).toEqual([
       "MOTOR-01 MECHANICALLY_DRIVES PUMP-01",
       "PLC-01 COMMUNICATES_WITH GATEWAY-01",
-      "PLC-01 CONTROLS VFD-01",
-      "PT-101 FEEDS_BACK_TO PLC-01",
+      "PLC-01 WIRED_TO PT-101",
+      "PLC-01 WIRED_TO VFD-01",
       "PT-101 MEASURES PUMP-01",
       "VFD-01 DRIVES MOTOR-01",
-      "VFD-01 FEEDS_BACK_TO PLC-01",
     ]);
+    // One wiring edge per device, with every wire on it: seven for the drive, one for the transmitter.
+    const wires = (deviceName: string) =>
+      topology.edges.find((edge) => edge.relationship === "WIRED_TO" && name(edge.targetId) === deviceName)?.wires;
+    expect(wires("VFD-01")).toHaveLength(7);
+    expect(wires("PT-101")?.map((wire) => [wire.from.name, wire.tagName])).toEqual([["PT-101 / OUT", "PT_101_OUT"]]);
 
     // The drive and the transmitter are wired to channels of the installed modules.
     const configuration = await getPlcConfiguration(db, alice, demo.plcId);

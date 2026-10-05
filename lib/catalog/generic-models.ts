@@ -44,10 +44,16 @@ const analog = (
 
 const DC_24V = { supplyType: "DC", nominalVoltage: 24 } as const;
 
+/** Supply terminals of a 24 V DC field device: it takes the supply and has a 0 V terminal. */
+const SUPPLY_24V: Terminal[] = [
+  { terminalLabel: "+24V", kind: "POWER", direction: "INPUT", signalType: "DC_24V" },
+  { terminalLabel: "0V", kind: "COMMON" },
+];
+
 /** A transmitter with one analog output carrying the measured value. */
 const transmitter = (modelName: string, signalType: "CURRENT_4_20MA" | "VOLTAGE_0_10V") =>
   generic("SENSOR", "Generic transmitters", modelName, {
-    terminals: [analog("OUT", "OUTPUT", signalType, "value")],
+    terminals: [analog("OUT", "OUTPUT", signalType, "value"), ...SUPPLY_24V],
     faults: ["BAD_QUALITY", "STUCK"],
     electrical: DC_24V,
   });
@@ -71,6 +77,9 @@ export const genericModels: CatalogInput = {
         digital("RUNNING", "OUTPUT", "running"),
         digital("FAULT", "OUTPUT", "faulted"),
         analog("FREQ", "OUTPUT", "VOLTAGE_0_10V", "actualFrequency"),
+        // Reference potential of the control terminals, and the earth terminal of the housing.
+        { terminalLabel: "COM", kind: "COMMON", maxConnections: 4 },
+        { terminalLabel: "PE", kind: "EARTH" },
       ],
       faults: ["OVERCURRENT", "OVERTEMPERATURE"],
     }),
@@ -114,6 +123,16 @@ export const genericModels: CatalogInput = {
     contact("SWITCH", "Generic switches", "Generic float switch, 24 V DC"),
     contact("SWITCH", "Generic switches", "Generic pressure switch, 24 V DC"),
     contact("PROXIMITY_SENSOR", "Generic proximity sensors", "Generic proximity sensor, 24 V DC PNP"),
+    // Distribution: the terminals that are shared, each within the number of wires it takes.
+    generic("POWER_SUPPLY", "Generic power supplies", "Generic 24 V DC power supply", {
+      runtimeSupport: "NONE",
+      terminals: [
+        { terminalLabel: "+24V", kind: "POWER", direction: "OUTPUT", signalType: "DC_24V", maxConnections: 8 },
+        { terminalLabel: "0V", kind: "COMMON", maxConnections: 8 },
+        { terminalLabel: "PE", kind: "EARTH", maxConnections: 8 },
+      ],
+      electrical: DC_24V,
+    }),
     // Not simulated yet: there is no behaviour model for these categories.
     generic("CONTACTOR", "Generic contactors", "Generic contactor, 24 V DC coil", {
       runtimeSupport: "NONE",

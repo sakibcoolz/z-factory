@@ -53,11 +53,11 @@ export const catalogRepository = {
     return db.deviceModel.findMany({
       where: {
         family: { category: { code: { not: "PLC" } } },
-        OR: [{ ioDefinitions: { some: {} } }, { communicationPorts: { some: {} } }],
+        OR: [{ ioDefinitions: { some: { kind: "SIGNAL" } } }, { communicationPorts: { some: {} } }],
       },
       include: {
         family: { include: { manufacturer: true, category: true } },
-        ioDefinitions: { orderBy: { terminalLabel: "asc" } },
+        ioDefinitions: { where: { kind: "SIGNAL" }, orderBy: { terminalLabel: "asc" } },
         communicationPorts: true,
       },
       orderBy: [{ family: { category: { name: "asc" } } }, { modelName: "asc" }],

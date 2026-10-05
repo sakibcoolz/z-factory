@@ -12,13 +12,13 @@ export type TopologyParty = {
   categoryCode: string;
   simulatorType: string;
   requiresMotor: boolean;
-  /** The model has terminals that can be wired to PLC channels. */
+  /** The model has terminals that can be wired: signals, supply, 0 V or earth. */
   hasTerminals: boolean;
   /** Protocols the model has a communication port for. */
   protocols: readonly string[];
 };
 
-/** How a link is made. `WIRE_IO` wires every terminal of a device to PLC channels. */
+/** How a link is made. `WIRE_IO` opens pin-to-pin wiring; it stores nothing by itself. */
 export const LINK_KINDS = [
   "WIRE_IO",
   "COMMUNICATES_WITH",
@@ -71,7 +71,7 @@ export function linkOptions(from: TopologyParty, to: TopologyParty): LinkOption[
   const plc = from.isPlc ? from : to.isPlc ? to : undefined;
   if (plc) {
     const device = plc === from ? to : from;
-    if (device.hasTerminals) add("WIRE_IO", plc, device, `Wire ${device.name} to free channels of ${plc.name}`);
+    if (device.hasTerminals) add("WIRE_IO", plc, device, `Wire ${device.name} to ${plc.name} pin by pin`);
     for (const protocol of shared(plc, device))
       add("COMMUNICATES_WITH", plc, device, `${plc.name} talks to ${device.name} over ${protocolName(protocol)}`);
     return options;
@@ -93,6 +93,8 @@ export function linkOptions(from: TopologyParty, to: TopologyParty): LinkOption[
     add("CONTROLS", from, to, `${from.name} controls ${to.name}`);
   for (const protocol of shared(from, to))
     add("COMMUNICATES_WITH", from, to, `${from.name} talks to ${to.name} over ${protocolName(protocol)}`);
+  // Last, so a relationship is offered before the terminals of two devices are.
+  if (from.hasTerminals && to.hasTerminals) add("WIRE_IO", from, to, `Wire ${from.name} and ${to.name} pin by pin`);
   return options;
 }
 

@@ -24,6 +24,7 @@ import { useRouter } from "next/navigation";
 import { type DragEvent, useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { PALETTE_MIME } from "@/components/canvas/device-palette";
 import { type InspectorSelection, TopologyInspector } from "@/components/canvas/topology-inspector";
+import type { WiringActions } from "@/components/canvas/wiring-editor";
 import { SideBar } from "@/components/shell/side-bar";
 import { RuntimeStatePill, runtimeStateTone } from "@/components/ui/state-pill";
 import type { RuntimeState } from "@/lib/domain/runtime-state";
@@ -40,6 +41,8 @@ export type CanvasActions = {
   unlink: (input: { sourceId: string; targetId: string; relationship: string }) => Promise<Result>;
   remove: (deviceId: string) => Promise<Result>;
   rename: (deviceId: string, input: { name: string; role: string }) => Promise<Result>;
+  /** Pin-to-pin wiring of two devices. */
+  wiring: WiringActions;
 };
 
 type TopologyCanvasProps = {
@@ -172,10 +175,23 @@ function Canvas({ view, actions, plcLinks }: TopologyCanvasProps) {
       if (!actions) return;
       perform(
         () => actions.link({ fromId, toId, kind }),
-        (result) => setChoice(result.status === "CHOOSE" ? { fromId, toId, options: result.options } : undefined),
+        (result) => {
+          setChoice(result.status === "CHOOSE" ? { fromId, toId, options: result.options } : undefined);
+          // Wiring is done pin by pin in the inspector: on the edge when there is one, else for the pair.
+          if (result.status !== "WIRE") return;
+          const edge = view.edges.find(
+            (candidate) =>
+              candidate.relationship === "WIRED_TO" &&
+              [candidate.sourceId, candidate.targetId].includes(result.firstId) &&
+              [candidate.sourceId, candidate.targetId].includes(result.secondId),
+          );
+          setSelection(
+            edge ? { kind: "edge", id: edge.id } : { kind: "pair", firstId: result.firstId, secondId: result.secondId },
+          );
+        },
       );
     },
-    [actions, perform],
+    [actions, perform, view.edges],
   );
 
   const onConnect = useCallback(
@@ -277,7 +293,7 @@ function Canvas({ view, actions, plcLinks }: TopologyCanvasProps) {
           <Controls showInteractive={false} />
         </ReactFlow>
       </div>
-      <SideBar title="Inspector" edge="left" className="w-62.5">
+      <SideBar title="Inspector" edge="left" className="w-72">
         <TopologyInspector
           nodes={view.nodes}
           edges={view.edges}
@@ -294,6 +310,8 @@ function Canvas({ view, actions, plcLinks }: TopologyCanvasProps) {
             )
           }
           onRemoveEdge={removeEdge}
+          wiring={actions?.wiring}
+          onWiringChanged={() => router.refresh()}
         />
       </SideBar>
     </div>

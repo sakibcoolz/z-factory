@@ -4,6 +4,7 @@ import { GENERIC_CATEGORIES } from "@/lib/catalog/generic-categories";
 import { createPrismaClient } from "@/lib/db/client";
 import { factoryRepository } from "@/lib/db/repositories/factory-repository";
 import type { IoPointType, PlcArchitecture, PrismaClient } from "@/lib/generated/prisma/client";
+import { connectWire, getPairWiring } from "@/lib/services/wiring-service";
 import { assertTestDatabaseUrl } from "./test-database-url";
 
 const url = process.env.TEST_DATABASE_URL;
@@ -79,4 +80,34 @@ export async function createGenericModel(
     },
     include: { builtInIoChannels: true, ioDefinitions: true },
   });
+}
+
+/**
+ * Wires every signal terminal of a device to the first channel of the PLC that takes it,
+ * one wire at a time through the wiring service: what a person does in the wiring editor.
+ */
+export async function wireAllSignals(
+  db: PrismaClient,
+  actor: { ownerId: string },
+  factoryId: string,
+  plcId: string,
+  deviceId: string,
+): Promise<number> {
+  const terminals = (await getPairWiring(db, actor, factoryId, deviceId, plcId)).first.endpoints.filter(
+    (endpoint) => endpoint.kind === "SIGNAL",
+  );
+  for (const terminal of terminals) {
+    // Read again for every wire: the channel the last one took is no longer free.
+    const view = await getPairWiring(db, actor, factoryId, deviceId, plcId);
+    const channel = view.second.endpoints.find(
+      (endpoint) => endpoint.type === "PLC_IO_POINT" && view.refusals[terminal.key]?.[endpoint.key] === undefined,
+    );
+    if (!channel)
+      throw new Error(`${view.first.name} / ${terminal.label} finds no free channel on ${view.second.name}`);
+    await connectWire(db, actor, factoryId, {
+      from: { deviceId, type: terminal.type, id: terminal.id },
+      to: { deviceId: plcId, type: channel.type, id: channel.id },
+    });
+  }
+  return terminals.length;
 }

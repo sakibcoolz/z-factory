@@ -118,9 +118,10 @@ export async function createDemoFactory(
     ).id;
   const motorId = await place("motor");
   const pumpId = await place("pump");
-  await linkDevices(db, actor, factoryId, { fromId: vfdId, toId: motorId });
-  await linkDevices(db, actor, factoryId, { fromId: motorId, toId: pumpId });
-  await linkDevices(db, actor, factoryId, { fromId: transmitterId, toId: pumpId });
+  // Named, because two devices with terminals could also be wired pin by pin.
+  await linkDevices(db, actor, factoryId, { fromId: vfdId, toId: motorId, kind: "DRIVES" });
+  await linkDevices(db, actor, factoryId, { fromId: motorId, toId: pumpId, kind: "MECHANICALLY_DRIVES" });
+  await linkDevices(db, actor, factoryId, { fromId: transmitterId, toId: pumpId, kind: "MEASURES" });
   await db.simulationProfile.createMany({
     data: [
       { deviceInstanceId: vfdId, kind: "STATE_MACHINE", parametersJson: DEMO_PROFILES.vfd },
@@ -161,7 +162,7 @@ export async function createDemoFactory(
   // The gateway: one endpoint for an edge device, with every tag mapped (commands and setpoints writable).
   const gateway = await addGateway(deps, actor, factoryId);
   // In the designer and the 3D view the gateway is a device on the PLC's network.
-  await linkDevices(db, actor, factoryId, { fromId: plc.id, toId: gateway.id });
+  await linkDevices(db, actor, factoryId, { fromId: plc.id, toId: gateway.id, kind: "COMMUNICATES_WITH" });
   const view = await getGatewaysView(deps, actor, factoryId);
   if (view.suggestedPort === null)
     throw new DomainError("CONFLICT", "No free host port is left for the gateway endpoint.");

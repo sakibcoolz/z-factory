@@ -15,7 +15,8 @@ import {
   renameDevice,
   unlinkDevices,
 } from "@/lib/services/topology-service";
-import { describeDb, openTestDb, resetDb } from "./harness";
+import { getPairWiring } from "@/lib/services/wiring-service";
+import { describeDb, openTestDb, resetDb, wireAllSignals } from "./harness";
 
 const alice = { ownerId: "alice" };
 const bob = { ownerId: "bob" };
@@ -41,6 +42,7 @@ describeDb("factory topology against PostgreSQL", () => {
     placeDevice(db, alice, factoryId, { deviceModelId: await modelId(modelName), x, y, name });
   const link = (fromId: string, toId: string, kind?: string) =>
     linkDevices(db, alice, factoryId, { fromId, toId, kind });
+  const wire = (plcId: string, deviceId: string) => wireAllSignals(db, alice, factoryId, plcId, deviceId);
   const edges = async () =>
     (await getTopology(db, alice, factoryId)).edges.map((edge) => [
       edge.relationship,
@@ -79,7 +81,7 @@ describeDb("factory topology against PostgreSQL", () => {
       "CPU 1511-1 PN",
       "TM241CE24T",
     ]);
-    expect(view.palette.reduce((count, group) => count + group.items.length, 0)).toBe(30);
+    expect(view.palette.reduce((count, group) => count + group.items.length, 0)).toBe(31);
     await expectDomainError(getTopology(db, bob, factoryId), "NOT_FOUND");
   });
 
@@ -139,7 +141,7 @@ describeDb("factory topology against PostgreSQL", () => {
     const sensor = await place("Generic pressure transmitter, 4–20 mA");
 
     // Drawn from the motor to the drive: stored as the drive driving the motor.
-    expect(await link(motor.id, vfd.id)).toEqual({ status: "LINKED" });
+    expect(await link(motor.id, vfd.id, "DRIVES")).toEqual({ status: "LINKED" });
     await link(motor.id, pump.id);
     await link(sensor.id, pump.id);
     expect(await edges()).toEqual([
@@ -150,45 +152,57 @@ describeDb("factory topology against PostgreSQL", () => {
 
     // One drive per motor, and no relationship at all between two pumps.
     const other = await place("Generic VFD, hardwired control");
-    await expectDomainError(link(other.id, motor.id), "INVARIANT", "one-drive-per-motor");
+    await expectDomainError(link(other.id, motor.id, "DRIVES"), "INVARIANT", "one-drive-per-motor");
     await expectDomainError(link(pump.id, (await place("Generic centrifugal pump")).id), "INCOMPATIBLE", "no-link");
     // Drawing the same drive connection again runs into the same rule.
-    await expectDomainError(link(vfd.id, motor.id), "INVARIANT", "one-motor-per-drive");
+    await expectDomainError(link(vfd.id, motor.id, "DRIVES"), "INVARIANT", "one-motor-per-drive");
   });
 
-  it("wires a device to free PLC channels and shows the wires on typed edges", async () => {
+  it("opens pin-to-pin wiring for a device with terminals and shows its wires as one edge", async () => {
     const plc = await place("CPU 1214C DC/DC/DC");
     const valve = await place("Generic on/off valve, 24 V DC");
-    expect(await link(valve.id, plc.id)).toEqual({ status: "LINKED" });
+    // Connecting the two wires nothing: the answer is to wire them pin by pin.
+    expect(await link(valve.id, plc.id)).toEqual({ status: "WIRE", firstId: plc.id, secondId: valve.id });
+    expect((await getTopology(db, alice, factoryId)).edges).toEqual([]);
+    expect((await getPlcConfiguration(db, alice, plc.id)).occupancy.occupied).toBe(0);
 
+    expect(await wire(plc.id, valve.id)).toBe(3);
+
+    // However many wires, two devices have one wiring edge. It starts at the PLC.
     const view = await getTopology(db, alice, factoryId);
     expect(view.edges.map((edge) => [edge.relationship, edge.sourceId, edge.targetId])).toEqual([
-      ["CONTROLS", plc.id, valve.id],
-      ["FEEDS_BACK_TO", valve.id, plc.id],
+      ["WIRED_TO", plc.id, valve.id],
     ]);
-    expect(view.edges[0]?.wires).toEqual([
-      { terminalLabel: "Y1", pointLabel: "DO Qa.0", logicalAddress: "%QX0.0", tagName: "VALVE_01_Y1" },
-    ]);
-    expect(view.edges[1]?.wires.map((wire) => [wire.terminalLabel, wire.pointLabel])).toEqual([
-      ["ZSC", "DI Ia.0"],
-      ["ZSO", "DI Ia.1"],
+    expect(
+      view.edges[0]?.wires.map((item) => [item.from.name, item.to.name, item.logicalAddress, item.tagName]),
+    ).toEqual([
+      ["PLC-01 / DO Qa.0", "VALVE-01 / Y1", "%QX0.0", "VALVE_01_Y1"],
+      ["VALVE-01 / ZSC", "PLC-01 / DI Ia.0", "%MX0.0", "VALVE_01_ZSC"],
+      ["VALVE-01 / ZSO", "PLC-01 / DI Ia.1", "%MX0.1", "VALVE_01_ZSO"],
     ]);
     expect((await getPlcConfiguration(db, alice, plc.id)).occupancy.occupied).toBe(3);
-    await expectDomainError(link(plc.id, valve.id), "CONFLICT", "already-connected");
+    // Asked again, the wiring is opened again; nothing is duplicated.
+    expect(await link(plc.id, valve.id)).toMatchObject({ status: "WIRE" });
+    expect(await db.deviceConnection.count({ where: { factoryId } })).toBe(3);
   });
 
-  it("refuses a connection when the PLC has no free compatible endpoint", async () => {
+  it("offers a device no channel the PLC does not have", async () => {
     const plc = await place("CPU 1214C DC/DC/DC");
     // The built-in analog inputs take 0–10 V only.
     const current = await place("Generic pressure transmitter, 4–20 mA");
-    await expectDomainError(link(plc.id, current.id), "INCOMPATIBLE", "no-free-channel");
+    expect(await link(plc.id, current.id)).toMatchObject({ status: "WIRE" });
+    const view = await getPairWiring(db, alice, factoryId, current.id, plc.id);
+    const out = view.first.endpoints.find((endpoint) => endpoint.label === "OUT");
+    const channels = view.second.endpoints.filter((endpoint) => endpoint.type === "PLC_IO_POINT");
+    expect(channels.every((channel) => view.refusals[out?.key ?? ""]?.[channel.key] !== undefined)).toBe(true);
+    await expect(wire(plc.id, current.id)).rejects.toThrow("SENSOR-01 / OUT finds no free channel on PLC-01");
 
     // Two analog inputs: the third transmitter finds both occupied.
     for (const name of ["PT-101", "PT-102"]) {
-      await link(plc.id, (await place("Generic pressure transmitter, 0–10 V", 0, 0, name)).id);
+      await wire(plc.id, (await place("Generic pressure transmitter, 0–10 V", 0, 0, name)).id);
     }
     const third = await place("Generic pressure transmitter, 0–10 V", 0, 0, "PT-103");
-    await expectDomainError(link(plc.id, third.id), "INCOMPATIBLE", "no-free-channel");
+    await expect(wire(plc.id, third.id)).rejects.toThrow("PT-103 / OUT finds no free channel on PLC-01");
     expect((await getTopology(db, alice, factoryId)).edges).toHaveLength(2);
     expect(await db.tag.count({ where: { plcInstanceId: plc.id } })).toBe(2);
 
@@ -204,7 +218,7 @@ describeDb("factory topology against PostgreSQL", () => {
     expect(view.edges).toMatchObject([
       { relationship: "COMMUNICATES_WITH", sourceId: plc.id, targetId: drive.id, protocol: "MODBUS_TCP", wires: [] },
     ]);
-    await expectDomainError(link(plc.id, drive.id), "CONFLICT", "already-connected");
+    await expectDomainError(link(plc.id, drive.id), "CONFLICT", "wire-duplicate");
 
     const contactor = await place("Generic contactor, 24 V DC coil");
     const pressureSwitch = await place("Generic pressure switch, 24 V DC");
@@ -214,6 +228,7 @@ describeDb("factory topology against PostgreSQL", () => {
       options: [
         { kind: "MEASURES", label: "SWITCH-01 measures CONTACTOR-01" },
         { kind: "CONTROLS", label: "CONTACTOR-01 controls SWITCH-01" },
+        { kind: "WIRE_IO", label: "Wire CONTACTOR-01 and SWITCH-01 pin by pin" },
       ],
     });
     expect((await getTopology(db, alice, factoryId)).edges).toHaveLength(1);
@@ -221,27 +236,31 @@ describeDb("factory topology against PostgreSQL", () => {
     await expectDomainError(link(contactor.id, pressureSwitch.id, "DRIVES"), "INCOMPATIBLE", "link-kind");
   });
 
-  it("removes an edge; a PLC wiring goes as a whole and frees its channels", async () => {
+  it("removes an edge; a wiring edge takes all its wires and frees their channels", async () => {
     const plc = await place("CPU 1214C DC/DC/DC");
     const valve = await place("Generic on/off valve, 24 V DC");
     const vfd = await place("Generic VFD, hardwired control");
     const motor = await place("Generic three-phase motor");
-    await link(plc.id, valve.id);
-    await link(vfd.id, motor.id);
+    await wire(plc.id, valve.id);
+    await link(vfd.id, motor.id, "DRIVES");
 
     await unlinkDevices(db, alice, factoryId, { sourceId: vfd.id, targetId: motor.id, relationship: "DRIVES" });
     await expectDomainError(
       unlinkDevices(db, alice, factoryId, { sourceId: vfd.id, targetId: motor.id, relationship: "DRIVES" }),
       "NOT_FOUND",
     );
-    // Removing the feedback edge removes the control edge too.
-    await unlinkDevices(db, alice, factoryId, { sourceId: valve.id, targetId: plc.id, relationship: "FEEDS_BACK_TO" });
+    // The wires are not edges of their own: there is no "feeds back to" edge to remove.
+    await expectDomainError(
+      unlinkDevices(db, alice, factoryId, { sourceId: valve.id, targetId: plc.id, relationship: "FEEDS_BACK_TO" }),
+      "NOT_FOUND",
+    );
+    await unlinkDevices(db, alice, factoryId, { sourceId: plc.id, targetId: valve.id, relationship: "WIRED_TO" });
     expect(await edges()).toEqual([]);
     expect((await getPlcConfiguration(db, alice, plc.id)).occupancy.occupied).toBe(0);
     expect(await db.tag.count({ where: { plcInstanceId: plc.id } })).toBe(0);
     expect((await getTopology(db, alice, factoryId)).nodes).toHaveLength(4);
     await expectDomainError(
-      unlinkDevices(db, bob, factoryId, { sourceId: valve.id, targetId: plc.id, relationship: "CONTROLS" }),
+      unlinkDevices(db, bob, factoryId, { sourceId: plc.id, targetId: valve.id, relationship: "WIRED_TO" }),
       "NOT_FOUND",
     );
   });
@@ -250,7 +269,7 @@ describeDb("factory topology against PostgreSQL", () => {
     const plc = await place("CPU 1214C DC/DC/DC");
     const valve = await place("Generic on/off valve, 24 V DC");
     const fan = await place("Generic fan");
-    await link(plc.id, valve.id);
+    await wire(plc.id, valve.id);
 
     await renameDevice(db, alice, valve.id, { name: "XV-101", role: "Inlet valve" });
     await expectDomainError(renameDevice(db, alice, fan.id, { name: "XV-101" }), "CONFLICT");

@@ -8,7 +8,13 @@
 import { z } from "zod";
 import { GENERIC_CATEGORIES } from "@/lib/catalog/generic-categories";
 import { CONTROL_CAPABILITIES, SIGNAL_TYPES } from "@/lib/domain/catalog";
-import { IO_DIRECTIONS, IO_POINT_TYPES, IO_SIGNAL_CLASSES, PLC_CATEGORY_CODE } from "@/lib/domain/device";
+import {
+  IO_DIRECTIONS,
+  IO_POINT_TYPES,
+  IO_SIGNAL_CLASSES,
+  PLC_CATEGORY_CODE,
+  TERMINAL_KINDS,
+} from "@/lib/domain/device";
 import { DomainError } from "@/lib/domain/errors";
 import { DEVICE_FAULTS, findSignal, isSimulatedType } from "@/lib/domain/simulation";
 
@@ -62,22 +68,56 @@ const portSchema = z.strictObject({
   physicalType: text,
   protocols: z.array(z.enum(["MODBUS_TCP"])).default([]),
   portCount: z.number().int().min(1).max(16).default(1),
+  /** How many links Z-Factory allows on the port; a bus endpoint is shared within this limit. */
+  maxConnections: z.number().int().min(1).max(64).default(16),
   notes: text.optional(),
 });
 
-/** A terminal of a peripheral, seen from the device, optionally tied to a simulator signal. */
-const terminalSchema = z.strictObject({
-  terminalLabel: text,
-  direction: z.enum(IO_DIRECTIONS),
-  ioType: z.enum(IO_SIGNAL_CLASSES),
-  signalType,
-  rangeMin: z.number().optional(),
-  rangeMax: z.number().optional(),
-  unit: z.string().max(16).optional(),
-  /** Signal of the device's behaviour model this terminal carries (lib/domain/simulation.ts). */
-  simulatorSignal: z.string().max(64).optional(),
-  notes: text.optional(),
-});
+/**
+ * A terminal of a device, seen from the device. A SIGNAL terminal carries one process
+ * signal and may be tied to a simulator signal. POWER, COMMON and EARTH terminals are
+ * supply, 0 V and protective earth; they take more than one wire only where
+ * `maxConnections` says so.
+ */
+const terminalSchema = z
+  .strictObject({
+    terminalLabel: text,
+    kind: z.enum(TERMINAL_KINDS).default("SIGNAL"),
+    /** SIGNAL: the device drives (OUTPUT) or reads (INPUT) it. POWER: it supplies (OUTPUT) or takes (INPUT). */
+    direction: z.enum(IO_DIRECTIONS).optional(),
+    ioType: z.enum(IO_SIGNAL_CLASSES).optional(),
+    /** The signal standard, or for POWER the supply voltage. */
+    signalType: signalType.optional(),
+    maxConnections: z.number().int().min(1).max(64).default(1),
+    rangeMin: z.number().optional(),
+    rangeMax: z.number().optional(),
+    unit: z.string().max(16).optional(),
+    /** Signal of the device's behaviour model this terminal carries (lib/domain/simulation.ts). */
+    simulatorSignal: z.string().max(64).optional(),
+    notes: text.optional(),
+  })
+  .superRefine((terminal, context) => {
+    const need = (field: "direction" | "ioType" | "signalType") => {
+      if (terminal[field] === undefined) {
+        context.addIssue({ code: "custom", path: [field], message: `a ${terminal.kind} terminal needs ${field}` });
+      }
+    };
+    const refuse = (field: "direction" | "ioType" | "signalType" | "simulatorSignal") => {
+      if (terminal[field] !== undefined) {
+        context.addIssue({ code: "custom", path: [field], message: `a ${terminal.kind} terminal has no ${field}` });
+      }
+    };
+    if (terminal.kind === "SIGNAL") for (const field of ["direction", "ioType", "signalType"] as const) need(field);
+    if (terminal.kind === "POWER") {
+      need("direction");
+      need("signalType");
+      refuse("ioType");
+    }
+    if (terminal.kind === "COMMON" || terminal.kind === "EARTH") {
+      for (const field of ["direction", "ioType", "signalType"] as const) refuse(field);
+    }
+    if (terminal.kind !== "SIGNAL") refuse("simulatorSignal");
+  });
 
 const modelSchema = z.strictObject({
   manufacturer: text,
