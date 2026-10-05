@@ -70,8 +70,8 @@ All variables are read through `lib/env.ts`, which validates them with Zod and f
 | `LOCAL_OWNER_ID` | production: yes | `lib/auth/actor.ts` | Owner every factory operation is scoped to (ADR-0007); defaults to `local-owner` outside production |
 | `DOCKER_HOST` | no | `lib/docker/client.ts` | Docker Engine endpoint: `unix:///path` or `tcp://host:port` (default `unix:///var/run/docker.sock`) |
 | `RUNTIME_SECRET` | production: yes | `lib/runtimes/openplc/credentials.ts` | Secret (>= 32 characters) the per-container runtime API credentials are derived from; a development value is used outside production |
-| `RUNTIME_PORT_RANGE` | no | `lib/docker/policy.ts` | Host ports runtime containers may publish, `min-max` within 1024–65535 (default `15000-15999`) |
-| `RUNTIME_BIND_ADDRESSES` | no | `lib/docker/policy.ts` | Comma-separated IPv4 addresses runtime ports may bind to (default `127.0.0.1`). Must include `127.0.0.1`; add a LAN address to let external gateways reach a PLC's Modbus port |
+| `RUNTIME_PORT_RANGE` | no | `lib/docker/policy.ts` | Host ports runtime containers may publish and gateway endpoints may listen on, `min-max` within 1024–65535 (default `15000-15999`) |
+| `RUNTIME_BIND_ADDRESSES` | no | `lib/docker/policy.ts` | Comma-separated IPv4 addresses runtime ports may bind to (default `127.0.0.1`). Must include `127.0.0.1`; add the host's LAN address to let an external gateway reach its gateway endpoint (`docs/gateway-modbus.md` → Network prerequisites) |
 | `SIMULATION_TICK_MS` | no | `lib/services/runtime-deps.ts` | Device-simulator cycle time in milliseconds, 20–5000 (default `100`) |
 | `SIMULATION_SNAPSHOT_MS` | no | `lib/services/runtime-deps.ts` | How often the simulator stores a state snapshot per device, 1000–3600000 ms (default `10000`) |
 | `ASSET_STORAGE_DIR` | no | `lib/assets/storage.ts` | Directory the catalog's 3D asset files are stored in (default `./data/assets`, relative to the server's working directory; ignored by Git). Back it up with the database (ADR-0012) |

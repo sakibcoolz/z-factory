@@ -255,3 +255,32 @@ Not an API of the application: these functions are called by `scripts/catalog-as
 | activate | `activateCatalogAsset({ db, storage }, assetId)` | only a ready version whose file exists |
 
 `getCatalogOverview` and `getCatalogModel` report the result: per model `asset: { state: READY | PENDING | FAILED | NONE, activeVersion }`, per model detail every version with status, source, provider status and message, and `totals.withAsset`.
+
+### `gateways` (TASK-501, ADR-0013)
+Services in `lib/services/gateway-service.ts`; dependencies from `getGatewayDeps()`; server actions in `app/factories/[factoryId]/gateways/actions.ts`, which stay on the page and return `{ notice?, message? }`. A factory, gateway or connection of another owner is not found.
+
+| Operation | Entry point | Rules |
+|---|---|---|
+| view | `getGatewaysView(deps, actor, factoryId)` | gateways with connections, mappings, unmapped tags, endpoint state and counters; the addresses and port range the host allows; brings the endpoints in line first |
+| add gateway | `addGateway(deps, actor, factoryId)` | a device from the catalog's gateway model with the next free name |
+| connect | `connectGateway(deps, actor, gatewayDeviceId, { plcId, host, port, unitId?, pollIntervalMs? })` | gateway device and PLC of the same factory; address allowed, port in range and free; one connection per gateway and PLC; opens the endpoint |
+| enable / disable | `setGatewayConnectionEnabled(deps, actor, connectionId, enabled)` | opens or closes the endpoint; mappings are kept |
+| remove | `removeGatewayConnection(deps, actor, connectionId)` | closes the endpoint; mappings go with it |
+| map tag | `mapGatewayTag(deps, actor, connectionId, { tagId, access?, externalName? })` | a tag of the connected PLC; `READ_WRITE` only for a command or setpoint tag; mapping again changes access or name |
+| map all | `mapAllGatewayTags(deps, actor, connectionId)` | commands and setpoints writable, everything else to read |
+| unmap | `unmapGatewayTag(deps, actor, connectionId, mappingId)` | takes effect at once |
+| register map | `getGatewayMap(deps, actor, connectionId)` | the document an edge device is configured from |
+| endpoints | `syncGatewayEndpoints(deps, factoryId)` | opens enabled connections, closes the others, takes over changed mappings; stores the gateway's state (`RUNNING`, `STOPPED`, `FAULTED`) |
+
+| Route | Returns |
+|---|---|
+| `GET /factories/[factoryId]/gateways/[connectionId]/map.json` | the register map as an attachment, `Cache-Control: no-store`; 404 for an unknown or foreign connection |
+
+| Action | Effect |
+|---|---|
+| `addGatewayAction(factoryId, …)` | `addGateway` |
+| `connectGatewayAction(factoryId, gatewayDeviceId, …)` with `plcId`, `host`, `port`, `unitId`, `pollIntervalMs` | `connectGateway` |
+| `gatewayConnectionAction(factoryId, connectionId, …)` with `operation` = `enable` \| `disable` \| `remove` \| `map-all` \| `unmap:<mapping id>` | the matching function |
+| `mapGatewayTagAction(factoryId, connectionId, …)` with `tagId`, `access`, `externalName` | `mapGatewayTag` |
+
+The endpoint itself is not an HTTP API: it speaks Modbus TCP to the edge device (`docs/gateway-modbus.md` → gateway endpoints).
