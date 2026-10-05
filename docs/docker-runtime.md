@@ -39,6 +39,8 @@ zfactory_factory_001
 ## Device-simulator strategy
 Do not create one container per sensor, valve, motor, pump or VFD by default. A shared simulator process/container hosts multiple factory-specific device state machines. Dedicated containers are allowed when protocol isolation/fidelity requires them.
 
+As implemented (TASK-204, ADR-0010) the shared simulator is part of the server process, not a container on the factory network: the `device-simulator` entry in the example above is not created. It reaches each PLC through the PLC's published Modbus port.
+
 ## Port example
 `host:15021 -> s7-1200-1214c-01:502`
 
@@ -90,7 +92,7 @@ A container request has exactly these fields: `factoryId`, `deviceId`, `networkN
 Not privileged; all capabilities dropped; `no-new-privileges`; no binds, mounts or devices; network mode is the factory network only; restart policy `no`; an init process; log rotation (10 MB × 3); CPU, memory (no extra swap) and PID limits. Defaults: 1 CPU, 256 MB, 256 processes; maximum 2 CPUs and 1024 MB.
 
 ### Image allow-list
-`RUNTIME_IMAGES` lists each runnable image with a key, `repository:tag`, pinned digest, optional fixed command, publishable container ports, allowed environment variable names and default limits. A request names a key, never a reference. It currently holds one image: `openplc` → `ghcr.io/autonomy-logic/openplc-runtime:v4.2.4` pinned by digest, publishable ports 8443 (REST API) and 502 (Modbus TCP), 1 GB memory (ADR-0009). The device simulator image follows with TASK-204. Programs and configuration reach a container through its REST API, never through mounts.
+`RUNTIME_IMAGES` lists each runnable image with a key, `repository:tag`, pinned digest, optional fixed command, publishable container ports, allowed environment variable names and default limits. A request names a key, never a reference. It currently holds one image: `openplc` → `ghcr.io/autonomy-logic/openplc-runtime:v4.2.4` pinned by digest, publishable ports 8443 (REST API) and 502 (Modbus TCP), 1 GB memory (ADR-0009). The device simulator needs no image: it runs inside the server process (ADR-0010). Programs and configuration reach a container through its REST API, never through mounts.
 
 ### Networks
 `ensureFactoryNetwork` creates a bridge network named `zfactory_<factoryId>` on the factory subnet, labelled `zfactory.managed=true` and `zfactory.factory-id`. It is idempotent, refuses a subnet that overlaps any existing Docker network on the host, and refuses to reuse a name held by a different network. `removeFactoryNetwork` only removes managed networks with no containers attached.

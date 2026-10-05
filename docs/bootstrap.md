@@ -70,6 +70,8 @@ All variables are read through `lib/env.ts`, which validates them with Zod and f
 | `RUNTIME_SECRET` | production: yes | `lib/runtimes/openplc/credentials.ts` | Secret (>= 32 characters) the per-container runtime API credentials are derived from; a development value is used outside production |
 | `RUNTIME_PORT_RANGE` | no | `lib/docker/policy.ts` | Host ports runtime containers may publish, `min-max` within 1024–65535 (default `15000-15999`) |
 | `RUNTIME_BIND_ADDRESSES` | no | `lib/docker/policy.ts` | Comma-separated IPv4 addresses runtime ports may bind to (default `127.0.0.1`). Must include `127.0.0.1`; add a LAN address to let external gateways reach a PLC's Modbus port |
+| `SIMULATION_TICK_MS` | no | `lib/services/runtime-deps.ts` | Device-simulator cycle time in milliseconds, 20–5000 (default `100`) |
+| `SIMULATION_SNAPSHOT_MS` | no | `lib/services/runtime-deps.ts` | How often the simulator stores a state snapshot per device, 1000–3600000 ms (default `10000`) |
 | `TEST_DOCKER` | no | integration tests | `1` runs the Docker lifecycle tests against the engine; they are skipped otherwise |
 | `POSTGRES_PORT` | no | `compose.yaml` | Host port for the local database (default 5432) |
 

@@ -136,7 +136,19 @@ export const tagInputSchema = z.strictObject({
   unit: z.string().trim().max(16).optional(),
   /** Device instance of the same factory the value belongs to. */
   sourceDeviceInstanceId: z.uuid().optional(),
+  /** Signal of that device the tag carries to or from the device simulator, e.g. `run`. */
+  sourceSignal: z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z][A-Za-z0-9]{0,63}$/, "Use a signal key such as run or actualFrequency.")
+    .optional(),
 });
+
+/** A fault code of a simulated device, e.g. OVERCURRENT. */
+export const faultCodeSchema = z.string().regex(/^[A-Z][A-Z0-9_]{0,63}$/, "Use a fault code such as OVERCURRENT.");
+
+/** A forced simulated value: a number for a sensor, true/false for a switch, null to release it. */
+export const forcedValueSchema = z.union([z.number().finite(), z.boolean(), z.null()]);
 export type TagInput = z.infer<typeof tagInputSchema>;
 
 const hostPort = z.number().int().min(1).max(65535);

@@ -107,3 +107,18 @@ Services in `lib/services/tag-service.ts`; every function takes the `Actor` and 
 | live snapshot | `readTags(deps, actor, plcId)`, `readTag(…, name)` | engineering values with quality and timestamp |
 | write command/setpoint | `writeTag(deps, actor, plcId, name, value, source)` | only `COMMAND` / `SETPOINT`; recorded as a `DeviceCommand` |
 | Modbus endpoint | `configureModbusEndpoint(deps, actor, plcId, { bindAddress, hostPort })` | validated against policy and reservations; requires the runtime to be removed |
+
+### `simulation` (TASK-204)
+Services in `lib/services/simulation-service.ts`; dependencies from `getSimulationDeps()`. Every function takes the `Actor`; a factory or device of another owner is not found.
+
+| Operation | Entry point | Rules |
+|---|---|---|
+| preview | `planSimulation(db, actor, factoryId)` | devices, signal wiring and PLC endpoints the simulator would use; lists skipped devices |
+| start | `startFactorySimulation(deps, actor, factoryId)` | every wired PLC needs a configured Modbus endpoint; invalid parameters or wiring refuse the start |
+| stop | `stopFactorySimulation(deps, actor, factoryId)` | stores final snapshots |
+| live state | `getSimulationState(deps, actor, factoryId)` | from simulator memory, not the database |
+| inject / clear fault | `injectDeviceFault`, `clearDeviceFault(deps, actor, deviceId, code)` | fault must be supported by the device type; recorded as events |
+| reset device | `resetSimulatedDevice(deps, actor, deviceId)` | refused while a latching fault is still active |
+| force simulated input | `forceSimulatedValue(deps, actor, deviceId, value)` | sensors (number) and switches (true/false); `null` releases |
+
+A device signal is wired by creating a tag with `sourceDeviceInstanceId` and `sourceSignal` (`createTag`).

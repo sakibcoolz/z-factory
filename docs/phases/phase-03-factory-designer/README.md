@@ -4,7 +4,7 @@ Status: **PLANNED**
 
 | Task | Status |
 |---|---|
-| TASK-301 Device catalog & provenance | PLANNED |
+| TASK-301 Device catalog & provenance | READY |
 | TASK-302 Compact/modular PLC form | PLANNED |
 | TASK-303 React Flow topology | PLANNED |
 | TASK-304 PLC engineering export | PLANNED |

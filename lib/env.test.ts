@@ -10,7 +10,21 @@ describe("server environment contract", () => {
       DOCKER_HOST: "unix:///var/run/docker.sock",
       RUNTIME_PORT_RANGE: "15000-15999",
       RUNTIME_BIND_ADDRESSES: "127.0.0.1",
+      SIMULATION_TICK_MS: 100,
+      SIMULATION_SNAPSHOT_MS: 10_000,
     });
+  });
+
+  it("takes the simulator timing as numbers within limits", () => {
+    expect(
+      parseServerEnv({ DATABASE_URL: url, SIMULATION_TICK_MS: "50", SIMULATION_SNAPSHOT_MS: "5000" }),
+    ).toMatchObject({ SIMULATION_TICK_MS: 50, SIMULATION_SNAPSHOT_MS: 5000 });
+    expect(() => parseServerEnv({ DATABASE_URL: url, SIMULATION_TICK_MS: "5" })).toThrowError(
+      new EnvironmentError(["SIMULATION_TICK_MS"]),
+    );
+    expect(() => parseServerEnv({ DATABASE_URL: url, SIMULATION_SNAPSHOT_MS: "fast" })).toThrowError(
+      new EnvironmentError(["SIMULATION_SNAPSHOT_MS"]),
+    );
   });
 
   it("accepts a unix socket or a TCP proxy as the Docker endpoint and nothing else", () => {

@@ -24,6 +24,19 @@ export const tagRepository = {
     return result.count;
   },
 
+  /** The device, when it is an instance of the given factory. */
+  findDeviceInFactory(db: Db, deviceId: string, factoryId: string) {
+    return db.deviceInstance.findFirst({
+      where: { id: deviceId, factoryId },
+      select: { id: true, name: true, simulatorType: true, runtimeType: true },
+    });
+  },
+
+  /** The tag already wired to a device signal, if any. */
+  findBySignal(db: Db, sourceDeviceInstanceId: string, sourceSignal: string): Promise<Tag | null> {
+    return db.tag.findFirst({ where: { sourceDeviceInstanceId, sourceSignal } });
+  },
+
   /** True when the device is an instance of the given factory. */
   async deviceInFactory(db: Db, deviceId: string, factoryId: string): Promise<boolean> {
     return (await db.deviceInstance.count({ where: { id: deviceId, factoryId } })) > 0;

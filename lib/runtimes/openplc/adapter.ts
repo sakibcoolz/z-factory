@@ -225,9 +225,14 @@ export function removeOpenPlc(docker: Docker, containerId: string): Promise<bool
   return removeRuntimeContainer(docker, containerId);
 }
 
+/** How the server reaches a Modbus port published on `bindAddress`. */
+export function publishedModbusEndpoint(bindAddress: string, hostPort: number): ModbusEndpoint {
+  return { host: connectHost(bindAddress), port: hostPort };
+}
+
 /** Modbus endpoint of the running program as seen from the server. */
 export function modbusEndpoint(target: OpenPlcTarget): ModbusEndpoint {
-  return { host: connectHost(target.modbusBindAddress), port: target.modbusHostPort };
+  return publishedModbusEndpoint(target.modbusBindAddress, target.modbusHostPort);
 }
 
 /** Reads raw Modbus values of the running program through its published port. */

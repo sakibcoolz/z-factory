@@ -99,9 +99,11 @@ Resolved available/occupied PLC endpoint.
 `sourceType = BUILT_IN | MODULE`, `status = FREE | OCCUPIED | RESERVED | DISABLED`. Unique: `(plcInstanceId, logicalAddress)`, `(plcInstanceId, builtInChannelId)`, `(factoryModuleId, moduleChannelId)`.
 
 ### Tag
-`id, plcInstanceId, name, dataType, direction, role, logicalAddress, plcIoPointId, protocol, protocolArea, protocolAddress, wordCount, byteOrder, wordOrder, accessMode, scale, offset, unit, sourceDeviceInstanceId, quality`
+`id, plcInstanceId, name, dataType, direction, role, logicalAddress, plcIoPointId, protocol, protocolArea, protocolAddress, wordCount, byteOrder, wordOrder, accessMode, scale, offset, unit, sourceDeviceInstanceId, sourceSignal, quality`
 
-`dataType = BOOL | INT16 | UINT16 | INT32 | UINT32 | FLOAT32`, `direction = INPUT | OUTPUT | INTERNAL`, `protocolArea = COIL | DISCRETE_INPUT | HOLDING_REGISTER | INPUT_REGISTER`, `accessMode = READ_ONLY | READ_WRITE`. `protocolAddress` is zero-based within its area. `plcIoPointId` binds the tag to an I/O point (one tag per point). `quality` is the last persisted quality; live quality comes from the runtime. Unique: `(plcInstanceId, name)`, `(plcInstanceId, protocol, protocolArea, protocolAddress)`.
+`dataType = BOOL | INT16 | UINT16 | INT32 | UINT32 | FLOAT32`, `direction = INPUT | OUTPUT | INTERNAL`, `protocolArea = COIL | DISCRETE_INPUT | HOLDING_REGISTER | INPUT_REGISTER`, `accessMode = READ_ONLY | READ_WRITE`. `protocolAddress` is zero-based within its area. `plcIoPointId` binds the tag to an I/O point (one tag per point). `quality` is the last persisted quality; live quality comes from the runtime. Unique: `(plcInstanceId, name)`, `(plcInstanceId, protocol, protocolArea, protocolAddress)`, `(sourceDeviceInstanceId, sourceSignal)`.
+
+`sourceSignal` names the signal of the source device the tag carries to or from the device simulator (`run`, `actualFrequency`, …; see `docs/device-simulation.md`). One tag per device signal. A tag with a signal is always `READ_ONLY`.
 
 `role = COMMAND | SETPOINT | FEEDBACK | STATUS | ALARM | PROCESS_VALUE`.
 
@@ -215,10 +217,12 @@ Behavior configuration for a device model/instance: constant, ramp, sine, random
 
 `id, deviceModelId, deviceInstanceId, kind, parametersJson` — exactly one of `deviceModelId` / `deviceInstanceId` is set. `kind = CONSTANT | RAMP | SINE | RANDOM | SCRIPTED | STATE_MACHINE`.
 
+How the device simulator reads it (TASK-204): the newest profile of the instance wins over the newest of its model. `STATE_MACHINE` carries the parameter object of the device's behaviour model. `CONSTANT`, `RAMP`, `SINE` and `RANDOM` describe the signal source of a sensor (a switch accepts `CONSTANT`). `SCRIPTED` is not supported yet. Parameters are validated when a simulation starts.
+
 Advanced coupled process-model configuration belongs to `ProcessModuleType/ProcessModuleInstance` rather than overloading a single device profile. Phase 06 implementation will introduce the schema through TASK-601; this section documents the approved target model, not current migration state.
 
 ### DeviceRuntimeSnapshot
-Latest persisted important state; not the live authority.
+Latest persisted important state; not the live authority. The device simulator overwrites one row per device at its snapshot interval and when it stops; `valuesJson` holds the device's state, faults, inputs and outputs.
 `deviceInstanceId, status, valuesJson, quality, capturedAt`
 
 ### DeviceCommand
@@ -241,7 +245,7 @@ For high-volume history, partitioning/retention should be introduced first. Time
 Every factual vendor hardware profile keeps source URL plus verification metadata. Never fabricate pinouts, I/O counts, register maps, or electrical limits.
 
 ## Implementation (TASK-102)
-- Schema: `prisma/schema.prisma`; migrations: `prisma/migrations/` (`init`, `device_io_endpoint`, `factory_subnet_no_overlap`, `plc_api_host_port`); generated client: `lib/generated/prisma/` (git-ignored).
+- Schema: `prisma/schema.prisma`; migrations: `prisma/migrations/` (`init`, `device_io_endpoint`, `factory_subnet_no_overlap`, `plc_api_host_port`, `tag_source_signal`); generated client: `lib/generated/prisma/` (git-ignored).
 - Primary keys are UUID v7 (`@default(uuid(7))`, PostgreSQL `uuid`), except `TelemetrySample.id` (`bigint` identity) and the one-to-one tables keyed by their owner (`ElectricalProfile`, `PlcInstanceProfile`, `DeviceRuntimeSnapshot`).
 - Catalog rows referenced by factory data are protected with `ON DELETE RESTRICT`; factory-owned rows cascade from `Factory`.
 - `DeviceInstance.dockerContainerId` is server-side only and never sent to the browser.
