@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import { Stage } from "@/components/canvas/stage";
 import { AppShell } from "@/components/shell/app-shell";
 import { EditorTabs } from "@/components/shell/editor";
@@ -10,8 +9,12 @@ import { RuntimeStatePill } from "@/components/ui/state-pill";
 import { demoContext, isDemoFactory } from "@/lib/fixtures";
 import { factory, topology } from "@/lib/fixtures/pump-house-demo";
 import { routes } from "@/lib/navigation/routes";
+import { StoredCanvas } from "../designer/stored-designer";
 
 export const metadata: Metadata = { title: "Topology" };
+
+// Stored factories read the database on every request.
+export const dynamic = "force-dynamic";
 
 type TopologyPageProps = {
   params: Promise<{ factoryId: string }>;
@@ -27,7 +30,8 @@ const LEGEND_CLASS = {
 /** 2o — 2D Network / Wiring Topology: network · wiring · control-authority layers. */
 export default async function TopologyPage({ params }: TopologyPageProps) {
   const { factoryId } = await params;
-  if (!isDemoFactory(factoryId)) notFound();
+  // Stored factories render from the database; the demo factory keeps its fixture screen.
+  if (!isDemoFactory(factoryId)) return StoredCanvas({ factoryId, mode: "topology" });
 
   const { selected, networkZone } = topology;
 

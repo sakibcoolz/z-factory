@@ -575,6 +575,129 @@ async function uniqueTagName(transaction: Db, plcId: string, base: string): Prom
   throw new DomainError("CONFLICT", "No free tag name could be derived for this device.", { rule: "tag-name" });
 }
 
+type PeripheralModel = NonNullable<Awaited<ReturnType<typeof plcConfigRepository.findPeripheralModel>>>;
+type WiringPlan = ReturnType<typeof planWiring>;
+
+/** Checks that the model can connect to the PLC at all and picks a channel for every terminal not assigned by hand. */
+function planWiring(plc: ConfigPlc, model: PeripheralModel, assignments: Readonly<Record<string, string>>) {
+  const protocols = sharedProtocols(plc.deviceModel.communicationPorts, model.communicationPorts);
+  if (model.ioDefinitions.length === 0 && protocols.length === 0) {
+    throw new DomainError(
+      "INCOMPATIBLE",
+      `${model.modelName} has no terminal or shared protocol to connect to this PLC.`,
+      {
+        rule: "no-plc-connection",
+        field: "deviceModelId",
+      },
+    );
+  }
+  const points = sortedPoints(plc);
+  const pointIndex = new Map(points.map((point, index) => [point.id, index]));
+  const terminalIds = new Set(model.ioDefinitions.map((terminal) => terminal.id));
+  for (const [terminalId, pointId] of Object.entries(assignments)) {
+    if (!terminalIds.has(terminalId)) throw notFound("terminal", "assignments");
+    if (!pointIndex.has(pointId)) throw notFound("I/O point", "assignments");
+  }
+  // Channels chosen by hand are kept out of the automatic assignment of the other terminals.
+  const reserved = new Set(Object.values(assignments).flatMap((pointId) => pointIndex.get(pointId) ?? []));
+  const occupied = new Set(points.flatMap((point, index) => (point.status === "FREE" ? [] : [index])));
+  const automatic = assignTerminals(
+    model.ioDefinitions.map(toTerminal),
+    points.map(toChannel),
+    new Set([...reserved, ...occupied]),
+  );
+  return { points, pointIndex, automatic, protocols, assignments };
+}
+
+/**
+ * Connects a device to the PLC inside the caller's transaction: every terminal is wired to
+ * its channel and gets a tag at that channel's address; a device without terminals is
+ * linked over the shared protocol.
+ */
+async function wireInTransaction(
+  transaction: Db,
+  plc: ConfigPlc,
+  model: PeripheralModel,
+  device: { id: string; name: string },
+  plan: WiringPlan,
+): Promise<void> {
+  const category = model.family.category;
+  const simulated = model.runtimeSupport === "DEVICE_SIM" && isSimulatedType(category.simulatorType);
+
+  for (const [index, terminal] of model.ioDefinitions.entries()) {
+    const chosen = plan.assignments[terminal.id];
+    const point = chosen ? plan.points[plan.pointIndex.get(chosen) ?? -1] : plan.points[plan.automatic[index] ?? -1];
+    const required = requiredIoPointType(terminal.direction, terminal.ioType);
+    if (!point) {
+      throw new DomainError(
+        "INCOMPATIBLE",
+        `No free ${required} channel accepts ${terminal.terminalLabel ?? "this terminal"} (${signalTypeLabel(terminal.signalType)}).`,
+        { rule: "no-free-channel", terminal: terminal.terminalLabel, required },
+      );
+    }
+    const deviceSide = { deviceId: device.id, endpointType: "DEVICE_IO" as const, endpointRef: terminal.id };
+    const plcSide = { deviceId: plc.id, endpointType: "PLC_IO_POINT" as const, endpointRef: point.id };
+    // Checks point class, signal type and that the point is still free; marks it occupied.
+    await connectDevicesInTransaction(
+      transaction,
+      terminal.direction === "OUTPUT"
+        ? { factoryId: plc.factoryId, relationship: "FEEDS_BACK_TO", source: deviceSide, target: plcSide }
+        : { factoryId: plc.factoryId, relationship: "CONTROLS", source: plcSide, target: deviceSide },
+    );
+
+    const signal =
+      simulated && terminal.simulatorSignal && isSimulatedType(category.simulatorType)
+        ? findSignal(category.simulatorType, terminal.simulatorSignal)
+        : undefined;
+    const analog = terminal.ioType === "ANALOG";
+    const measured = terminal.direction === "OUTPUT" && analog && category.simulatorType === "SENSOR";
+    await createTagInTransaction(
+      transaction,
+      plc,
+      {
+        name: await uniqueTagName(transaction, plc.id, tagNameFor(device.name, terminal.terminalLabel)),
+        dataType: analog ? "INT16" : "BOOL",
+        // Read-only for gateways either way: the program drives outputs, the device drives inputs.
+        role: measured ? "PROCESS_VALUE" : terminal.direction === "OUTPUT" && analog ? "FEEDBACK" : "STATUS",
+        logicalAddress: point.logicalAddress,
+        scale: analog ? defaultAnalogScale(signal?.unit ?? terminal.unit ?? undefined) : 1,
+        offset: 0,
+        unit: signal?.unit ?? terminal.unit ?? undefined,
+        sourceDeviceInstanceId: device.id,
+        sourceSignal: signal?.key,
+      },
+      { plcIoPointId: point.id },
+    );
+  }
+
+  if (model.ioDefinitions.length === 0) {
+    const protocol = plan.protocols[0];
+    const plcPort = plc.deviceModel.communicationPorts.find((port) =>
+      port.protocols.some((candidate) => candidate === protocol),
+    );
+    const devicePort = model.communicationPorts.find((port) =>
+      port.protocols.some((candidate) => candidate === protocol),
+    );
+    if (!plcPort || !devicePort || protocol !== "MODBUS_TCP") {
+      throw new DomainError("INVARIANT", "The shared protocol has no port on one side.", { rule: "protocol-port" });
+    }
+    await transaction.deviceConnection.create({
+      data: {
+        factoryId: plc.factoryId,
+        sourceDeviceId: plc.id,
+        targetDeviceId: device.id,
+        sourceEndpointType: "PROTOCOL_PORT",
+        sourceEndpointRef: plcPort.id,
+        targetEndpointType: "PROTOCOL_PORT",
+        targetEndpointRef: devicePort.id,
+        relationship: "COMMUNICATES_WITH",
+        protocol,
+      },
+    });
+  }
+  await plcConfigRepository.bumpIoMappingVersion(transaction, plc.id);
+}
+
 /**
  * Creates a device instance from a catalog model and connects it to the PLC in one step:
  * each terminal is wired to a free compatible channel and gets a tag at that channel's
@@ -590,35 +713,7 @@ export async function addPeripheral(
   const plc = await loadConfigPlc(db, actor, plcId);
   const model = await plcConfigRepository.findPeripheralModel(db, data.deviceModelId);
   if (!model || model.family.category.code === PLC_CATEGORY_CODE) throw notFound("catalog model", "deviceModelId");
-  const category = model.family.category;
-  const protocols = sharedProtocols(plc.deviceModel.communicationPorts, model.communicationPorts);
-  if (model.ioDefinitions.length === 0 && protocols.length === 0) {
-    throw new DomainError(
-      "INCOMPATIBLE",
-      `${model.modelName} has no terminal or shared protocol to connect to this PLC.`,
-      {
-        rule: "no-plc-connection",
-        field: "deviceModelId",
-      },
-    );
-  }
-
-  const points = sortedPoints(plc);
-  const pointIndex = new Map(points.map((point, index) => [point.id, index]));
-  const terminalIds = new Set(model.ioDefinitions.map((terminal) => terminal.id));
-  for (const [terminalId, pointId] of Object.entries(data.assignments)) {
-    if (!terminalIds.has(terminalId)) throw notFound("terminal", "assignments");
-    if (!pointIndex.has(pointId)) throw notFound("I/O point", "assignments");
-  }
-  // Channels chosen by hand are kept out of the automatic assignment of the other terminals.
-  const reserved = new Set(Object.values(data.assignments).flatMap((pointId) => pointIndex.get(pointId) ?? []));
-  const occupied = new Set(points.flatMap((point, index) => (point.status === "FREE" ? [] : [index])));
-  const automatic = assignTerminals(
-    model.ioDefinitions.map(toTerminal),
-    points.map(toChannel),
-    new Set([...reserved, ...occupied]),
-  );
-  const simulated = model.runtimeSupport === "DEVICE_SIM" && isSimulatedType(category.simulatorType);
+  const plan = planWiring(plc, model, data.assignments);
 
   return db.$transaction(async (transaction) => {
     const device = await deviceRepository.createInstance(transaction, {
@@ -627,86 +722,9 @@ export async function addPeripheral(
       name: data.name,
       role: data.role || undefined,
       runtimeType: model.runtimeSupport,
-      simulatorType: category.simulatorType,
+      simulatorType: model.family.category.simulatorType,
     });
-
-    for (const [index, terminal] of model.ioDefinitions.entries()) {
-      const chosen = data.assignments[terminal.id];
-      const point = chosen ? points[pointIndex.get(chosen) ?? -1] : points[automatic[index] ?? -1];
-      const required = requiredIoPointType(terminal.direction, terminal.ioType);
-      if (!point) {
-        throw new DomainError(
-          "INCOMPATIBLE",
-          `No free ${required} channel accepts ${terminal.terminalLabel ?? "this terminal"} (${signalTypeLabel(terminal.signalType)}).`,
-          {
-            rule: "no-free-channel",
-            terminal: terminal.terminalLabel,
-            required,
-          },
-        );
-      }
-      const deviceSide = { deviceId: device.id, endpointType: "DEVICE_IO" as const, endpointRef: terminal.id };
-      const plcSide = { deviceId: plc.id, endpointType: "PLC_IO_POINT" as const, endpointRef: point.id };
-      // Checks point class, signal type and that the point is still free; marks it occupied.
-      await connectDevicesInTransaction(
-        transaction,
-        terminal.direction === "OUTPUT"
-          ? { factoryId: plc.factoryId, relationship: "FEEDS_BACK_TO", source: deviceSide, target: plcSide }
-          : { factoryId: plc.factoryId, relationship: "CONTROLS", source: plcSide, target: deviceSide },
-      );
-
-      const signal =
-        simulated && terminal.simulatorSignal && isSimulatedType(category.simulatorType)
-          ? findSignal(category.simulatorType, terminal.simulatorSignal)
-          : undefined;
-      const analog = terminal.ioType === "ANALOG";
-      const measured = terminal.direction === "OUTPUT" && analog && category.simulatorType === "SENSOR";
-      await createTagInTransaction(
-        transaction,
-        plc,
-        {
-          name: await uniqueTagName(transaction, plc.id, tagNameFor(device.name, terminal.terminalLabel)),
-          dataType: analog ? "INT16" : "BOOL",
-          // Read-only for gateways either way: the program drives outputs, the device drives inputs.
-          role: measured ? "PROCESS_VALUE" : terminal.direction === "OUTPUT" && analog ? "FEEDBACK" : "STATUS",
-          logicalAddress: point.logicalAddress,
-          scale: analog ? defaultAnalogScale(signal?.unit ?? terminal.unit ?? undefined) : 1,
-          offset: 0,
-          unit: signal?.unit ?? terminal.unit ?? undefined,
-          sourceDeviceInstanceId: device.id,
-          sourceSignal: signal?.key,
-        },
-        { plcIoPointId: point.id },
-      );
-    }
-
-    if (model.ioDefinitions.length === 0) {
-      const protocol = protocols[0];
-      const plcPort = plc.deviceModel.communicationPorts.find((port) =>
-        port.protocols.some((candidate) => candidate === protocol),
-      );
-      const devicePort = model.communicationPorts.find((port) =>
-        port.protocols.some((candidate) => candidate === protocol),
-      );
-      if (!plcPort || !devicePort || protocol !== "MODBUS_TCP") {
-        throw new DomainError("INVARIANT", "The shared protocol has no port on one side.", { rule: "protocol-port" });
-      }
-      await transaction.deviceConnection.create({
-        data: {
-          factoryId: plc.factoryId,
-          sourceDeviceId: plc.id,
-          targetDeviceId: device.id,
-          sourceEndpointType: "PROTOCOL_PORT",
-          sourceEndpointRef: plcPort.id,
-          targetEndpointType: "PROTOCOL_PORT",
-          targetEndpointRef: devicePort.id,
-          relationship: "COMMUNICATES_WITH",
-          protocol,
-        },
-      });
-    }
-
-    await plcConfigRepository.bumpIoMappingVersion(transaction, plc.id);
+    await wireInTransaction(transaction, plc, model, device, plan);
     await plcRepository.recordEvent(transaction, {
       factoryId: plc.factoryId,
       deviceId: device.id,
@@ -717,28 +735,80 @@ export async function addPeripheral(
   });
 }
 
-/** Disconnects a peripheral from the PLC, frees its channels, removes their tags and deletes the device. */
-export async function removePeripheral(db: PrismaClient, actor: Actor, plcId: string, deviceId: string): Promise<void> {
-  const plc = await loadConfigPlc(db, actor, plcId);
+/** The connections between this PLC and one device, with the I/O points they use. */
+async function connectionsTo(db: Db, plc: ConfigPlc, deviceId: string) {
   const connections = (await plcConfigRepository.listPlcConnections(db, plc.id)).filter(
     (connection) => sides(connection, plc.id).device.id === deviceId,
   );
-  if (connections.length === 0) throw notFound("peripheral");
   const pointIds = connections.flatMap((connection) => {
     const { plcEndpoint } = sides(connection, plc.id);
     return plcEndpoint.type === "PLC_IO_POINT" ? [plcEndpoint.ref] : [];
   });
+  return { connections, pointIds };
+}
 
-  await db.$transaction(async (transaction) => {
-    await plcConfigRepository.deleteTagsOfPoints(transaction, pointIds);
-    await plcConfigRepository.deleteConnections(
+/** Connects a device that already exists in the PLC's factory, the same way `addPeripheral` wires a new one. */
+export async function wireExistingDevice(
+  db: PrismaClient,
+  actor: Actor,
+  plcId: string,
+  deviceId: string,
+  assignments: Readonly<Record<string, string>> = {},
+): Promise<void> {
+  const plc = await loadConfigPlc(db, actor, plcId);
+  const device = await deviceRepository.findInstance(db, deviceId);
+  if (!device || device.factoryId !== plc.factoryId || device.id === plc.id) throw notFound("device");
+  const model = await plcConfigRepository.findPeripheralModel(db, device.deviceModelId);
+  if (!model || model.family.category.code === PLC_CATEGORY_CODE) {
+    throw new DomainError("INCOMPATIBLE", "A PLC is not wired to another PLC's channels.", {
+      rule: "no-plc-connection",
+    });
+  }
+  if ((await connectionsTo(db, plc, deviceId)).connections.length > 0) {
+    throw new DomainError("CONFLICT", `${device.name} is already connected to ${plc.name}.`, {
+      rule: "already-connected",
+    });
+  }
+  const plan = planWiring(plc, model, assignments);
+  await db.$transaction((transaction) => wireInTransaction(transaction, plc, model, device, plan));
+}
+
+async function unwireInTransaction(transaction: Db, plc: ConfigPlc, connectionIds: string[], pointIds: string[]) {
+  await plcConfigRepository.deleteTagsOfPoints(transaction, pointIds);
+  await plcConfigRepository.deleteConnections(transaction, connectionIds);
+  await plcConfigRepository.freeIoPoints(transaction, pointIds);
+  await plcConfigRepository.bumpIoMappingVersion(transaction, plc.id);
+  if (pointIds.length > 0) await plcRepository.bumpModbusMappingVersion(transaction, plc.id);
+}
+
+/** Disconnects a device from the PLC: frees its channels and removes their tags. The device stays. */
+export async function unwireDevice(db: PrismaClient, actor: Actor, plcId: string, deviceId: string): Promise<void> {
+  const plc = await loadConfigPlc(db, actor, plcId);
+  const { connections, pointIds } = await connectionsTo(db, plc, deviceId);
+  if (connections.length === 0) throw notFound("connection");
+  await db.$transaction((transaction) =>
+    unwireInTransaction(
       transaction,
+      plc,
       connections.map((connection) => connection.id),
+      pointIds,
+    ),
+  );
+}
+
+/** Disconnects a peripheral from the PLC, frees its channels, removes their tags and deletes the device. */
+export async function removePeripheral(db: PrismaClient, actor: Actor, plcId: string, deviceId: string): Promise<void> {
+  const plc = await loadConfigPlc(db, actor, plcId);
+  const { connections, pointIds } = await connectionsTo(db, plc, deviceId);
+  if (connections.length === 0) throw notFound("peripheral");
+  await db.$transaction(async (transaction) => {
+    await unwireInTransaction(
+      transaction,
+      plc,
+      connections.map((connection) => connection.id),
+      pointIds,
     );
-    await plcConfigRepository.freeIoPoints(transaction, pointIds);
     await plcConfigRepository.deleteDevice(transaction, deviceId);
-    await plcConfigRepository.bumpIoMappingVersion(transaction, plc.id);
-    if (pointIds.length > 0) await plcRepository.bumpModbusMappingVersion(transaction, plc.id);
   });
 }
 

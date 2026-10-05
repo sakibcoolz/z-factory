@@ -184,3 +184,37 @@ export const peripheralInputSchema = z.strictObject({
   assignments: z.record(z.uuid(), z.uuid()).default({}),
 });
 export type PeripheralInput = z.infer<typeof peripheralInputSchema>;
+
+const canvasCoordinate = z.number().finite().min(-100_000).max(100_000);
+
+/** Placing a catalog model on the designer canvas as a new device instance. */
+export const placeDeviceInputSchema = z.strictObject({
+  deviceModelId: z.uuid(),
+  x: canvasCoordinate,
+  y: canvasCoordinate,
+  /** Left out, a free numbered name is used. */
+  name: deviceNameSchema.optional(),
+});
+
+export const nodePositionsInputSchema = z
+  .array(z.strictObject({ deviceId: z.uuid(), x: canvasCoordinate, y: canvasCoordinate }))
+  .min(1)
+  .max(500);
+
+export const renameDeviceInputSchema = z.strictObject({
+  name: deviceNameSchema,
+  role: z.string().trim().max(120).optional(),
+});
+
+export const linkInputSchema = z.strictObject({
+  fromId: z.uuid(),
+  toId: z.uuid(),
+  /** Needed only when more than one relationship is possible between the two devices. */
+  kind: z.enum(["WIRE_IO", "COMMUNICATES_WITH", "DRIVES", "MECHANICALLY_DRIVES", "MEASURES", "CONTROLS"]).optional(),
+});
+
+export const unlinkInputSchema = z.strictObject({
+  sourceId: z.uuid(),
+  targetId: z.uuid(),
+  relationship: z.enum(CONNECTION_RELATIONSHIPS),
+});

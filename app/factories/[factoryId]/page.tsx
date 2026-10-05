@@ -128,14 +128,15 @@ export default async function FactoryPage({ params }: FactoryPageProps) {
           <p className="zf-sub">No devices yet. Start with a PLC, then connect peripherals to it.</p>
         )}
         <div className="flex gap-2">
-          <Button variant="primary" href={routes.newDevice(factory.id, "compact")}>
-            Add compact PLC
+          <Button variant="primary" href={routes.designer(factory.id)}>
+            Open designer
           </Button>
+          <Button href={routes.newDevice(factory.id, "compact")}>Add compact PLC</Button>
           <Button href={routes.newDevice(factory.id, "modular")}>Add modular PLC</Button>
         </div>
         <p className="zf-sub mt-auto">
-          This is the factory&apos;s desired configuration; nothing here starts Docker. The designer canvas and runtime
-          control for stored factories are not wired yet.
+          This is the factory&apos;s desired configuration; nothing here starts Docker. Runtime control for stored
+          factories is not wired yet.
         </p>
       </Content>
     </AppShell>

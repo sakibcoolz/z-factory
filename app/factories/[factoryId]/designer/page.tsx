@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import { Stage } from "@/components/canvas/stage";
 import { AppShell } from "@/components/shell/app-shell";
 import { EditorTabs, Toolbar } from "@/components/shell/editor";
@@ -10,8 +9,12 @@ import { RuntimeStatePill } from "@/components/ui/state-pill";
 import { demoContext, isDemoFactory } from "@/lib/fixtures";
 import { designer, devices, factory, paletteGroups, plc } from "@/lib/fixtures/pump-house-demo";
 import { routes } from "@/lib/navigation/routes";
+import { StoredCanvas } from "./stored-designer";
 
 export const metadata: Metadata = { title: "Designer" };
+
+// Stored factories read the database on every request.
+export const dynamic = "force-dynamic";
 
 type DesignerPageProps = {
   params: Promise<{ factoryId: string }>;
@@ -20,7 +23,8 @@ type DesignerPageProps = {
 /** 2d — Factory Designer: palette · canvas · inspector. */
 export default async function DesignerPage({ params }: DesignerPageProps) {
   const { factoryId } = await params;
-  if (!isDemoFactory(factoryId)) notFound();
+  // Stored factories render from the database; the demo factory keeps its fixture screen.
+  if (!isDemoFactory(factoryId)) return StoredCanvas({ factoryId, mode: "designer" });
 
   const plcHref = routes.plc(factoryId, plc.id);
 
