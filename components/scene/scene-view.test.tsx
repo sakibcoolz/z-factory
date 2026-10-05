@@ -1,8 +1,13 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { LiveDeviceState, LiveMessage } from "@/lib/domain/live";
 import type { FactorySceneView, SceneDeviceView } from "@/lib/domain/scene-view";
 import type { OperationState } from "@/lib/plc/operation-state";
+import type { ConnectionAppearance, DeviceAppearance } from "@/lib/scene/state";
 import { SceneView } from "./scene-view";
+
+const refresh = vi.fn();
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
 
 /** Stands in for the WebGL canvas: shows what it was given and lets a test pick a device in it. */
 vi.mock("next/dynamic", () => ({
@@ -12,9 +17,19 @@ vi.mock("next/dynamic", () => ({
       selectedId: string | null;
       camera: string;
       onSelect: (id: string | null) => void;
+      devices: ReadonlyMap<string, DeviceAppearance>;
+      connections: ReadonlyMap<string, ConnectionAppearance>;
     }) {
       return (
         <div data-testid="canvas" data-selected={props.selectedId ?? ""} data-camera={props.camera}>
+          {[...props.devices].map(([id, appearance]) => (
+            <span key={id} data-testid={`shown-${id}`} data-tone={appearance.tone} data-pulse={appearance.pulse}>
+              {appearance.label}
+            </span>
+          ))}
+          {[...props.connections].map(([id, appearance]) => (
+            <span key={id} data-testid={`line-${id}`} data-tone={appearance.tone} data-animated={appearance.animated} />
+          ))}
           {props.scene.devices.map((device) => (
             <button key={device.id} type="button" onClick={() => props.onSelect(device.id)}>
               {`pick ${device.name}`}
@@ -71,6 +86,7 @@ function setup(scene: FactorySceneView = SCENE, result: OperationState = { notic
   render(
     <SceneView
       scene={scene}
+      streamUrl="/factories/factory-1/stream"
       transformAction={action}
       plcLinks={{ "id-PLC-01": "/factories/factory-1/plcs/id-PLC-01" }}
       designerHref="/factories/factory-1/designer"
@@ -81,13 +97,65 @@ function setup(scene: FactorySceneView = SCENE, result: OperationState = { notic
   return { action, submitted, inspector: within(screen.getByRole("complementary", { name: "Scene" })) };
 }
 
+/** The browser's EventSource, as far as the stream hook uses it. */
+class FakeEventSource {
+  static CLOSED = 2;
+  static current: FakeEventSource;
+  readyState = 0;
+  onopen: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  private readonly listeners = new Map<string, Array<(event: MessageEvent<string>) => void>>();
+  constructor(readonly url: string) {
+    FakeEventSource.current = this;
+  }
+  addEventListener(kind: string, listener: (event: MessageEvent<string>) => void) {
+    this.listeners.set(kind, [...(this.listeners.get(kind) ?? []), listener]);
+  }
+  close() {
+    this.readyState = FakeEventSource.CLOSED;
+  }
+  open() {
+    this.readyState = 1;
+    act(() => this.onopen?.());
+  }
+  drop() {
+    this.readyState = 0;
+    act(() => this.onerror?.());
+  }
+  send(message: LiveMessage) {
+    const event = { data: JSON.stringify(message), lastEventId: "" } as MessageEvent<string>;
+    act(() => this.listeners.get(message.kind)?.forEach((listener) => listener(event)));
+  }
+}
+
+const live = (
+  name: string,
+  status: LiveDeviceState["status"],
+  extra: Partial<LiveDeviceState> = {},
+): LiveDeviceState => ({
+  deviceId: `id-${name}`,
+  name,
+  status,
+  source: "LIVE",
+  quality: "GOOD",
+  at: "2026-10-05T07:00:00.000Z",
+  ...extra,
+});
+const snapshot = (devices: LiveDeviceState[]): LiveMessage => ({
+  kind: "snapshot",
+  snapshot: { factoryId: "factory-1", at: "2026-10-05T07:00:00.000Z", tags: [], devices, activeAlarms: 0 },
+});
+const shown = (name: string) => screen.getByTestId(`shown-id-${name}`);
+
 const getContext = HTMLCanvasElement.prototype.getContext;
 beforeEach(() => {
   // jsdom has no WebGL; most tests are about a browser that has it.
   HTMLCanvasElement.prototype.getContext = vi.fn(() => ({})) as unknown as typeof getContext;
+  vi.stubGlobal("EventSource", FakeEventSource);
 });
 afterEach(() => {
   HTMLCanvasElement.prototype.getContext = getContext;
+  vi.unstubAllGlobals();
 });
 
 describe("SceneView", () => {
@@ -106,7 +174,9 @@ describe("SceneView", () => {
     expect(inspector.getByRole("button", { name: /M-01/ })).toHaveAttribute("aria-pressed", "true");
     expect(inspector.getByText("catalog asset v2")).toBeInTheDocument();
     expect(inspector.getByText("90° · ×1.25")).toBeInTheDocument();
-    expect(inspector.getByText("Running")).toBeInTheDocument();
+    // Stored as running, but nothing confirms it yet.
+    expect(inspector.getByText("Running · stale")).toBeInTheDocument();
+    expect(inspector.getByText("not confirmed")).toBeInTheDocument();
 
     // Picking in the scene does the same as the list.
     fireEvent.click(screen.getByRole("button", { name: "pick PLC-01" }));
@@ -171,5 +241,130 @@ describe("SceneView", () => {
     expect(screen.queryByTestId("canvas")).not.toBeInTheDocument();
     fireEvent.click(inspector.getByRole("button", { name: /M-01/ }));
     expect(inspector.getByText("catalog asset v2")).toBeInTheDocument();
+  });
+
+  const CONNECTED: FactorySceneView = {
+    ...SCENE,
+    connections: [
+      {
+        id: "plc-m1",
+        relationship: "CONTROLS",
+        sourceId: "id-PLC-01",
+        targetId: "id-M-01",
+        line: "signal",
+        label: "controls",
+      },
+      {
+        id: "m1-m2",
+        relationship: "MECHANICALLY_DRIVES",
+        sourceId: "id-M-01",
+        targetId: "id-M-02",
+        line: "signal",
+        label: "drives",
+      },
+    ],
+  };
+
+  it("never shows a device as healthy before the live stream has confirmed it", () => {
+    setup(CONNECTED);
+    expect(FakeEventSource.current.url).toBe("/factories/factory-1/stream");
+    expect(screen.getByRole("status", { name: "Live state" })).toHaveTextContent("state · connecting");
+    // M-01 is stored as running: shown as stale, not green.
+    expect(shown("M-01")).toHaveAttribute("data-tone", "deg");
+    expect(shown("M-01")).toHaveTextContent("Running · stale");
+    expect(shown("PLC-01")).toHaveAttribute("data-tone", "off");
+    expect(screen.getByTestId("line-plc-m1")).toHaveAttribute("data-tone", "idle");
+  });
+
+  it("shows running devices green and their connection active once the stream reports them", () => {
+    const { inspector } = setup(CONNECTED);
+    FakeEventSource.current.open();
+    FakeEventSource.current.send(
+      snapshot([
+        live("PLC-01", "RUNNING", { source: "STORED", at: null }),
+        live("M-01", "RUNNING"),
+        live("M-02", "STOPPED", { source: "SNAPSHOT", quality: "STALE" }),
+      ]),
+    );
+    expect(screen.getByRole("status", { name: "Live state" })).toHaveTextContent("state · live");
+    expect(shown("PLC-01")).toHaveAttribute("data-tone", "run");
+    expect(shown("M-01")).toHaveAttribute("data-tone", "run");
+    expect(shown("M-01")).toHaveTextContent(/^Running$/);
+    // A stopped device is plain: neither healthy nor faulted.
+    expect(shown("M-02")).toHaveAttribute("data-tone", "off");
+    expect(screen.getByTestId("line-plc-m1")).toHaveAttribute("data-tone", "active");
+    expect(screen.getByTestId("line-plc-m1")).toHaveAttribute("data-animated", "true");
+    expect(screen.getByTestId("line-m1-m2")).toHaveAttribute("data-tone", "idle");
+
+    fireEvent.click(inspector.getByRole("button", { name: /M-01/ }));
+    expect(inspector.getByText("simulator, live")).toBeInTheDocument();
+  });
+
+  it("turns a faulted device and its connections red when the stream reports the fault, and back", () => {
+    setup(CONNECTED);
+    FakeEventSource.current.open();
+    FakeEventSource.current.send(
+      snapshot([live("PLC-01", "RUNNING"), live("M-01", "RUNNING"), live("M-02", "RUNNING")]),
+    );
+    const devices = (list: LiveDeviceState[]): LiveMessage => ({
+      kind: "devices",
+      factoryId: "factory-1",
+      at: "2026-10-05T07:00:05.000Z",
+      devices: list,
+    });
+
+    FakeEventSource.current.send(
+      devices([live("PLC-01", "RUNNING"), live("M-01", "FAULTED"), live("M-02", "RUNNING")]),
+    );
+    expect(shown("M-01")).toHaveAttribute("data-tone", "flt");
+    expect(shown("M-01")).toHaveAttribute("data-pulse", "true");
+    // Both connections of the faulted device, and nothing moves on them.
+    for (const id of ["line-plc-m1", "line-m1-m2"]) {
+      expect(screen.getByTestId(id)).toHaveAttribute("data-tone", "fault");
+      expect(screen.getByTestId(id)).toHaveAttribute("data-animated", "false");
+    }
+    expect(shown("M-02")).toHaveAttribute("data-tone", "run");
+
+    FakeEventSource.current.send(
+      devices([live("PLC-01", "RUNNING"), live("M-01", "RUNNING"), live("M-02", "RUNNING")]),
+    );
+    expect(shown("M-01")).toHaveAttribute("data-tone", "run");
+    expect(screen.getByTestId("line-m1-m2")).toHaveAttribute("data-tone", "active");
+  });
+
+  it("shows a PLC that does not answer as such, and stops the flow on its connections", () => {
+    setup(CONNECTED);
+    FakeEventSource.current.open();
+    FakeEventSource.current.send(
+      snapshot([
+        live("PLC-01", "RUNNING", { source: "STORED", quality: "DISCONNECTED" }),
+        live("M-01", "RUNNING"),
+        live("M-02", "RUNNING"),
+      ]),
+    );
+    expect(shown("PLC-01")).toHaveAttribute("data-tone", "disc");
+    expect(shown("PLC-01")).toHaveTextContent("No answer");
+    expect(screen.getByTestId("line-plc-m1")).toHaveAttribute("data-tone", "idle");
+    expect(screen.getByTestId("line-m1-m2")).toHaveAttribute("data-tone", "active");
+  });
+
+  it("falls back to stale when the stream is interrupted, keeping a fault visible", () => {
+    setup(CONNECTED);
+    FakeEventSource.current.open();
+    FakeEventSource.current.send(
+      snapshot([live("PLC-01", "RUNNING"), live("M-01", "FAULTED"), live("M-02", "RUNNING")]),
+    );
+    FakeEventSource.current.drop();
+    expect(screen.getByRole("status", { name: "Live state" })).toHaveTextContent("state · reconnecting");
+    expect(shown("PLC-01")).toHaveAttribute("data-tone", "deg");
+    expect(shown("M-02")).toHaveTextContent("Running · stale");
+    // The last thing known about M-01 is a fault: it stays red, but nothing pulses or flows.
+    expect(shown("M-01")).toHaveAttribute("data-tone", "flt");
+    expect(shown("M-01")).toHaveAttribute("data-pulse", "false");
+    expect(screen.getByTestId("line-plc-m1")).toHaveAttribute("data-tone", "fault");
+    expect(screen.getByTestId("line-m1-m2")).toHaveAttribute("data-animated", "false");
+
+    FakeEventSource.current.open();
+    expect(shown("PLC-01")).toHaveAttribute("data-tone", "run");
   });
 });

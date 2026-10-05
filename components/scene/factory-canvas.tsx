@@ -3,10 +3,11 @@
 import { Clone, Line, OrbitControls, useGLTF } from "@react-three/drei";
 import { Canvas, type ThreeEvent, useFrame, useThree } from "@react-three/fiber";
 import { Component, type ReactNode, type RefObject, Suspense, useEffect, useMemo, useRef } from "react";
-import { Box3, MathUtils, Vector3 } from "three";
-import { runtimeStateLabel } from "@/lib/domain/runtime-state";
+import { Box3, type Material, MathUtils, type Mesh, Vector3 } from "three";
+import type { StateTone } from "@/lib/domain/runtime-state";
 import type { FactorySceneView, SceneAssetView, SceneDeviceView } from "@/lib/domain/scene-view";
 import { fitScale } from "@/lib/scene/placeholders";
+import { type ConnectionAppearance, type DeviceAppearance, sceneIsAnimated } from "@/lib/scene/state";
 import { DevicePlaceholder } from "./device-placeholder";
 
 /**
@@ -15,7 +16,9 @@ import { DevicePlaceholder } from "./device-placeholder";
  * generic shape when the model has no asset or the asset cannot be loaded.
  *
  * The scene shows; it decides nothing. Positions, connections and states come in as
- * props. Runtime colouring is not done here (TASK-404).
+ * props. Runtime state is drawn around a device (a ring on the floor, a frame around its
+ * space) and along its connections, never into its model: the loaded asset is shared by
+ * all instances and stays as it was stored.
  */
 
 export type CameraView = "iso" | "top" | "front";
@@ -27,6 +30,8 @@ export type SceneColors = {
   line: string;
   grid: string;
   gridStrong: string;
+  /** State colours of the design system, by tone. `off` has none: a stopped device is plain. */
+  tone: Record<Exclude<StateTone, "off">, string>;
 };
 
 type FactoryCanvasProps = {
@@ -34,6 +39,10 @@ type FactoryCanvasProps = {
   selectedId: string | null;
   onSelect: (deviceId: string | null) => void;
   camera: CameraView;
+  /** How each device is shown right now, by device id. */
+  devices: ReadonlyMap<string, DeviceAppearance>;
+  /** How each connection is shown right now, by connection id. */
+  connections: ReadonlyMap<string, ConnectionAppearance>;
 };
 
 /** Colour tokens of the design system, read where the scene is mounted. */
@@ -47,6 +56,13 @@ function readColors(): SceneColors {
     line: token("--color-fg-muted"),
     grid: token("--color-scene-grid"),
     gridStrong: token("--color-line-strong"),
+    tone: {
+      run: token("--color-ok"),
+      flt: token("--color-accent"),
+      deg: token("--color-warn"),
+      disc: token("--color-ext"),
+      start: token("--color-info"),
+    },
   };
 }
 
@@ -88,13 +104,81 @@ function CatalogModel({ asset, space }: { asset: SceneAssetView; space: SceneDev
   );
 }
 
+/** The twelve edges of a box of the given size standing on the floor, as pairs of points. */
+function frameSegments([width, height, depth]: readonly [number, number, number]): Array<[number, number, number]> {
+  const x = width / 2;
+  const z = depth / 2;
+  const corners = (y: number): Array<[number, number, number]> => [
+    [-x, y, -z],
+    [x, y, -z],
+    [x, y, z],
+    [-x, y, z],
+  ];
+  const bottom = corners(0);
+  const top = corners(height);
+  const next = (index: number) => (index + 1) % 4;
+  return [0, 1, 2, 3].flatMap((index) => [
+    bottom[index] as [number, number, number],
+    bottom[next(index)] as [number, number, number],
+    top[index] as [number, number, number],
+    top[next(index)] as [number, number, number],
+    bottom[index] as [number, number, number],
+    top[index] as [number, number, number],
+  ]);
+}
+
+/**
+ * Runtime state drawn around a device: a ring on the floor and, for every state but
+ * starting and stopping, a frame around the device's space. A fault pulses.
+ */
+function StateOverlay({
+  appearance,
+  size,
+  scale,
+  colors,
+}: {
+  appearance: DeviceAppearance;
+  size: readonly [number, number, number];
+  scale: number;
+  colors: SceneColors;
+}) {
+  const ring = useRef<Mesh>(null);
+  const segments = useMemo(() => frameSegments([size[0] * 1.08, size[1] * 1.04, size[2] * 1.08]), [size]);
+  useFrame(({ clock }) => {
+    if (!ring.current) return;
+    // Between 55 % and 100 %, about once a second; a steady ring for every other state.
+    const strength = appearance.pulse ? 0.775 + 0.225 * Math.sin(clock.elapsedTime * 6) : 1;
+    (ring.current.material as Material).opacity = strength;
+    ring.current.scale.setScalar(appearance.pulse ? 1 + (1 - strength) * 0.3 : 1);
+  });
+  if (appearance.tone === "off") return null;
+  const color = colors.tone[appearance.tone];
+  const radius = Math.max(size[0], size[2]) * scale * 0.62;
+
+  return (
+    <group>
+      <mesh ref={ring} rotation-x={-Math.PI / 2} position-y={0.02}>
+        <ringGeometry args={[radius, radius + 0.09, 48]} />
+        <meshBasicMaterial color={color} transparent />
+      </mesh>
+      {appearance.tone === "start" ? null : (
+        <group scale={scale}>
+          <Line points={segments} segments color={color} lineWidth={appearance.tone === "flt" ? 2.5 : 1.5} />
+        </group>
+      )}
+    </group>
+  );
+}
+
 function Device({
   device,
+  appearance,
   selected,
   colors,
   onSelect,
 }: {
   device: SceneDeviceView;
+  appearance: DeviceAppearance | undefined;
   selected: boolean;
   colors: SceneColors;
   onSelect: (deviceId: string) => void;
@@ -119,10 +203,15 @@ function Device({
           placeholder
         )}
       </group>
+      {appearance ? (
+        <group rotation-y={MathUtils.degToRad(device.rotationDeg)}>
+          <StateOverlay appearance={appearance} size={device.placeholder.size} scale={device.scale} colors={colors} />
+        </group>
+      ) : null}
       {selected ? (
         <mesh rotation-x={-Math.PI / 2} position-y={0.01}>
           <ringGeometry
-            args={[Math.max(width, depth) * device.scale * 0.75, Math.max(width, depth) * device.scale * 0.82, 48]}
+            args={[Math.max(width, depth) * device.scale * 0.85, Math.max(width, depth) * device.scale * 0.9, 48]}
           />
           <meshBasicMaterial color={colors.selection} />
         </mesh>
@@ -136,6 +225,49 @@ const DASH: Record<FactorySceneView["connections"][number]["line"], { dashed: bo
   network: { dashed: true, dash: 0.3, gap: 0.18 },
   feedback: { dashed: true, dash: 0.08, gap: 0.12 },
 };
+
+/**
+ * One connection on the floor. Its colour and movement come from the state of its two
+ * ends: red when either is faulted, green and flowing when both run, plain otherwise.
+ */
+function Connection({
+  from,
+  to,
+  line,
+  appearance,
+  colors,
+}: {
+  from: SceneDeviceView;
+  to: SceneDeviceView;
+  line: FactorySceneView["connections"][number]["line"];
+  appearance: ConnectionAppearance | undefined;
+  colors: SceneColors;
+}) {
+  const ref = useRef<{ material: { dashOffset: number } }>(null);
+  const tone = appearance?.tone ?? "idle";
+  const flowing = appearance?.animated ?? false;
+  useFrame((_, delta) => {
+    // Flow runs from the source to the target while both ends run, and stands still otherwise.
+    if (flowing && ref.current) ref.current.material.dashOffset -= delta * 0.9;
+  });
+  const style = flowing ? { dashed: true, dash: 0.28, gap: 0.16 } : DASH[line];
+
+  return (
+    <Line
+      // drei's line has no public type for its ref; only the dash offset is touched.
+      ref={ref as never}
+      points={[
+        [from.position.x, 0.04, from.position.z],
+        [to.position.x, 0.04, to.position.z],
+      ]}
+      color={tone === "fault" ? colors.tone.flt : tone === "active" ? colors.tone.run : colors.line}
+      lineWidth={tone === "idle" ? 1.5 : 2.5}
+      dashed={style.dashed}
+      dashSize={style.dash}
+      gapSize={style.gap}
+    />
+  );
+}
 
 type LabelElements = RefObject<Map<string, HTMLElement>>;
 
@@ -181,16 +313,25 @@ function CameraRig({ view, extent }: { view: CameraView; extent: number }) {
   return null;
 }
 
-export default function FactoryCanvas({ scene, selectedId, onSelect, camera }: FactoryCanvasProps) {
+export default function FactoryCanvas({
+  scene,
+  selectedId,
+  onSelect,
+  camera,
+  devices,
+  connections,
+}: FactoryCanvasProps) {
   const colors = useMemo(() => readColors(), []);
   const byId = useMemo(() => new Map(scene.devices.map((device) => [device.id, device])), [scene.devices]);
   const labels = useRef(new Map<string, HTMLElement>());
   const floor = scene.extent * 2;
+  // Draw continuously only while something moves; otherwise only when something changes.
+  const animated = sceneIsAnimated(devices.values(), connections.values());
 
   return (
     <>
       <Canvas
-        frameloop="demand"
+        frameloop={animated ? "always" : "demand"}
         dpr={[1, 2]}
         camera={{ fov: 42, near: 0.1, far: 600 }}
         onPointerMissed={() => onSelect(null)}
@@ -208,19 +349,14 @@ export default function FactoryCanvas({ scene, selectedId, onSelect, camera }: F
           const from = byId.get(connection.sourceId);
           const to = byId.get(connection.targetId);
           if (!from || !to) return null;
-          const style = DASH[connection.line];
           return (
-            <Line
+            <Connection
               key={connection.id}
-              points={[
-                [from.position.x, 0.04, from.position.z],
-                [to.position.x, 0.04, to.position.z],
-              ]}
-              color={colors.line}
-              lineWidth={1.5}
-              dashed={style.dashed}
-              dashSize={style.dash}
-              gapSize={style.gap}
+              from={from}
+              to={to}
+              line={connection.line}
+              appearance={connections.get(connection.id)}
+              colors={colors}
             />
           );
         })}
@@ -229,6 +365,7 @@ export default function FactoryCanvas({ scene, selectedId, onSelect, camera }: F
           <Device
             key={device.id}
             device={device}
+            appearance={devices.get(device.id)}
             selected={device.id === selectedId}
             colors={colors}
             onSelect={onSelect}
@@ -238,21 +375,25 @@ export default function FactoryCanvas({ scene, selectedId, onSelect, camera }: F
         <OrbitControls makeDefault maxPolarAngle={Math.PI / 2.05} minDistance={1.5} maxDistance={scene.extent * 6} />
       </Canvas>
       <div className="zf-scene-labels" aria-hidden="true">
-        {scene.devices.map((device) => (
-          <div
-            key={device.id}
-            ref={(element) => {
-              if (element) labels.current.set(device.id, element);
-              else labels.current.delete(device.id);
-            }}
-            className="zf-scene-label"
-            data-selected={device.id === selectedId}
-            hidden
-          >
-            <b>{device.name}</b>
-            <span>{runtimeStateLabel(device.runtimeStatus)}</span>
-          </div>
-        ))}
+        {scene.devices.map((device) => {
+          const appearance = devices.get(device.id);
+          return (
+            <div
+              key={device.id}
+              ref={(element) => {
+                if (element) labels.current.set(device.id, element);
+                else labels.current.delete(device.id);
+              }}
+              className="zf-scene-label"
+              data-selected={device.id === selectedId}
+              data-tone={appearance?.tone ?? "off"}
+              hidden
+            >
+              <b>{device.name}</b>
+              <span>{appearance?.label ?? ""}</span>
+            </div>
+          );
+        })}
       </div>
     </>
   );

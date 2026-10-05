@@ -61,6 +61,8 @@ export type LiveDeps = {
 const notFound = (what: string) => new DomainError("NOT_FOUND", `The ${what} does not exist.`);
 
 const PRUNE_EVERY_MS = 10 * 60_000;
+/** How long after an event the device states are sent: long enough to cover the events that come with it. */
+export const DEVICE_STATES_DELAY_MS = 120;
 const housekeeping = globalThis as typeof globalThis & { zfactoryLastPruneAt?: number };
 const syncing = globalThis as typeof globalThis & { zfactoryMonitorSync?: Map<string, Promise<void>> };
 
@@ -444,12 +446,35 @@ export async function openLiveStream(
 ): Promise<() => void> {
   await requireFactory(deps, actor, factoryId);
 
+  // Device states follow the events that may have changed them: one message for a burst.
+  let closed = false;
+  let pending: ReturnType<typeof setTimeout> | undefined;
+  const sendDeviceStates = () => {
+    pending = undefined;
+    void getDeviceStates(deps, factoryId).then(
+      (devices) => {
+        if (!closed) send({ kind: "devices", factoryId, at: new Date().toISOString(), devices });
+      },
+      // The next event or reconnect brings the states; a failed read must not end the stream.
+      () => undefined,
+    );
+  };
+  const deliver = (message: LiveMessage) => {
+    send(message);
+    if (message.kind === "event" && !closed) pending ??= setTimeout(sendDeviceStates, DEVICE_STATES_DELAY_MS);
+  };
+
   // Listen before reading history, so nothing recorded in between is lost.
   let buffer: LiveMessage[] | undefined = [];
-  const unsubscribe = deps.bus.subscribeLive(factoryId, (message) => {
+  const stopListening = deps.bus.subscribeLive(factoryId, (message) => {
     if (buffer) buffer.push(message);
-    else send(message);
+    else deliver(message);
   });
+  const unsubscribe = () => {
+    closed = true;
+    clearTimeout(pending);
+    stopListening();
+  };
 
   try {
     await syncFactoryMonitoring(deps, factoryId);
@@ -466,7 +491,7 @@ export async function openLiveStream(
     }
     send({ kind: "snapshot", snapshot: await getLiveSnapshot(deps, factoryId) });
     for (const message of buffer) {
-      if (message.kind !== "event" || !replayed.has(message.event.id)) send(message);
+      if (message.kind !== "event" || !replayed.has(message.event.id)) deliver(message);
     }
     buffer = undefined;
   } catch (error) {

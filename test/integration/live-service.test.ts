@@ -14,6 +14,7 @@ import { TagMonitorRuntime } from "@/lib/runtimes/tag-monitor/monitor";
 import { listAlarms, listEvents, recordEvent } from "@/lib/services/event-service";
 import { createFactory } from "@/lib/services/factory-service";
 import {
+  DEVICE_STATES_DELAY_MS,
   getDeviceStates,
   getLiveSnapshot,
   getLiveTags,
@@ -504,5 +505,55 @@ describeDb("live tags, telemetry and the live stream", () => {
       )
     )();
     expect(reset.map((message) => message.kind)).toEqual(["reset", "snapshot"]);
+  });
+
+  it("follows recorded events with the state of every device, once per burst, worked out by the server", async () => {
+    await markStarted();
+    const received: LiveMessage[] = [];
+    const close = await openLiveStream(deps, alice, factoryId, null, (message) => received.push(message));
+    const deviceMessages = () => received.flatMap((message) => (message.kind === "devices" ? [message] : []));
+    const settle = () => new Promise((resolve) => setTimeout(resolve, DEVICE_STATES_DELAY_MS + 150));
+    expect(deviceMessages()).toEqual([]);
+
+    // A simulation starts: several events at once, one message with the resulting states.
+    await startFactorySimulation({ db, simulator: deps.simulator, bus: deps.bus }, alice, factoryId, {
+      autoTick: false,
+    });
+    await settle();
+    expect(deviceMessages()).toHaveLength(1);
+    expect(deviceMessages()[0]?.devices.map((device) => [device.name, device.status, device.source])).toEqual([
+      ["PLC-01", "RUNNING", "STORED"],
+      ["XV-101", "RUNNING", "LIVE"],
+    ]);
+
+    // A fault: the state comes from simulator memory, not from what the event says.
+    deps.simulator.simulation(factoryId).injectFault(valveId, "STUCK");
+    await recordEvent(deps, {
+      type: "FAULT_INJECTED",
+      factoryId,
+      deviceId: valveId,
+      severity: "WARNING",
+      payload: { code: "STUCK", name: "Stuck" },
+    });
+    await settle();
+    expect(deviceMessages()).toHaveLength(2);
+    expect(deviceMessages()[1]?.devices.find((device) => device.deviceId === valveId)).toMatchObject({
+      status: "FAULTED",
+      source: "LIVE",
+    });
+    // Tag values are not a reason to send device states.
+    await tick();
+    await settle();
+    expect(deviceMessages()).toHaveLength(3); // the monitor's first cycle recorded CONNECTION_UP
+    await tick();
+    await settle();
+    expect(deviceMessages()).toHaveLength(3);
+
+    // A closed stream gets nothing more, not even what was already on its way.
+    await recordEvent(deps, { type: "DEVICE_RESET", factoryId, deviceId: valveId });
+    close();
+    await settle();
+    expect(deviceMessages()).toHaveLength(3);
+    await stopFactorySimulation({ db, simulator: deps.simulator, bus: deps.bus }, alice, factoryId);
   });
 });

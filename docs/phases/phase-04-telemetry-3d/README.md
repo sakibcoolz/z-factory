@@ -7,7 +7,7 @@ Status: **IN PROGRESS**
 | TASK-401 Event stream & live telemetry | DONE |
 | TASK-402 Three.js factory view | DONE |
 | TASK-403 Meshy MCP catalog 3D asset generation | PLANNED |
-| TASK-404 Live 3D runtime-state visualization | PLANNED |
+| TASK-404 Live 3D runtime-state visualization | DONE |
 
 ## Scope
 Phase 04 provides live events/telemetry plus a reusable 3D representation for the generic hardware catalog.
