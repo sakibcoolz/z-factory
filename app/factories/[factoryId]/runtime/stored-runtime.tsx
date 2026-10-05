@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LiveRefresh } from "@/components/live/live-refresh";
 import { AppShell } from "@/components/shell/app-shell";
 import { Content, EditorTabs } from "@/components/shell/editor";
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,7 @@ export async function StoredFactoryRuntime({ factoryId }: { factoryId: string })
         right: [docker.reachable ? `Docker ${docker.version}` : "Docker unreachable"],
       }}
     >
+      <LiveRefresh streamUrl={routes.stream(factory.id)} />
       <EditorTabs
         tabs={[
           { label: factory.name, href: routes.factory(factory.id) },

@@ -581,7 +581,7 @@ export class FactorySimulation {
         type: STATE_EVENT[device.type] ?? "DEVICE_STATE_CHANGED",
         deviceId: device.id,
         severity: device.state === "FAULTED" ? "CRITICAL" : "INFO",
-        payload: { from, to: device.state, outputs: { ...device.outputs } },
+        payload: { from, to: device.state, outputs: { ...device.outputs }, activeFaults: [...device.activeFaults] },
       });
     });
     return events;
@@ -654,7 +654,12 @@ export class FactorySimulation {
     }
     const wasTripped = device.tripped;
     device.tripped = false;
-    return { type: "DEVICE_RESET", deviceId, severity: "INFO", payload: { wasTripped } };
+    return {
+      type: "DEVICE_RESET",
+      deviceId,
+      severity: "INFO",
+      payload: { wasTripped, activeFaults: [...device.activeFaults] },
+    };
   }
 
   /** Forces the simulated value of a sensor or switch; `null` returns it to its source. */

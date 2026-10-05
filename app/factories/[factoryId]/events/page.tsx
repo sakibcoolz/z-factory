@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import { AppShell } from "@/components/shell/app-shell";
 import { Content, EditorTabs, Panel } from "@/components/shell/editor";
 import { SideBar, SideSection } from "@/components/shell/side-bar";
@@ -8,19 +7,32 @@ import { KeyValue, Log, type LogLevel } from "@/components/ui/primitives";
 import { RuntimeStatePill, StatePill } from "@/components/ui/state-pill";
 import { demoContext, isDemoFactory } from "@/lib/fixtures";
 import { events, factory } from "@/lib/fixtures/pump-house-demo";
+import { StoredEvents } from "./stored-events";
 
 export const metadata: Metadata = { title: "Events" };
 
+// Stored factories read the database on every request.
+export const dynamic = "force-dynamic";
+
 type EventsPageProps = {
   params: Promise<{ factoryId: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
 const LEVEL_LABEL: Record<LogLevel, string> = { info: "EVENT", warn: "WARN", crit: "CRIT" };
 
 /** 2m — Events / Alarms / Logs: alarm list with acknowledge, typed event stream. */
-export default async function EventsPage({ params }: EventsPageProps) {
+export default async function EventsPage({ params, searchParams }: EventsPageProps) {
   const { factoryId } = await params;
-  if (!isDemoFactory(factoryId)) notFound();
+  // Stored factories show their real alarms and events; the demo factory keeps its fixture screen.
+  if (!isDemoFactory(factoryId)) {
+    const query = (await searchParams) ?? {};
+    const text = (value: string | string[] | undefined) => (typeof value === "string" ? value : undefined);
+    return StoredEvents({
+      factoryId,
+      filter: { family: text(query.family), severity: text(query.severity), device: text(query.device) },
+    });
+  }
 
   const { severity, alarms, stream } = events;
   const total = severity.critical + severity.warning + severity.info;

@@ -60,8 +60,8 @@ function sections(view: PlcConfigurationView, active: StoredPlcSection): TreeNod
     },
     // The device simulation belongs to the factory, not to one PLC.
     { label: "Simulator", meta: "factory", href: routes.simulator(factoryId) },
-    pending("Live Tags"),
-    pending("Events"),
+    { label: "Live Tags", meta: "factory", href: routes.tags(factoryId, id) },
+    { label: "Events", meta: "factory", href: routes.events(factoryId, { device: id }) },
     pending("Logs"),
     { label: SECTION_LABELS.versions, href: routes.plcVersions(factoryId, id), active: active === "versions" },
     { label: SECTION_LABELS.runtime, href: routes.plcRuntime(factoryId, id), active: active === "runtime" },

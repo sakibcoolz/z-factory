@@ -139,6 +139,12 @@ export default async function FactoryPage({ params }: FactoryPageProps) {
           <Button variant="ghost" href={routes.simulator(factory.id)}>
             Simulator
           </Button>
+          <Button variant="ghost" href={routes.tags(factory.id)}>
+            Live tags
+          </Button>
+          <Button variant="ghost" href={routes.events(factory.id)}>
+            Events
+          </Button>
         </div>
         <p className="zf-sub mt-auto">
           This is the factory&apos;s desired configuration; nothing here starts Docker. A PLC is started from its

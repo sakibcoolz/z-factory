@@ -27,6 +27,7 @@ import { parseInput } from "@/lib/validation/parse";
 import { type TagInput, tagInputSchema } from "@/lib/validation/schemas";
 import { assertSignalBinding } from "@/lib/validation/simulation";
 import { assertNoAddressOverlap, assertTagAccess } from "@/lib/validation/tag";
+import { recordEvent } from "./event-service";
 import { loadPlc, requireTarget, type RuntimeDeps } from "./plc-runtime-service";
 
 /**
@@ -330,20 +331,33 @@ export async function writeTag(
   const { device } = await loadPlc(db, actor, plcId);
   const tag = await loadMappedTag(db, device.id, name);
 
+  const audit = (type: string, severity: "INFO" | "WARNING", payload: Record<string, unknown>) =>
+    recordEvent(deps, {
+      type,
+      factoryId: device.factoryId,
+      deviceId: device.id,
+      severity,
+      payload: { tag: tag.name, source, ...payload },
+    });
+
   if (tag.accessMode !== "READ_WRITE" || !isWritableTagRole(tag.role)) {
+    // A refused write is kept: someone tried to drive a value only PLC logic may produce.
+    await audit("COMMAND_REJECTED", "WARNING", { rule: "tag-read-only", role: tag.role });
     throw new DomainError("INVARIANT", `${tag.name} is a ${tag.role} tag and cannot be written.`, {
       rule: "tag-read-only",
     });
   }
   const encoded = encodeValue(value, encodingOf(tag));
   const endpoint = modbusEndpoint(requireTarget(device));
+  const requested = value as number | boolean;
+  if (source === "GATEWAY") await audit("GATEWAY_COMMAND_RECEIVED", "INFO", { value: requested });
 
   const command = await tagRepository.recordCommand(db, {
     factoryId: device.factoryId,
     plcInstanceId: device.id,
     tagId: tag.id,
     targetDeviceId: tag.sourceDeviceInstanceId,
-    requestedValueJson: value as number | boolean,
+    requestedValueJson: requested,
     source,
   });
 
@@ -357,8 +371,15 @@ export async function writeTag(
     }
   } catch (error) {
     await tagRepository.setCommandStatus(db, command.id, "FAILED");
+    await audit("COMMAND_FAILED", "WARNING", {
+      commandId: command.id,
+      value: requested,
+      rule: isDomainError(error) && typeof error.details.rule === "string" ? error.details.rule : null,
+    });
     throw error;
   }
   await tagRepository.setCommandStatus(db, command.id, "ACCEPTED");
+  // Accepted by the PLC, not applied by the device: PLC logic decides what happens next.
+  await audit("COMMAND_ACCEPTED", "INFO", { commandId: command.id, value: requested });
   return { commandId: command.id, status: "ACCEPTED" };
 }

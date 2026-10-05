@@ -93,9 +93,9 @@ describeRuntime("PLC runtime service with PostgreSQL and a real Docker Engine", 
   const device = () =>
     db.deviceInstance.findUniqueOrThrow({ where: { id: plcId }, include: { plcProfile: true, runtimePorts: true } });
   const events = async () =>
-    (await db.runtimeEvent.findMany({ where: { deviceId: plcId }, orderBy: { occurredAt: "asc" } })).map(
-      (event) => event.type,
-    );
+    (
+      await db.runtimeEvent.findMany({ where: { deviceId: plcId }, orderBy: [{ occurredAt: "asc" }, { id: "asc" }] })
+    ).map((event) => event.type);
   const counter = async () =>
     ((await readPlcRegisters(deps, alice, plcId, { area: "HOLDING_REGISTER", address: 1 })) as number[])[0] ?? 0;
 
@@ -277,7 +277,8 @@ describeRuntime("PLC runtime service with PostgreSQL and a real Docker Engine", 
 
     expect(await refreshPlcState(deps, alice, plcId)).toEqual({ state: "FAULTED" });
     expect((await device()).runtimeStatus).toBe("FAULTED");
-    expect((await events()).at(-1)).toBe("DEVICE_FAULTED");
+    // A faulted runtime raises an alarm right behind the event that reports it.
+    expect((await events()).slice(-2)).toEqual(["DEVICE_FAULTED", "ALARM_RAISED"]);
     expect((await db.factory.findUniqueOrThrow({ where: { id: factoryId } })).runtimeStatus).toBe("DEGRADED");
   }, 60_000);
 

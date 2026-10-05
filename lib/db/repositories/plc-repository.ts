@@ -171,6 +171,33 @@ export const plcRepository = {
     return db.runtimeEvent.findMany({ where: { deviceId }, orderBy: [{ occurredAt: "desc" }, { id: "desc" }], take });
   },
 
+  /** The factory's OpenPLC devices with their tags and endpoints, for live monitoring. */
+  listFactoryPlcs(db: Db, factoryId: string) {
+    return db.deviceInstance.findMany({
+      where: { factoryId, runtimeType: "OPENPLC", plcProfile: { isNot: null } },
+      include: {
+        runtimePorts: true,
+        plcProfile: { include: { tags: { include: { sourceDevice: { select: { name: true } } } } } },
+      },
+      orderBy: { name: "asc" },
+    });
+  },
+
+  /** Every device of the factory with its last persisted snapshot. */
+  listFactoryDeviceStates(db: Db, factoryId: string) {
+    return db.deviceInstance.findMany({
+      where: { factoryId },
+      select: {
+        id: true,
+        name: true,
+        runtimeType: true,
+        runtimeStatus: true,
+        runtimeSnapshot: { select: { capturedAt: true } },
+      },
+      orderBy: { name: "asc" },
+    });
+  },
+
   /** Runtime states of the factory's OpenPLC devices, for the factory-level summary. */
   async plcRuntimeStates(db: Db, factoryId: string): Promise<RuntimeState[]> {
     const devices = await db.deviceInstance.findMany({

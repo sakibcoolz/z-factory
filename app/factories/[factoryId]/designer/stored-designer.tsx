@@ -1,5 +1,6 @@
 import { DevicePalette } from "@/components/canvas/device-palette";
 import { TopologyCanvas } from "@/components/canvas/topology-canvas";
+import { LiveRefresh } from "@/components/live/live-refresh";
 import { AppShell } from "@/components/shell/app-shell";
 import { EditorTabs, Toolbar } from "@/components/shell/editor";
 import { SideBar } from "@/components/shell/side-bar";
@@ -55,6 +56,8 @@ export async function StoredCanvas({ factoryId, mode }: StoredCanvasProps) {
         right: [faulted > 0 ? `${faulted} faulted` : "no faults"],
       }}
     >
+      {/* State changes arrive as events; the overlay follows them without waiting for a poll. */}
+      <LiveRefresh streamUrl={routes.stream(factory.id)} />
       <EditorTabs
         tabs={[
           { label: factory.name, href: routes.factory(factory.id) },

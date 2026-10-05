@@ -7,9 +7,11 @@ import { ingestCatalog } from "@/lib/catalog/ingest";
 import { createDockerClient } from "@/lib/docker/client";
 import { DEFAULT_LIMITS } from "@/lib/docker/policy";
 import { RUNTIME_IMAGES } from "@/lib/docker/runtime-images";
+import { EventBus } from "@/lib/events/bus";
 import type { PrismaClient } from "@/lib/generated/prisma/client";
 import { EMPTY_OPERATION_STATE } from "@/lib/plc/operation-state";
 import { DeviceSimulatorRuntime } from "@/lib/runtimes/device-sim/runtime";
+import { TagMonitorRuntime } from "@/lib/runtimes/tag-monitor/monitor";
 import { createFactory } from "@/lib/services/factory-service";
 import { addPeripheral, createPlc } from "@/lib/services/plc-config-service";
 import type { RuntimeDeps } from "@/lib/services/plc-runtime-service";
@@ -39,6 +41,7 @@ const state = vi.hoisted(() => ({
   db: undefined as unknown,
   runtimeDeps: undefined as unknown,
   simulationDeps: undefined as unknown,
+  liveDeps: undefined as unknown,
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
@@ -47,6 +50,7 @@ vi.mock("@/lib/auth/actor", () => ({ requireActor: async () => ({ ownerId: "alic
 vi.mock("@/lib/services/runtime-deps", () => ({
   getRuntimeDeps: () => state.runtimeDeps,
   getSimulationDeps: () => state.simulationDeps,
+  getLiveDeps: () => state.liveDeps,
 }));
 
 const plcActions = await import("@/app/factories/[factoryId]/plcs/runtime-actions");
@@ -75,6 +79,7 @@ describeRuntime("a stored PLC operated from its screens on a real OpenPLC runtim
   let docker: Docker;
   let runtime: RuntimeDeps;
   let simulation: SimulationDeps;
+  let monitor: TagMonitorRuntime;
   let factoryId: string;
   let plcId: string;
   let valveId: string;
@@ -122,6 +127,8 @@ describeRuntime("a stored PLC operated from its screens on a real OpenPLC runtim
     simulation = { db, simulator: new DeviceSimulatorRuntime(), tickMs: 50, snapshotIntervalMs: 2000 };
     state.runtimeDeps = runtime;
     state.simulationDeps = simulation;
+    monitor = new TagMonitorRuntime();
+    state.liveDeps = { db, bus: new EventBus(), monitor, simulator: simulation.simulator, pollMs: 200 };
 
     const modelId = async (modelName: string) => (await db.deviceModel.findFirstOrThrow({ where: { modelName } })).id;
     factoryId = (
@@ -157,6 +164,7 @@ describeRuntime("a stored PLC operated from its screens on a real OpenPLC runtim
 
   afterAll(async () => {
     await simulation.simulator.stopAll();
+    await monitor.stopAll();
     const filters = { label: [`${RUN_LABEL}=${runId}`] };
     for (const container of await docker.listContainers({ all: true, filters })) {
       await docker.getContainer(container.Id).remove({ force: true, v: true });
@@ -236,7 +244,14 @@ describeRuntime("a stored PLC operated from its screens on a real OpenPLC runtim
   }, 300_000);
 
   it("stops, restarts and removes the runtime; a stopped runtime does not read back as faulted", async () => {
+    expect(monitor.isRunning(plcId)).toBe(true);
+    // The runtime that was up without a program did not answer on Modbus: that was a lost connection.
+    const lostBefore = await db.runtimeEvent.count({ where: { factoryId, type: "CONNECTION_DOWN" } });
     expect(await operate("stop")).toEqual({ notice: "The runtime is stopped. Its container and program are kept." });
+    // Its tags are no longer read, and going down on purpose is not reported as one.
+    expect(monitor.isRunning(plcId)).toBe(false);
+    expect(await db.runtimeEvent.count({ where: { factoryId, type: "CONNECTION_DOWN" } })).toBe(lostBefore);
+    expect(await db.alarmEvent.count({ where: { factoryId, code: "PLC_LINK_DOWN", clearedAt: null } })).toBe(0);
     // The container ended with the stop signal's exit code: that is a stop, not a fault.
     expect(await operate("refresh")).toEqual({ notice: "The runtime reports: stopped." });
     expect(await readLivePlcState(db, () => runtime, alice, plcId)).toEqual({ liveError: null });

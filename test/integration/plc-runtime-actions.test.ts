@@ -6,9 +6,11 @@ import { createDockerClient } from "@/lib/docker/client";
 import { DEFAULT_LIMITS } from "@/lib/docker/policy";
 import { RUNTIME_IMAGES } from "@/lib/docker/runtime-images";
 import { DomainError } from "@/lib/domain/errors";
+import { EventBus } from "@/lib/events/bus";
 import type { PrismaClient } from "@/lib/generated/prisma/client";
 import { EMPTY_OPERATION_STATE } from "@/lib/plc/operation-state";
 import { DeviceSimulatorRuntime } from "@/lib/runtimes/device-sim/runtime";
+import { TagMonitorRuntime } from "@/lib/runtimes/tag-monitor/monitor";
 import { createFactory } from "@/lib/services/factory-service";
 import { addPeripheral, createPlc } from "@/lib/services/plc-config-service";
 import type { RuntimeDeps } from "@/lib/services/plc-runtime-service";
@@ -30,6 +32,7 @@ const state = vi.hoisted(() => ({
     throw new Error("not set");
   }) as () => unknown,
   simulationDeps: undefined as unknown,
+  liveDeps: undefined as unknown,
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
@@ -38,6 +41,7 @@ vi.mock("@/lib/auth/actor", () => ({ requireActor: async () => state.actor }));
 vi.mock("@/lib/services/runtime-deps", () => ({
   getRuntimeDeps: () => state.runtimeDeps(),
   getSimulationDeps: () => state.simulationDeps,
+  getLiveDeps: () => state.liveDeps,
 }));
 
 const plcActions = await import("@/app/factories/[factoryId]/plcs/runtime-actions");
@@ -81,6 +85,13 @@ describeDb("program, runtime and simulator server actions", () => {
     await db.factory.deleteMany();
     simulation = { db, simulator: new DeviceSimulatorRuntime(), tickMs: 100 };
     state.simulationDeps = simulation;
+    state.liveDeps = {
+      db,
+      bus: new EventBus(),
+      monitor: new TagMonitorRuntime(),
+      simulator: simulation.simulator,
+      autoTick: false,
+    };
     // A Docker client that is never connected: nothing in this file may reach an engine.
     const deps: RuntimeDeps = {
       db,
@@ -195,10 +206,18 @@ describeDb("program, runtime and simulator server actions", () => {
     // The failure is visible afterwards too: state and a critical event.
     const device = await db.deviceInstance.findUniqueOrThrow({ where: { id: plcId } });
     expect(device.runtimeStatus).toBe("FAULTED");
-    const events = await db.runtimeEvent.findMany({ where: { deviceId: plcId }, orderBy: { occurredAt: "asc" } });
-    expect(events.map((event) => [event.type, event.severity]).slice(-2)).toEqual([
+    const events = await db.runtimeEvent.findMany({
+      where: { deviceId: plcId },
+      orderBy: [{ occurredAt: "asc" }, { id: "asc" }],
+    });
+    expect(events.map((event) => [event.type, event.severity]).slice(-3)).toEqual([
       ["DEVICE_STARTING", "INFO"],
       ["DEVICE_FAULTED", "CRITICAL"],
+      // A faulted runtime is an alarm an operator has to see.
+      ["ALARM_RAISED", "CRITICAL"],
+    ]);
+    expect(await db.alarmEvent.findMany({ where: { deviceId: plcId } })).toEqual([
+      expect.objectContaining({ code: "RUNTIME_FAULT", severity: "CRITICAL", clearedAt: null }),
     ]);
     expect(log).toHaveBeenCalled();
     log.mockRestore();
