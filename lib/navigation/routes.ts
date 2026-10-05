@@ -10,7 +10,11 @@ const plc = (factoryId: string, plcId: string) => `${factory(factoryId)}/plcs/${
 export const routes = {
   factories: () => "/factories",
   newFactory: () => "/factories/new",
-  catalog: () => "/catalog",
+  /** The catalog, optionally on one model and/or narrowed to one device category. */
+  catalog: (query: { model?: string; type?: string } = {}) => {
+    const search = new URLSearchParams(Object.entries(query).filter(([, value]) => Boolean(value)));
+    return search.size > 0 ? `/catalog?${search}` : "/catalog";
+  },
   factory,
   editFactory: (factoryId: string) => `${factory(factoryId)}/edit`,
   designer: (factoryId: string) => `${factory(factoryId)}/designer`,

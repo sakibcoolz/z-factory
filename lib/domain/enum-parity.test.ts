@@ -11,6 +11,7 @@ import {
   IO_POINT_TYPES,
   IO_SIGNAL_CLASSES,
   MOTOR_CATEGORY_CODE,
+  MOTOR_CATEGORY_CODES,
   PLC_ARCHITECTURES,
   PLC_CATEGORY_CODE,
 } from "./device";
@@ -44,10 +45,11 @@ describe("domain enums match the database schema", () => {
 describe("generic category seed", () => {
   const codes = GENERIC_CATEGORIES.map((category) => category.code);
 
-  it("has unique codes and covers the categories of docs/database.md", () => {
+  it("has unique codes and still covers the original categories", () => {
     expect(new Set(codes).size).toBe(codes.length);
-    expect(sorted(codes)).toEqual(
-      sorted([
+    // The full list, including controllers and intermediate devices, is checked in lib/catalog/catalog.test.ts.
+    expect(codes).toEqual(
+      expect.arrayContaining([
         "PLC",
         "VFD",
         "MOTOR",
@@ -70,7 +72,7 @@ describe("generic category seed", () => {
   });
 
   it("contains the categories the domain rules refer to", () => {
-    for (const code of [PLC_CATEGORY_CODE, MOTOR_CATEGORY_CODE, ...DRIVE_CATEGORY_CODES]) {
+    for (const code of [PLC_CATEGORY_CODE, MOTOR_CATEGORY_CODE, ...MOTOR_CATEGORY_CODES, ...DRIVE_CATEGORY_CODES]) {
       expect(codes).toContain(code);
     }
   });

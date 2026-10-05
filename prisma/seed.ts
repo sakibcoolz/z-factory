@@ -1,13 +1,12 @@
 /**
- * Seeds generic device categories only. Idempotent: safe to run repeatedly.
- *
- * Vendor catalog data is deliberately NOT seeded here. Named manufacturer/model records
- * enter through the verified, provenance-carrying ingestion of TASK-301
- * (docs/references/plc-source-policy.md).
+ * Seeds the generic device categories and the shipped catalog: verified vendor records
+ * with their source provenance, and generic simulated models. Idempotent: safe to run
+ * repeatedly (docs/device-catalog.md, docs/references/plc-source-policy.md).
  */
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { GENERIC_CATEGORIES } from "../lib/catalog/generic-categories";
+import { loadCatalog } from "../lib/catalog";
+import { ingestCatalog } from "../lib/catalog/ingest";
 import { PrismaClient } from "../lib/generated/prisma/client";
 
 async function main() {
@@ -16,14 +15,11 @@ async function main() {
 
   const db = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
   try {
-    for (const category of GENERIC_CATEGORIES) {
-      await db.deviceCategory.upsert({
-        where: { code: category.code },
-        create: category,
-        update: { name: category.name, simulatorType: category.simulatorType, requiresMotor: category.requiresMotor },
-      });
-    }
-    console.log(`Seeded ${GENERIC_CATEGORIES.length} generic device categories.`);
+    const result = await ingestCatalog(db, loadCatalog());
+    console.log(
+      `Seeded ${result.categories} categories, ${result.manufacturers} manufacturers, ${result.models} models, ` +
+        `${result.racks} racks and ${result.modules} modules.`,
+    );
   } finally {
     await db.$disconnect();
   }

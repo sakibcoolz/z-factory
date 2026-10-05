@@ -41,5 +41,13 @@ export type EndpointType = (typeof ENDPOINT_TYPES)[number];
 export const PLC_CATEGORY_CODE = "PLC";
 export const MOTOR_CATEGORY_CODE = "MOTOR";
 
-/** Categories that can be the source of a DRIVES relationship. MVP: VFD only. */
-export const DRIVE_CATEGORY_CODES: readonly string[] = ["VFD"];
+/** Categories that can be the target of a DRIVES relationship. */
+export const MOTOR_CATEGORY_CODES: readonly string[] = [MOTOR_CATEGORY_CODE, "SERVO_MOTOR"];
+
+/** Categories that can be the source of a DRIVES relationship, with the kind of drive each one is. */
+export const DRIVE_TYPE_BY_CATEGORY: Readonly<Record<string, "VFD" | "SERVO" | "SOFT_STARTER">> = {
+  VFD: "VFD",
+  SERVO_DRIVE: "SERVO",
+  SOFT_STARTER: "SOFT_STARTER",
+};
+export const DRIVE_CATEGORY_CODES: readonly string[] = Object.keys(DRIVE_TYPE_BY_CATEGORY);

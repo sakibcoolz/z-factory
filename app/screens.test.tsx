@@ -1,7 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
-import CatalogPage from "@/app/catalog/page";
 import DesignerPage from "@/app/factories/[factoryId]/designer/page";
 import NewDevicePage from "@/app/factories/[factoryId]/devices/new/[architecture]/page";
 import EventsPage from "@/app/factories/[factoryId]/events/page";
@@ -45,7 +44,6 @@ const SCREENS: Screen[] = [
     activity: "Designer",
     element: () => DesignerPage({ params: factoryParams }),
   },
-  { id: "2e catalog", heading: "CPU 1214C DC/DC/DC", activity: "Device catalog", element: () => <CatalogPage /> },
   {
     id: "2f compact device config",
     heading: "Built-in I/O & pin view",
@@ -106,8 +104,9 @@ describe("wireframe screens", () => {
     expect(screen.getByRole("contentinfo")).toBeInTheDocument();
   });
 
-  it("covers the 14 fixture-backed wireframe screens", () => {
-    expect(SCREENS).toHaveLength(14);
+  it("covers the 13 fixture-backed wireframe screens", () => {
+    // 2a–2c (factories) and 2e (catalog) read the database and are tested with it.
+    expect(SCREENS).toHaveLength(13);
   });
 
   it("rejects factories and PLCs that have no screen", async () => {

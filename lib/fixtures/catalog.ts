@@ -1,61 +1,12 @@
 /**
  * Static design fixtures transcribed from the Claude Design wireframes (turn 2).
  *
- * Vendor order numbers, I/O counts, electrical values and module compatibility below are
- * wireframe placeholders, NOT verified catalog records. TASK-301 replaces them with
- * normalized facts carrying source provenance (docs/references/plc-source-policy.md).
+ * Fixtures of the PLC configuration screens (2f, 2g). Order numbers, I/O counts and module
+ * compatibility below are wireframe placeholders, NOT catalog records: the catalog itself
+ * lives in the database (lib/catalog, TASK-301). TASK-302 replaces these with it.
  */
 import type { PinState, StepState } from "@/components/ui/primitives";
 import type { Tone } from "@/components/ui/state-pill";
-import type { TreeNode } from "@/components/shell/side-bar";
-
-export const catalogTree: readonly TreeNode[] = [
-  { label: "▾ Siemens", meta: "2", active: true },
-  { label: "▾ SIMATIC S7-1200", meta: "compact", level: 1 },
-  { label: "CPU 1214C DC/DC/DC", level: 2 },
-  { label: "▾ SIMATIC S7-1500", meta: "modular", level: 1 },
-  { label: "CPU 1511-1 PN", level: 2 },
-  { label: "▸ Rockwell", meta: "1" },
-  { label: "▸ Schneider", meta: "1" },
-  { label: "▸ Generic / simulated", meta: "9" },
-];
-
-export const catalogTypeFilters: ReadonlyArray<{ label: string; active: boolean }> = [
-  { label: "PLC", active: true },
-  { label: "VFD", active: false },
-  { label: "Motor", active: false },
-  { label: "Pump", active: false },
-  { label: "Sensor", active: false },
-  { label: "Valve", active: false },
-  { label: "Gateway", active: false },
-];
-
-export const catalogModel = {
-  manufacturer: "Siemens",
-  family: "SIMATIC S7-1200",
-  architecture: "compact",
-  name: "CPU 1214C DC/DC/DC",
-  sku: "6ES7214-1AG40-0XB0",
-  verifiedAt: "2026-10-01",
-  facts: [
-    [
-      ["Power", "24 V DC · 12 W"],
-      ["Communication", "PROFINET ×1 · RJ45"],
-      ["Memory", "100 KB work"],
-    ],
-    [
-      ["Built-in I/O", "14 DI · 10 DO · 2 AI · 0 AO"],
-      ["Expansion", "1 signal board · 8 SM · 3 CM"],
-    ],
-  ],
-  runtimeMapping: "OpenPLC",
-  compatiblePeripherals: [
-    { type: "Sensor", model: "Generic PT 4–20 mA", signal: "analog 4–20 mA", channelClass: "AI (with 250 Ω)" },
-    { type: "VFD", model: "Generic VFD Modbus TCP", signal: "Modbus TCP", channelClass: "PROFINET port / Ethernet" },
-    { type: "Switch", model: "Generic 24 V DC switch", signal: "discrete", channelClass: "DI" },
-  ],
-  totals: { models: 13, manufacturers: 4 },
-} as const;
 
 type WizardStep = { marker: string; label: string; state: StepState };
 
