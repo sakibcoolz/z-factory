@@ -8,6 +8,7 @@ import { getDeviceSimulator } from "@/lib/runtimes/device-sim/runtime";
 import { getGatewayEndpoints } from "@/lib/runtimes/gateway-endpoint/runtime";
 import { getTagMonitor } from "@/lib/runtimes/tag-monitor/monitor";
 import { resolveRuntimeSecret } from "@/lib/runtimes/openplc/credentials";
+import type { FactoryRuntimeDeps } from "./factory-runtime-service";
 import type { GatewayDeps } from "./gateway-service";
 import type { LiveDeps } from "./live-service";
 import type { RuntimeDeps } from "./plc-runtime-service";
@@ -61,4 +62,14 @@ export function getLiveDeps(): LiveDeps {
 /** The runtime dependencies plus the endpoints external gateways connect to. */
 export function getGatewayDeps(): GatewayDeps {
   return { ...getRuntimeDeps(), endpoints: getGatewayEndpoints() };
+}
+
+/** Everything the lifecycle of a whole factory touches: PLC runtimes, simulation, live values, gateways. */
+export function getFactoryRuntimeDeps(): FactoryRuntimeDeps {
+  return {
+    runtime: getRuntimeDeps(),
+    simulation: getSimulationDeps(),
+    live: getLiveDeps(),
+    gateway: getGatewayDeps(),
+  };
 }

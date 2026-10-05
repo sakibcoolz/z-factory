@@ -147,9 +147,8 @@ describeDb("external gateways and their endpoints", () => {
     expect(view.gateways).toMatchObject([
       { deviceId: gatewayId, name: "GATEWAY-01", connections: [], availablePlcs: [{ id: plcId, name: "PLC-01" }] },
     ]);
-    // The PLC's own Modbus port and its management port are taken; the suggestion avoids both.
-    expect(view.suggestedPort).not.toBe(plc.port);
-    expect(view.suggestedPort).toBeGreaterThanOrEqual(15_900);
+    // Suggested from the top of the range: PLC runtimes are given ports from the bottom.
+    expect(view.suggestedPort).toBe(15_949);
     // A gateway is a device of the factory like any other: the designer and the 3D view show it.
     expect(await db.deviceInstance.count({ where: { factoryId, id: gatewayId } })).toBe(1);
     expect((await addGateway(deps, alice, factoryId)).name).toBe("GATEWAY-02");
@@ -391,11 +390,14 @@ describeDb("external gateways and their endpoints", () => {
     expect(await exceptionOf(readModbus(edge, "COIL", 80, 1))).toBe("modbus-unreachable");
     expect(await connection()).toMatchObject({ enabled: false, endpoint: { listening: false } });
     expect((await db.gateway.findFirstOrThrow()).status).toBe("STOPPED");
+    expect((await db.deviceInstance.findUniqueOrThrow({ where: { id: gatewayId } })).runtimeStatus).toBe("STOPPED");
     // The mappings are kept for when it is enabled again.
     expect((await connection())?.registers).toHaveLength(5);
 
     await setGatewayConnectionEnabled(deps, alice, connectionId, true);
     expect(await readModbus(edge, "COIL", 80, 1)).toEqual([false]);
+    // The device that stands for the gateway shows the same state in every view of the factory.
+    expect((await db.deviceInstance.findUniqueOrThrow({ where: { id: gatewayId } })).runtimeStatus).toBe("RUNNING");
 
     // After a server restart nothing listens until the factory's gateways are looked at again.
     await deps.endpoints.stopAll();

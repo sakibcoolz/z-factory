@@ -3,6 +3,7 @@ import { LiveRefresh } from "@/components/live/live-refresh";
 import { AppShell } from "@/components/shell/app-shell";
 import { Content, EditorTabs } from "@/components/shell/editor";
 import { Button } from "@/components/ui/button";
+import { OperationForm } from "@/components/ui/operation-form";
 import { RuntimeStatePill, StatePill } from "@/components/ui/state-pill";
 import { getDb } from "@/lib/db/client";
 import { routes } from "@/lib/navigation/routes";
@@ -10,10 +11,12 @@ import { listFactoryDevices } from "@/lib/services/plc-config-service";
 import { getSimulationDeps } from "@/lib/services/runtime-deps";
 import { getSimulationState } from "@/lib/services/simulation-service";
 import { loadFactory } from "../load-factory";
+import { factoryRuntimeAction } from "./actions";
 
 /**
  * 2n for a stored factory: its PLC runtimes with their last known state, and the device
- * simulation. Each PLC is operated from its own Runtime screen.
+ * simulation, with one start and one stop for the factory as a whole. A single PLC is
+ * operated from its own Runtime screen.
  */
 export async function StoredFactoryRuntime({ factoryId }: { factoryId: string }) {
   const { factory, docker, actor } = await loadFactory(factoryId);
@@ -46,9 +49,34 @@ export async function StoredFactoryRuntime({ factoryId }: { factoryId: string })
         crumb={`${factory.slug} › runtime`}
       />
       <Content plain>
-        <div>
-          <div className="zf-k">{`Factory · ${factory.slug}`}</div>
-          <h1 className="zf-h mt-1.5">Runtime</h1>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="zf-k">{`Factory · ${factory.slug}`}</div>
+            <h1 className="zf-h mt-1.5">Runtime</h1>
+          </div>
+          <OperationForm
+            label="Factory"
+            action={factoryRuntimeAction.bind(null, factory.id)}
+            pendingHint="Starting a PLC downloads the runtime image the first time and builds its program: this can take minutes."
+            buttons={[
+              {
+                operation: "start",
+                label: "Start factory",
+                pendingLabel: "Starting…",
+                variant: "primary",
+                disabled: plcs.length === 0 || !docker.reachable,
+                title: "Starts every PLC runtime, then the device simulation, then the gateway endpoints.",
+              },
+              {
+                operation: "stop",
+                label: "Stop factory",
+                pendingLabel: "Stopping…",
+                variant: "danger",
+                disabled: started === 0 && !simulation.running,
+                confirm: "Stop the device simulation and every PLC runtime of this factory?",
+              },
+            ]}
+          />
         </div>
         {docker.reachable ? null : (
           <p className="zf-error" role="alert">
@@ -118,8 +146,9 @@ export async function StoredFactoryRuntime({ factoryId }: { factoryId: string })
           <p className="zf-sub">This factory has no PLC yet. Add one from the factory overview or the designer.</p>
         )}
         <p className="zf-sub">
-          States are the last ones Z-Factory stored. A PLC&apos;s Runtime screen reads the live state and starts, stops
-          or removes its runtime.
+          States are the last ones Z-Factory stored. &quot;Start factory&quot; starts every PLC, then the simulation,
+          then the gateway endpoints; a PLC&apos;s own Runtime screen reads its live state and starts, stops or removes
+          that one runtime.
         </p>
       </Content>
     </AppShell>

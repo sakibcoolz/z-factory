@@ -6,7 +6,10 @@ import { requireActor } from "@/lib/auth/actor";
 import { getDb } from "@/lib/db/client";
 import { isDomainError } from "@/lib/domain/errors";
 import { routes } from "@/lib/navigation/routes";
+import { type OperationState, toOperationState } from "@/lib/plc/operation-state";
+import { createDemoFactory } from "@/lib/services/demo-service";
 import { createFactory, deleteFactory, updateFactory } from "@/lib/services/factory-service";
+import { getGatewayDeps } from "@/lib/services/runtime-deps";
 import {
   type DeleteFactoryState,
   type FactoryFormState,
@@ -36,6 +39,22 @@ export async function createFactoryAction(_previous: FactoryFormState, formData:
   }
   revalidatePath(routes.factories());
   redirect(routes.factory(factoryId));
+}
+
+/**
+ * Builds the pump station demo as a stored factory and opens its runtime screen, where it
+ * is started. Nothing is started here.
+ */
+export async function createDemoFactoryAction(_previous: OperationState, _formData: FormData): Promise<OperationState> {
+  let factoryId: string;
+  try {
+    factoryId = (await createDemoFactory(getGatewayDeps(), await requireActor())).factoryId;
+  } catch (error) {
+    logUnexpected("factory.demo", error);
+    return toOperationState(error);
+  }
+  revalidatePath(routes.factories());
+  redirect(routes.runtime(factoryId));
 }
 
 export async function updateFactoryAction(
