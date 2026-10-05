@@ -7,10 +7,13 @@ import { DEFAULT_LIMITS } from "@/lib/docker/policy";
 import { RUNTIME_IMAGES } from "@/lib/docker/runtime-images";
 import { DomainError } from "@/lib/domain/errors";
 import type { PrismaClient } from "@/lib/generated/prisma/client";
+import { readModbus, writeModbus } from "@/lib/protocols/modbus/client";
 import { DeviceSimulatorRuntime } from "@/lib/runtimes/device-sim/runtime";
+import { GatewayEndpointRuntime } from "@/lib/runtimes/gateway-endpoint/runtime";
 import { connectDevices } from "@/lib/services/connection-service";
 import { createDeviceInstance } from "@/lib/services/device-service";
 import { createFactory } from "@/lib/services/factory-service";
+import { addGateway, connectGateway, getGatewayMap, mapAllGatewayTags } from "@/lib/services/gateway-service";
 import { createProgramVersion, type RuntimeDeps, startPlc, stopPlc } from "@/lib/services/plc-runtime-service";
 import {
   clearDeviceFault,
@@ -310,6 +313,70 @@ describeRuntime("device simulation in a closed loop with a real OpenPLC runtime"
     }
     await sleep(300);
     expect(await read("VFD01_ActualFrequency")).toBe(40);
+  }, 60_000);
+
+  it("lets an edge device behind a gateway endpoint command the pump through PLC logic and read the result", async () => {
+    const endpoints = new GatewayEndpointRuntime();
+    const deps = { ...runtime, endpoints };
+    try {
+      await createGenericModel(db, "GATEWAY", "Test gateway");
+      const gateway = await addGateway(deps, alice, factoryId);
+      const { connectionId } = await connectGateway(deps, alice, gateway.id, {
+        plcId,
+        host: "127.0.0.1",
+        port: 15_590,
+      });
+      await mapAllGatewayTags(deps, alice, connectionId);
+      // The edge device knows only what its register map says.
+      const map = await getGatewayMap(deps, alice, connectionId);
+      const edge = { host: map.endpoint.host, port: map.endpoint.port, unitId: map.endpoint.unitId };
+      const register = (tag: string) => {
+        const found = map.registers.find((entry) => entry.tag === tag);
+        if (!found) throw new Error(`${tag} is not in the gateway map`);
+        return found;
+      };
+      const readHz = async (tag: string) => {
+        const { area, address, scale } = register(tag);
+        return Number((await readModbus(edge, area, address, 1))[0]) * scale;
+      };
+      expect(register("Pump01_SpeedSetpoint").access).toBe("READ_WRITE");
+      expect(register("VFD01_ActualFrequency").access).toBe("READ");
+      expect(await readHz("VFD01_ActualFrequency")).toBe(40);
+
+      // 25 Hz, written as the raw register value. The program passes it to the drive, the drive ramps.
+      const setpoint = register("Pump01_SpeedSetpoint");
+      await writeModbus(edge, "HOLDING_REGISTER", setpoint.address, Math.round(25 / setpoint.scale));
+      expect(await until("VFD01_FrequencyRef", (value) => value === 25)).toBe(25);
+      expect(await until("VFD01_ActualFrequency", (value) => value === 25)).toBe(25);
+      expect(await readHz("VFD01_ActualFrequency")).toBe(25);
+      const command = await db.deviceCommand.findFirstOrThrow({ where: { source: "GATEWAY" }, include: { tag: true } });
+      expect(command).toMatchObject({ status: "ACCEPTED", requestedValueJson: 25, appliedAt: null });
+      expect(command.tag?.name).toBe("Pump01_SpeedSetpoint");
+
+      // What the program drives and what the devices answer cannot be written through the endpoint.
+      for (const tag of ["VFD01_Run", "VFD01_FrequencyRef", "VFD01_ActualFrequency"]) {
+        const { area, address } = register(tag);
+        const refused = await writeModbus(
+          edge,
+          area === "COIL" ? "COIL" : "HOLDING_REGISTER",
+          address,
+          area === "COIL" ? false : 0,
+        ).then(
+          () => undefined,
+          (reason: unknown) => reason,
+        );
+        expect((refused as DomainError).details.exceptionCode, tag).toBe(2);
+      }
+      await sleep(300);
+      expect(await read("VFD01_Run")).toBe(true);
+      expect(await read("VFD01_ActualFrequency")).toBe(25);
+
+      // Back to where the next test expects the pump.
+      await writeModbus(edge, "HOLDING_REGISTER", setpoint.address, Math.round(40 / setpoint.scale));
+      expect(await until("VFD01_ActualFrequency", (value) => value === 40)).toBe(40);
+    } finally {
+      await endpoints.stopAll();
+    }
   }, 60_000);
 
   it("lets the program react to a drive fault and reset the drive", async () => {

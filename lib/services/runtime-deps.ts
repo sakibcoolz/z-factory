@@ -5,8 +5,10 @@ import { runtimePolicyFromEnv } from "@/lib/docker/policy";
 import { getServerEnv } from "@/lib/env";
 import { getEventBus } from "@/lib/events/bus";
 import { getDeviceSimulator } from "@/lib/runtimes/device-sim/runtime";
+import { getGatewayEndpoints } from "@/lib/runtimes/gateway-endpoint/runtime";
 import { getTagMonitor } from "@/lib/runtimes/tag-monitor/monitor";
 import { resolveRuntimeSecret } from "@/lib/runtimes/openplc/credentials";
+import type { GatewayDeps } from "./gateway-service";
 import type { LiveDeps } from "./live-service";
 import type { RuntimeDeps } from "./plc-runtime-service";
 import type { SimulationDeps } from "./simulation-service";
@@ -54,4 +56,9 @@ export function getLiveDeps(): LiveDeps {
       eventsMs: env.EVENT_RETENTION_DAYS * 86_400_000,
     },
   };
+}
+
+/** The runtime dependencies plus the endpoints external gateways connect to. */
+export function getGatewayDeps(): GatewayDeps {
+  return { ...getRuntimeDeps(), endpoints: getGatewayEndpoints() };
 }

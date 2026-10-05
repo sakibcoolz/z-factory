@@ -264,6 +264,11 @@ const encodingOf = (tag: Tag) => ({
   offset: tag.offset,
 });
 
+/** The engineering value of a tag from the raw words or coil a Modbus client sent for it. */
+export function decodeRawTagValue(tag: Tag, raw: ReadonlyArray<number | boolean>): number | boolean {
+  return decodeValue(raw, encodingOf(tag));
+}
+
 /** Reads one tag from the running PLC as an engineering value. */
 export async function readTag(deps: RuntimeDeps, actor: Actor, plcId: string, name: string): Promise<TagReading> {
   const { device } = await loadPlc(deps.db, actor, plcId);

@@ -29,6 +29,11 @@ export const routes = {
     `${factory(factoryId)}/devices/new/${architecture}`,
   simulator: (factoryId: string) => `${factory(factoryId)}/simulator`,
   runtime: (factoryId: string) => `${factory(factoryId)}/runtime`,
+  /** External gateways of the factory: their endpoints and the tags they are given. */
+  gateways: (factoryId: string) => `${factory(factoryId)}/gateways`,
+  /** What an edge device is configured from, as a JSON download. */
+  gatewayMap: (factoryId: string, connectionId: string) =>
+    `${factory(factoryId)}/gateways/${encodeURIComponent(connectionId)}/map.json`,
   /** Live tags; `plc` narrows the list to one PLC. */
   tags: (factoryId: string, plc?: string) =>
     `${factory(factoryId)}/tags${plc ? `?plc=${encodeURIComponent(plc)}` : ""}`,
