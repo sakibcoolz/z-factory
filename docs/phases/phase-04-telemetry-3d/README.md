@@ -1,6 +1,6 @@
 # Phase 04 — Events, Telemetry & 3D
 
-Status: **DONE**
+Status: **IN PROGRESS**
 
 | Task | Status |
 |---|---|
@@ -8,6 +8,7 @@ Status: **DONE**
 | TASK-402 Three.js factory view | DONE |
 | TASK-403 Meshy MCP catalog 3D asset generation | DONE |
 | TASK-404 Live 3D runtime-state visualization | DONE |
+| TASK-405 3D physical conductor rendering | PLANNED |
 
 ## Scope
 Phase 04 provides live events/telemetry plus a reusable 3D representation for the generic hardware catalog.
@@ -33,6 +34,8 @@ Rules:
 - FAULTED devices receive a red visual emphasis/outline.
 - Connections associated with a faulted device are rendered red; healthy active connections may be green/animated.
 - 3D consumes the same canonical device, connection and runtime state as topology/live tags and is never a separate source of truth.
+- 2D keeps one logical edge per relationship; 3D may expand that edge into the exact persisted physical conductor set from TASK-307.
+- The physical-conductor renderer applies to every catalog device combination and never guesses missing wires.
 - Process/module-specific 3D authoring is out of scope for Phase 04 and will be designed separately when module creation UX is defined.
 
 Exit criteria: the UI receives live PLC/device state, command/feedback changes, alarms/faults and selected telemetry; PostgreSQL persists durable history without becoming the live-state authority; topology and 3D consume the same canonical runtime state; reusable catalog GLB assets exist or have a graceful fallback; live RUNNING/FAULTED state is visible on catalog device instances and their affected connections.
