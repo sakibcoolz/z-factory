@@ -59,6 +59,18 @@ enum LifecycleStatus {
   UNKNOWN
 }
 
+/// How a device is controlled, declared per model and never inferred from its category.
+enum ControlCapability {
+  /// Passive or hardwired: discrete/analog signals on PLC I/O.
+  DIRECT_IO
+  /// Behaviour set by parameters; no user program.
+  PARAMETER_CONFIGURED
+  /// Commanded and read over an industrial protocol.
+  PROTOCOL_CONTROLLED
+  /// Runs a user program.
+  PROGRAMMABLE
+}
+
 /// GENERIC marks a simulated profile that makes no vendor claim.
 enum VerificationStatus {
   UNVERIFIED
@@ -307,6 +319,7 @@ model DeviceModel {
   /// Required for PLC models, null for every other category.
   architectureType   PlcArchitecture?
   runtimeSupport     RuntimeType        @default(NONE)
+  controlCapability  ControlCapability  @default(DIRECT_IO)
   lifecycleStatus    LifecycleStatus    @default(UNKNOWN)
   // Provenance (docs/references/plc-source-policy.md). Never fabricate vendor facts.
   verificationStatus VerificationStatus @default(UNVERIFIED)
@@ -363,17 +376,19 @@ model CommunicationPort {
 
 /// Reusable peripheral I/O requirement/capability, seen from the device.
 model DeviceIoDefinition {
-  id            String        @id @default(uuid(7)) @db.Uuid
-  deviceModelId String        @db.Uuid
-  direction     IoDirection
-  ioType        IoSignalClass
+  id              String        @id @default(uuid(7)) @db.Uuid
+  deviceModelId   String        @db.Uuid
+  direction       IoDirection
+  ioType          IoSignalClass
   /// Normalized signal code, e.g. DC_24V, CURRENT_4_20MA, VOLTAGE_0_10V.
-  signalType    String
-  rangeMin      Float?
-  rangeMax      Float?
-  unit          String?
-  terminalLabel String?
-  notes         String?
+  signalType      String
+  rangeMin        Float?
+  rangeMax        Float?
+  unit            String?
+  terminalLabel   String?
+  /// Signal of the device's simulator behaviour model this terminal carries, e.g. `run`.
+  simulatorSignal String?
+  notes           String?
 
   deviceModel DeviceModel @relation(fields: [deviceModelId], references: [id], onDelete: Cascade)
 
@@ -387,7 +402,10 @@ model BuiltInIoChannel {
   ioType               IoPointType
   channelIndex         Int
   terminalLabel        String?
+  /// Default signal type of the channel.
   signalType           String
+  /// Further signal types the channel can be configured for.
+  acceptedSignalTypes  String[]    @default([])
   addressHint          String?
   electricalLimitsJson Json        @default("{}")
 
@@ -455,7 +473,10 @@ model ModuleChannel {
   ioType               IoPointType
   channelIndex         Int
   terminalLabel        String?
+  /// Default signal type of the channel.
   signalType           String
+  /// Further signal types the channel can be configured for.
+  acceptedSignalTypes  String[]    @default([])
   electricalLimitsJson Json        @default("{}")
 
   moduleModel ModuleModel  @relation(fields: [moduleModelId], references: [id], onDelete: Cascade)

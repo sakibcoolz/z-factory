@@ -122,3 +122,14 @@ Services in `lib/services/simulation-service.ts`; dependencies from `getSimulati
 | force simulated input | `forceSimulatedValue(deps, actor, deviceId, value)` | sensors (number) and switches (true/false); `null` releases |
 
 A device signal is wired by creating a tag with `sourceDeviceInstanceId` and `sourceSignal` (`createTag`).
+
+### `catalog` (TASK-301)
+Services in `lib/services/catalog-service.ts`. The catalog is shared reference data, not owned by a factory.
+
+| Operation | Entry point | Returns |
+|---|---|---|
+| overview | `getCatalogOverview(db)` | manufacturer › family › model tree, categories with models, totals |
+| model | `getCatalogModel(db, modelId)` | identity, source, supply, ports, built-in I/O or terminals, facts; rack and installable modules for a modular PLC |
+| peripherals of a PLC | `listCompatiblePeripherals(db, plcModelId, { compatibleOnly })` | per peripheral model: the PLC point class each terminal needs, whether it fits (built-in channels or installable modules), and shared protocols |
+
+Writing the catalog is not an API: `ingestCatalog(db, loadCatalog())` runs from `npm run db:seed`.

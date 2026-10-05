@@ -90,7 +90,7 @@ A task that introduces a variable adds it to this table, to `.env.example` and t
 | `npm run db:generate` | generate the Prisma client (also runs on `npm install`) |
 | `npm run db:migrate` | create/apply migrations in development |
 | `npm run db:deploy` | apply committed migrations (CI, production) |
-| `npm run db:seed` | seed generic device categories |
+| `npm run db:seed` | load the device categories and the shipped catalog (verified vendor records, generic simulated models); safe to repeat |
 
 ## Docker development prerequisites
 - Docker Engine with the Compose plugin; the developer's user can reach the Docker daemon.

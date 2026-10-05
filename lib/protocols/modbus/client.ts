@@ -44,6 +44,7 @@ function exchange(endpoint: ModbusEndpoint, pdu: Buffer): Promise<Buffer> {
 
     const socket = connect({ host: endpoint.host, port: endpoint.port });
     const chunks: Buffer[] = [];
+    let answered = false;
     const fail = (rule: string, message: string) => {
       socket.destroy();
       reject(new DomainError("RUNTIME_FAILURE", message, { rule }));
@@ -51,6 +52,11 @@ function exchange(endpoint: ModbusEndpoint, pdu: Buffer): Promise<Buffer> {
 
     socket.setTimeout(TIMEOUT_MS, () => fail("modbus-timeout", "The Modbus server did not answer in time."));
     socket.on("error", () => fail("modbus-unreachable", "The Modbus server is not reachable."));
+    // A server that goes away mid-exchange (a stopping PLC) closes without an error and
+    // without an answer. Without this the caller would wait forever.
+    socket.on("close", () => {
+      if (!answered) fail("modbus-closed", "The Modbus server closed the connection without answering.");
+    });
     socket.on("connect", () => socket.write(Buffer.concat([header, pdu])));
     socket.on("data", (chunk: Buffer) => {
       chunks.push(chunk);
@@ -58,6 +64,7 @@ function exchange(endpoint: ModbusEndpoint, pdu: Buffer): Promise<Buffer> {
       if (data.length < 7) return;
       const length = data.readUInt16BE(4);
       if (data.length < 6 + length) return;
+      answered = true;
       socket.end();
       resolve(data.subarray(7, 6 + length));
     });

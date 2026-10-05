@@ -19,7 +19,7 @@ PostgreSQL is the durable system of record for catalog facts, factory configurat
 `id, name, websiteUrl`
 
 ### DeviceCategory
-Examples: PLC, VFD, MOTOR, PUMP, FAN, BLOWER, CONVEYOR, MIXER, COMPRESSOR, VALVE, SENSOR, SWITCH, RELAY, CONTACTOR, ENCODER, REMOTE_IO, GATEWAY.
+Examples: PLC, VFD, MOTOR, PUMP, FAN, BLOWER, CONVEYOR, MIXER, COMPRESSOR, VALVE, SENSOR, SWITCH, RELAY, CONTACTOR, ENCODER, REMOTE_IO, GATEWAY. The seeded list (35 categories, including drives, controllers, remote I/O, gateways and field devices) is `lib/catalog/generic-categories.ts`.
 
 `id, code, name, simulatorType, requiresMotor, requiresDrive, preferredDriveType`
 
@@ -27,11 +27,12 @@ Examples: PLC, VFD, MOTOR, PUMP, FAN, BLOWER, CONVEYOR, MIXER, COMPRESSOR, VALVE
 `id, manufacturerId, name, deviceCategoryId`
 
 ### DeviceModel
-`id, familyId, modelName, sku, architectureType, runtimeSupport, lifecycleStatus, verificationStatus, sourceUrl, sourceTitle, sourceRevision, sourceRetrievedAt, verifiedAt, metadataJson, createdAt, updatedAt`
+`id, familyId, modelName, sku, architectureType, runtimeSupport, controlCapability, lifecycleStatus, verificationStatus, sourceUrl, sourceTitle, sourceRevision, sourceRetrievedAt, verifiedAt, metadataJson, createdAt, updatedAt`
 
 `verificationStatus = UNVERIFIED | VERIFIED | GENERIC`. `GENERIC` marks a simulated profile that makes no vendor claim. Unique: `(familyId, modelName)`.
 
 For PLCs, `architectureType = COMPACT | MODULAR`; it is null for every other category.
+`controlCapability = DIRECT_IO | PARAMETER_CONFIGURED | PROTOCOL_CONTROLLED | PROGRAMMABLE` says how the device is controlled. It is declared per model and never inferred from the category. `metadataJson` holds further documented facts (memory, expansion limits).
 `runtimeSupport = OPENPLC | DEVICE_SIM | MODBUS_SIM | EXTERNAL | NONE` (the same `RuntimeType` enum is used by `DeviceInstance.runtimeType`; `EXTERNAL` is physical hardware outside the factory network).
 
 ### ElectricalProfile
@@ -42,13 +43,17 @@ For PLCs, `architectureType = COMPACT | MODULAR`; it is null for every other cat
 
 ### DeviceIoDefinition
 Reusable peripheral I/O requirement/capability.
-`id, deviceModelId, direction, ioType, signalType, rangeMin, rangeMax, unit, terminalLabel, notes`
+`id, deviceModelId, direction, ioType, signalType, rangeMin, rangeMax, unit, terminalLabel, simulatorSignal, notes`
+
+`simulatorSignal` names the signal of the device's simulator behaviour model the terminal carries (`run`, `actualFrequency`, …), so tags can be generated for it.
 
 `direction = INPUT | OUTPUT` as seen from the device, `ioType = DIGITAL | ANALOG`, `signalType` is a normalized code such as `DC_24V`, `CURRENT_4_20MA`, `VOLTAGE_0_10V`. A device output lands on a PLC input: OUTPUT+ANALOG → AI, INPUT+ANALOG → AO, OUTPUT+DIGITAL → DI, INPUT+DIGITAL → DO.
 
 ### BuiltInIoChannel
 Compact PLC channel definition.
-`id, deviceModelId, ioType, channelIndex, terminalLabel, signalType, addressHint, electricalLimitsJson`
+`id, deviceModelId, ioType, channelIndex, terminalLabel, signalType, acceptedSignalTypes, addressHint, electricalLimitsJson`
+
+`signalType` is the channel's default; `acceptedSignalTypes` lists further signal types it can be configured for. `terminalLabel` and `addressHint` are set only where the source documents them.
 
 `ioType = DI | DO | AI | AO`. Unique: `(deviceModelId, ioType, channelIndex)`.
 
@@ -58,7 +63,7 @@ Used for modular PLC rack/slot/module/channel modeling.
 - `RackProfile`: `id, familyId, name, slotCount, notes` — a rack/backplane a modular family can be built on.
 - `ModuleModel`: `id, familyId, modelName, sku, moduleType, powerConsumption, verificationStatus, sourceUrl, sourceTitle, sourceRevision, sourceRetrievedAt, verifiedAt, metadataJson`. `moduleType = POWER_SUPPLY | DIGITAL_INPUT | DIGITAL_OUTPUT | DIGITAL_MIXED | ANALOG_INPUT | ANALOG_OUTPUT | ANALOG_MIXED | COMMUNICATION | OTHER`.
 - `ModuleCompatibility`: `id, moduleModelId, cpuModelId, minSlot, maxSlot, notes` — the module may be installed with that modular CPU model, optionally only in a slot range. Unique: `(moduleModelId, cpuModelId)`.
-- `ModuleChannel`: `id, moduleModelId, ioType, channelIndex, terminalLabel, signalType, electricalLimitsJson`. Unique: `(moduleModelId, ioType, channelIndex)`.
+- `ModuleChannel`: `id, moduleModelId, ioType, channelIndex, terminalLabel, signalType, acceptedSignalTypes, electricalLimitsJson`. Unique: `(moduleModelId, ioType, channelIndex)`.
 
 ### DeviceFaultDefinition
 `id, deviceModelId, code, name, severity, description, resetBehavior`
@@ -245,7 +250,7 @@ For high-volume history, partitioning/retention should be introduced first. Time
 Every factual vendor hardware profile keeps source URL plus verification metadata. Never fabricate pinouts, I/O counts, register maps, or electrical limits.
 
 ## Implementation (TASK-102)
-- Schema: `prisma/schema.prisma`; migrations: `prisma/migrations/` (`init`, `device_io_endpoint`, `factory_subnet_no_overlap`, `plc_api_host_port`, `tag_source_signal`); generated client: `lib/generated/prisma/` (git-ignored).
+- Schema: `prisma/schema.prisma`; migrations: `prisma/migrations/` (`init`, `device_io_endpoint`, `factory_subnet_no_overlap`, `plc_api_host_port`, `tag_source_signal`, `catalog_capabilities`, `device_io_simulator_signal`); generated client: `lib/generated/prisma/` (git-ignored).
 - Primary keys are UUID v7 (`@default(uuid(7))`, PostgreSQL `uuid`), except `TelemetrySample.id` (`bigint` identity) and the one-to-one tables keyed by their owner (`ElectricalProfile`, `PlcInstanceProfile`, `DeviceRuntimeSnapshot`).
 - Catalog rows referenced by factory data are protected with `ON DELETE RESTRICT`; factory-owned rows cascade from `Factory`.
 - `DeviceInstance.dockerContainerId` is server-side only and never sent to the browser.

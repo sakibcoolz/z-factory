@@ -125,7 +125,7 @@ Source: Claude Design project `2fc6a75c-7a5d-4a8c-a17c-17afa2d37f6c`, file `Z-Fa
 | — | Factory overview | `/factories/[factoryId]` (database) |
 | — | Edit factory | `/factories/[factoryId]/edit` (database) |
 | 2d | Factory Designer | `/factories/[factoryId]/designer` |
-| 2e | Device Catalog | `/catalog` |
+| 2e | Device Catalog | `/catalog` (`?model=`, `?type=`) |
 | 2f | Device Configuration — compact | `/factories/[factoryId]/devices/new/compact` |
 | 2g | Device Configuration — modular | `/factories/[factoryId]/devices/new/modular` |
 | 2h | PLC Details / Edit | `/factories/[factoryId]/plcs/[plcId]` |
@@ -139,7 +139,14 @@ Source: Claude Design project `2fc6a75c-7a5d-4a8c-a17c-17afa2d37f6c`, file `Z-Fa
 | 2p | PLC Export / Print | `/factories/[factoryId]/plcs/[plcId]/export` |
 | 2q | 3D Factory View | `/factories/[factoryId]/view-3d` |
 
-Screens 2a–2c and the factory overview/edit read the database (TASK-103). Screens 2d–2q still read fixtures: `factory_001` (Pump House Demo, PLC `dev_001`) and, for 2g only, `factory_003`; they are reachable from the "Design fixtures" section of the factory explorer. Unknown IDs return the not-found screen.
+Screens 2a–2c and the factory overview/edit read the database (TASK-103), and so does 2e, the device catalog (TASK-301). Screens 2d and 2f–2q still read fixtures: `factory_001` (Pump House Demo, PLC `dev_001`) and, for 2g only, `factory_003`; they are reachable from the "Design fixtures" section of the factory explorer. Unknown IDs return the not-found screen.
+
+### Device Catalog differences from wireframe 2e
+- No "Use in factory" button: the catalog has no factory context; devices are created from the designer (TASK-302).
+- No product photo: vendor imagery is not stored (source policy).
+- The type filter and the model tree are links (`?type=`, `?model=`); there is no search box yet.
+- The peripherals table lists every peripheral with whether it fits and why, not only the compatible ones.
+- The source of each record is shown and linked.
 
 ### Create Factory differences from wireframe 2c
 - The network name is `zfactory_<id>` and is assigned on create, so it is shown but not editable.

@@ -20,6 +20,8 @@ async function loadDevice(db: Db, endpoint: Endpoint, side: "source" | "target")
     deviceModelId: device.deviceModelId,
     categoryCode: category.code,
     requiresMotor: category.requiresMotor,
+    requiresDrive: category.requiresDrive,
+    preferredDriveType: category.preferredDriveType,
   };
 }
 
@@ -35,7 +37,12 @@ async function loadIoPoint(db: Db, endpoint: Endpoint, side: "source" | "target"
   const channel = point.builtInChannel ?? point.moduleChannel;
   if (!channel) throw new DomainError("INVARIANT", "The I/O point has no catalog channel.", { ioPointId: point.id });
   assertIoPointAvailable(point);
-  return { id: point.id, ioType: channel.ioType, signalType: channel.signalType };
+  return {
+    id: point.id,
+    ioType: channel.ioType,
+    signalType: channel.signalType,
+    acceptedSignalTypes: channel.acceptedSignalTypes,
+  };
 }
 
 /** The terminal must be defined on the catalog model of the device on its side. */

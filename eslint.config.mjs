@@ -52,6 +52,8 @@ export default defineConfig([
                 "@/lib/protocols/**",
                 "@/lib/auth",
                 "@/lib/auth/**",
+                "@/lib/events",
+                "@/lib/events/**",
                 "@/lib/services",
                 "@/lib/services/**",
                 "@/lib/generated/**",

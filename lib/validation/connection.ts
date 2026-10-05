@@ -6,12 +6,14 @@
 import {
   type ConnectionRelationship,
   DRIVE_CATEGORY_CODES,
+  DRIVE_TYPE_BY_CATEGORY,
   type IoDirection,
   type IoPointStatus,
   type IoPointType,
   type IoSignalClass,
-  MOTOR_CATEGORY_CODE,
+  MOTOR_CATEGORY_CODES,
 } from "@/lib/domain/device";
+import { signalFits } from "@/lib/domain/catalog";
 import { DomainError } from "@/lib/domain/errors";
 
 /** The PLC point class a peripheral signal must land on: a device output is a PLC input, and vice versa. */
@@ -20,9 +22,22 @@ export function requiredIoPointType(direction: IoDirection, signalClass: IoSigna
   return direction === "OUTPUT" ? "AI" : "AO";
 }
 
+/**
+ * A channel takes its default signal type, any further type it can be configured for, and
+ * any signal whose range lies inside one of those.
+ */
+export function channelAccepts(
+  channel: { signalType: string; acceptedSignalTypes?: readonly string[] },
+  signalType: string,
+): boolean {
+  return [channel.signalType, ...(channel.acceptedSignalTypes ?? [])].some((supported) =>
+    signalFits(supported, signalType),
+  );
+}
+
 export function assertSignalCompatible(
   deviceIo: { direction: IoDirection; ioType: IoSignalClass; signalType: string },
-  channel: { ioType: IoPointType; signalType: string },
+  channel: { ioType: IoPointType; signalType: string; acceptedSignalTypes?: readonly string[] },
 ): void {
   const required = requiredIoPointType(deviceIo.direction, deviceIo.ioType);
   if (channel.ioType !== required) {
@@ -32,11 +47,12 @@ export function assertSignalCompatible(
       actual: channel.ioType,
     });
   }
-  if (channel.signalType !== deviceIo.signalType) {
+  if (!channelAccepts(channel, deviceIo.signalType)) {
+    const accepted = [channel.signalType, ...(channel.acceptedSignalTypes ?? [])];
     throw new DomainError(
       "INCOMPATIBLE",
-      `Signal type ${deviceIo.signalType} is not accepted by this channel (${channel.signalType}).`,
-      { rule: "signal-type", required: deviceIo.signalType, actual: channel.signalType },
+      `Signal type ${deviceIo.signalType} is not accepted by this channel (${accepted.join(", ")}).`,
+      { rule: "signal-type", required: deviceIo.signalType, actual: channel.signalType, accepted },
     );
   }
 }
@@ -56,6 +72,9 @@ type ConnectionParty = {
   categoryCode: string;
   /** Category capability: the device needs a motor to move (pump, fan, conveyor…). */
   requiresMotor: boolean;
+  /** Category capability: the motor only runs from a drive, of the preferred type when one is named. */
+  requiresDrive?: boolean;
+  preferredDriveType?: string | null;
 };
 
 export function assertConnectionAllowed(connection: {
@@ -80,10 +99,20 @@ export function assertConnectionAllowed(connection: {
 
   if (relationship === "DRIVES") {
     if (!DRIVE_CATEGORY_CODES.includes(source.categoryCode)) {
-      throw new DomainError("INCOMPATIBLE", "Only a drive (VFD) can drive a motor.", { rule: "drives-source" });
+      throw new DomainError("INCOMPATIBLE", "Only a drive (VFD, servo drive, soft starter) can drive a motor.", {
+        rule: "drives-source",
+      });
     }
-    if (target.categoryCode !== MOTOR_CATEGORY_CODE) {
+    if (!MOTOR_CATEGORY_CODES.includes(target.categoryCode)) {
       throw new DomainError("INCOMPATIBLE", "A drive can only drive a motor.", { rule: "drives-target" });
+    }
+    const driveType = DRIVE_TYPE_BY_CATEGORY[source.categoryCode];
+    if (target.requiresDrive && target.preferredDriveType && target.preferredDriveType !== driveType) {
+      throw new DomainError("INCOMPATIBLE", `This motor needs a ${target.preferredDriveType} drive.`, {
+        rule: "drive-type",
+        required: target.preferredDriveType,
+        actual: driveType,
+      });
     }
     if (connection.sourceDrivesCount > 0) {
       throw new DomainError("INVARIANT", "This drive already has its primary motor (one VFD drives one motor).", {
@@ -98,7 +127,7 @@ export function assertConnectionAllowed(connection: {
   }
 
   if (relationship === "MECHANICALLY_DRIVES") {
-    if (source.categoryCode !== MOTOR_CATEGORY_CODE) {
+    if (!MOTOR_CATEGORY_CODES.includes(source.categoryCode)) {
       throw new DomainError("INCOMPATIBLE", "Only a motor can mechanically drive equipment.", {
         rule: "mechanical-source",
       });
