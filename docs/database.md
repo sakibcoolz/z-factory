@@ -205,47 +205,64 @@ Rules:
 
 ## Process modules
 
-Process modules compose existing factory devices and allocate process-specific logical PLC I/O. They do not redefine catalog hardware.
+Process modules compose existing factory devices into a process-specific unit. They do not redefine catalog hardware and they reserve no PLC endpoint. Implemented by TASK-601 (migration `process_modules`), except `ModulePlcIoMapping`, which belongs to TASK-605.
 
 ### ProcessModuleType
-Reusable process template such as MACHINE_CELL, PUMP_HOUSE, TANK, CONVEYOR_CELL, HVAC_LOOP.
+Reusable process template such as PUMP_HOUSE, TANK, MACHINE_CELL, CONVEYOR_CELL, HVAC_LOOP. Shared reference data, like the catalog: not owned by a factory.
 
-`id, code, name, version, description, simulatorModelType, configSchemaJson, createdAt, updatedAt`
+`id, code, name, version, description, simulatorModelType, profiles, configSchemaJson, createdAt, updatedAt`
 
-Unique: `(code, version)`.
+- `profiles`: the selectable variants of the template, e.g. `SINGLE_PUMP`, `DUTY_STANDBY`. A role or signal may apply to some of them only, so the I/O count of a module follows its profile.
+- `configSchemaJson`: `{ fields: [{ key, label, type, unit, min, max, options, defaultValue }] }` with `type = number | integer | boolean | text | choice`. It declares what an instance's `configJson` may contain; process-specific settings live there and never as columns.
+- `simulatorModelType`: the process model that simulates the type; null until one exists (TASK-602).
+
+Unique: `(code, version)`. A stored version is never changed, because module instances (and later their PLC bindings) refer to its roles and signals; a changed template is a new version.
+
+### ModuleRoleDefinition
+A role a factory device plays in a module of the type: the process meaning, separate from the device's manufacturer and model.
+
+`id, processModuleTypeId, key, name, description, deviceCategoryCodes, required, maxDevices, profiles, position`
+
+`deviceCategoryCodes` lists the device categories that can fill the role (empty accepts any). `profiles` empty means every profile. Unique: `(processModuleTypeId, key)`.
+
+This table is an addition to the model planned before Phase 06, which kept the role as a free `roleKey` on `ModuleDevice`. A role has to be declared by the type to be "typed": which categories fit, whether it is required, how many devices it takes.
 
 ### ModuleSignalDefinition
 Reusable logical I/O contract for a process-module type.
 
-`id, processModuleTypeId, key, name, direction, dataType, role, unit, signalType, required, rangeMin, rangeMax, metadataJson`
+`id, processModuleTypeId, key, name, description, direction, dataType, role, unit, signalType, required, rangeMin, rangeMax, moduleRoleDefinitionId, profiles, position, metadataJson`
 
-`direction = INPUT | OUTPUT | INTERNAL | ALARM` from the PLC/control-program perspective. Unique: `(processModuleTypeId, key)`.
+`direction = INPUT | OUTPUT | INTERNAL | ALARM` from the PLC/control-program perspective. `dataType` and `role` are the tag enums. `moduleRoleDefinitionId` names the role whose device carries the signal, when it belongs to one. `profiles` empty means every profile. Unique: `(processModuleTypeId, key)`.
+
+A signal definition is logical: it reserves no PLC I/O point, tag or register.
 
 ### ProcessModuleInstance
 One factory-specific module.
 
-`id, factoryId, processModuleTypeId, name, location, status, configJson, createdAt, updatedAt`
+`id, factoryId, processModuleTypeId, name, location, status, profile, configJson, createdAt, updatedAt`
 
-Unique: `(factoryId, name)`.
+`status` is a `RuntimeState`, `STOPPED` until a process runtime exists. `profile` is one of the type's profiles, null when the type has none. Unique: `(factoryId, name)`. Deleted with its factory; its type cannot be deleted while it exists (`ON DELETE RESTRICT`).
 
 ### ModuleDevice
-Assigns an existing factory `DeviceInstance` to a process-specific role.
+Assigns an existing factory `DeviceInstance` to a role of the module.
 
-`id, processModuleInstanceId, deviceInstanceId, roleKey, required, metadataJson`
+`id, processModuleInstanceId, moduleRoleDefinitionId, deviceInstanceId, metadataJson, createdAt`
 
-A device must belong to the same factory as the module. Unique: `(processModuleInstanceId, roleKey, deviceInstanceId)`.
+A device must belong to the same factory as the module. Unique: `(processModuleInstanceId, moduleRoleDefinitionId, deviceInstanceId)`. The row goes with the module or with the device; the device is never changed or deleted through it. A device may have roles in several modules.
 
-### ModulePlcIoMapping
+### ModulePlcIoMapping (planned, TASK-605)
 Binds one logical module signal to the normal PLC/tag/I/O model.
 
 `id, processModuleInstanceId, moduleSignalDefinitionId, plcInstanceId, tagId, plcIoPointId, metadataJson`
 
-The mapping reuses existing tag/I/O compatibility, occupancy, access-mode, protocol-address and register-overlap rules; it never creates a parallel PLC address space.
+The mapping reuses existing tag/I/O compatibility, occupancy, access-mode, protocol-address and register-overlap rules; it never creates a parallel PLC address space. Not part of the schema yet.
 
 ### ModuleInterlock
 Process-specific interlock/validation metadata.
 
-`id, processModuleInstanceId, code, name, expressionJson, severity, description, enabled`
+`id, processModuleInstanceId, code, name, description, expressionJson, severity, enabled`
+
+`expressionJson = { when: [{ signal, operator, value? }], blocks: [signal] }` over the signal keys of the module's profile; `operator = IS_TRUE | IS_FALSE | GT | GE | LT | LE | EQ | NE`. Unique: `(processModuleInstanceId, code)`.
 
 This is configuration/test metadata. Safety-rated behavior is explicitly out of scope.
 
@@ -258,7 +275,7 @@ Behavior configuration for a device model/instance: constant, ramp, sine, random
 
 How the device simulator reads it (TASK-204): the newest profile of the instance wins over the newest of its model. `STATE_MACHINE` carries the parameter object of the device's behaviour model. `CONSTANT`, `RAMP`, `SINE` and `RANDOM` describe the signal source of a sensor (a switch accepts `CONSTANT`). `SCRIPTED` is not supported yet. Parameters are validated when a simulation starts.
 
-Advanced coupled process-model configuration belongs to `ProcessModuleType/ProcessModuleInstance` rather than overloading a single device profile. Phase 06 implementation will introduce the schema through TASK-601; this section documents the approved target model, not current migration state.
+Advanced coupled process-model configuration belongs to `ProcessModuleType/ProcessModuleInstance` (see Process modules above) rather than overloading a single device profile.
 
 ### DeviceRuntimeSnapshot
 Latest persisted important state; not the live authority. The device simulator overwrites one row per device at its snapshot interval and when it stops; `valuesJson` holds the device's state, faults, inputs and outputs.
@@ -290,11 +307,11 @@ For high-volume history, partitioning/retention should be introduced first. Time
 Every factual vendor hardware profile keeps source URL plus verification metadata. Never fabricate pinouts, I/O counts, register maps, or electrical limits.
 
 ## Implementation (TASK-102)
-- Schema: `prisma/schema.prisma`; migrations: `prisma/migrations/` (`init`, `device_io_endpoint`, `factory_subnet_no_overlap`, `plc_api_host_port`, `tag_source_signal`, `catalog_capabilities`, `device_io_simulator_signal`, `device_canvas_position`, `catalog_3d_assets`, `catalog_asset_generation`); generated client: `lib/generated/prisma/` (git-ignored).
+- Schema: `prisma/schema.prisma`; migrations: `prisma/migrations/` (`init`, `device_io_endpoint`, `factory_subnet_no_overlap`, `plc_api_host_port`, `tag_source_signal`, `catalog_capabilities`, `device_io_simulator_signal`, `device_canvas_position`, `catalog_3d_assets`, `catalog_asset_generation`, `process_modules`); generated client: `lib/generated/prisma/` (git-ignored).
 - Primary keys are UUID v7 (`@default(uuid(7))`, PostgreSQL `uuid`), except `TelemetrySample.id` (`bigint` identity) and the one-to-one tables keyed by their owner (`ElectricalProfile`, `PlcInstanceProfile`, `DeviceRuntimeSnapshot`).
 - Catalog rows referenced by factory data are protected with `ON DELETE RESTRICT`; factory-owned rows cascade from `Factory`.
 - `DeviceInstance.dockerContainerId` is server-side only and never sent to the browser.
-- Seed: `prisma/seed.ts` inserts only the generic `DeviceCategory` rows from `lib/catalog/generic-categories.ts`. Vendor models are never seeded; they enter through the verified ingestion of TASK-301.
+- Seed: `prisma/seed.ts` (`npm run db:seed`) writes the generic `DeviceCategory` rows and the shipped catalog (`ingestCatalog`, TASK-301), then the shipped process-module types (`ingestModuleTypes`, TASK-601). It is idempotent. Vendor models enter only as verified catalog records.
 
 ## Database-enforced invariants
 Prisma cannot express CHECK or EXCLUDE constraints, so these live as hand-written SQL in the migrations (most at the end of `init`). Prisma Migrate leaves them alone. Add new ones in a migration and list them here.
@@ -319,9 +336,14 @@ Prisma cannot express CHECK or EXCLUDE constraints, so these live as hand-writte
 | `Catalog3dAsset_version_check`, `Catalog3dAsset_scale_check` | version >= 1; scale null or positive |
 | `Catalog3dAsset_ready_file_check` | a `READY` asset has a storage key, a checksum and a size |
 | `DeviceInstance_scene_transform_check` | `sceneScale` between 0.1 and 10, `sceneRotationDeg` from 0 to below 360 |
+| `ProcessModuleType_code_check`, `ProcessModuleType_version_check` | code is capitals, digits and underscores; version >= 1 |
+| `ModuleRoleDefinition_max_devices_check` | a role takes at least one device |
+| `ModuleSignalDefinition_direction_role_check` | a signal is an `OUTPUT` exactly when its role is `COMMAND` or `SETPOINT` |
+| `ModuleSignalDefinition_range_check` | `rangeMin < rangeMax` when both are set |
+| `ProcessModuleInstance_name_check` | non-blank module name |
 
 Rules that span tables are enforced in the service layer (`lib/services/`, `lib/validation/`): compact vs modular I/O sources, module/CPU/slot compatibility, signal/point-type compatibility, I/O point ownership and availability, drive → motor categories, multi-word register overlap, process-module same-factory device assignment, required module roles/signals, module-to-PLC mapping compatibility, PLC-to-PLC same-factory validation, client/server role validation, writable-target validation, and inter-PLC register-span compatibility. `lib/db/errors.ts` turns constraint failures into typed domain errors without leaking driver messages.
 
-The process-module tables above are **planned Phase 06 schema**, not yet present in the current Prisma migration. TASK-601 owns their implementation and database constraints.
+Process modules: the service layer enforces same-factory device assignment, the categories and number of devices a role takes, roles and signals of the selected profile, configuration against the type's declared fields, and interlocks over the module's own signals (`lib/domain/process-module.ts`, `lib/services/process-module-service.ts`). Module-to-PLC mapping rules follow with `ModulePlcIoMapping` in TASK-605.
 
 The PLC communication tables above are **planned Phase 07 schema**, not yet present in the current Prisma migration. TASK-701/TASK-702 own their implementation and constraints.

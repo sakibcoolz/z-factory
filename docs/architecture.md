@@ -44,6 +44,7 @@ PostgreSQL                 Docker Engine
 - `lib/catalog/`: normalized PLC/peripheral catalog access.
 - `lib/assets/`: catalog 3D asset files: the storage directory behind an interface and the GLB check (ADR-0012); and what authoring an asset needs: the prompt built from catalog metadata, normalization of a GLB, and the Meshy client (TASK-403); server-only.
 - `scripts/`: commands a developer runs on the server. `catalog-assets.ts` (`npm run assets`) is the only caller of the asset authoring service. `edge-client.mjs` is a dependency-free Modbus client that stands in for an edge device; it imports nothing of the application.
+- `lib/process-modules/`: process-module type definitions as data: their shape and rules, the shipped types and the writer used by the seed (`docs/process-modules.md`). The rules of modules are pure (`lib/domain/process-module.ts`); the service is `lib/services/process-module-service.ts`.
 - `lib/demo/`: the pump station of the MVP demo as data and program text (`docs/demo-runbook.md`); pure. The demo service builds a stored factory from it.
 - `lib/scene/`: pure rules of the 3D view: floor layout from the designer's canvas, generic shapes and footprints per category.
 - `lib/validation/`: Zod schemas for untrusted input plus pure compatibility, I/O occupancy and domain invariants.

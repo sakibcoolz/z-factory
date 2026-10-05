@@ -170,6 +170,28 @@ Services in `lib/services/topology-service.ts`; server actions in `app/factories
 
 `wireExistingDevice` and `unwireDevice` (`lib/services/plc-config-service.ts`) wire and unwire a device that already exists, with the same checks as adding a peripheral.
 
+### `process-modules` (TASK-601)
+Services in `lib/services/process-module-service.ts`. Module types are shared reference data, not owned by a factory. Every function on a module takes the `Actor`; a module, factory or device of another owner is not found. There is no screen, route or server action yet (TASK-604), and no PLC binding (`process-modules/io-registry`, TASK-605).
+
+| Operation | Entry point | Rules |
+|---|---|---|
+| module types | `listModuleTypes(db)` | every stored version; the newest of each code is `latest` |
+| module type | `getModuleType(db, typeId)` | profiles, configuration fields, roles, signals, signal counts per direction |
+| define type | `defineModuleType(db, definition)` | checked by `parseModuleType`; a `(code, version)` is stored once and never changed |
+| list modules | `listModules(db, actor, factoryId)` | name order; profile, type, device count, signal counts, `complete` and issues |
+| module | `getModule(db, actor, moduleId)` | roles of the profile with their devices, signals of the profile, configuration, interlocks, issues |
+| create module | `createModule(db, actor, { factoryId, typeId, name, location?, profile?, config? })` | name unique in the factory; profile one of the type's (its first by default); configuration checked against the type and filled with defaults |
+| update module | `updateModule(db, actor, moduleId, { name?, location?, profile?, config? })` | a given `config` replaces the stored one; a profile is refused while a device or interlock has no place in it |
+| delete module | `deleteModule(db, actor, moduleId)` | removes assignments and interlocks; devices stay |
+| assign device | `assignModuleDevice(db, actor, moduleId, { roleKey, deviceId })` | same factory; category accepted by the role; role in the profile; a free place in the role; the device is not changed |
+| unassign device | `unassignModuleDevice(db, actor, moduleId, assignmentId)` | the device stays in the factory |
+| add interlock | `addModuleInterlock(db, actor, moduleId, { code, name, description?, severity?, enabled?, expression })` | conditions and blocked outputs must be signals of the module's profile, each read as its data type |
+| update / remove interlock | `updateModuleInterlock(…, interlockId, changes)`, `removeModuleInterlock(…, interlockId)` | the code is fixed; what is left out stays |
+
+Refusals carry a rule in `details.rule`: `module-profile`, `module-config`, `module-device-factory`, `module-role-category`, `module-role-profile`, `module-role-full`, `module-profile-in-use`, `module-interlock`, `module-type-version`.
+
+Writing the shipped types is not an API: `ingestModuleTypes(db, loadModuleTypes())` runs from `npm run db:seed`.
+
 ### `plc export` (TASK-304)
 Service: `buildPlcExport(db, actor, plcId, { includeRuntime })` in `lib/services/plc-export-service.ts`, returning the document described in `docs/plc-export.md`.
 
