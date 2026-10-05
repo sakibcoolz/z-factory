@@ -89,16 +89,3 @@ export type PlcRuntimeView = {
   /** Why the live state could not be read; the stored state is shown instead. */
   liveError: string | null;
 };
-
-/** Payload keys of runtime events that are safe and useful to show, in display order. */
-const EVENT_DETAIL_KEYS = ["action", "version", "state", "plcStatus", "code", "rule", "warnings"] as const;
-
-/** `{ action: "start", code: "RUNTIME_FAILURE" }` → `action start · code RUNTIME_FAILURE`. */
-export function eventDetail(payload: unknown): string {
-  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) return "";
-  const record = payload as Record<string, unknown>;
-  return EVENT_DETAIL_KEYS.flatMap((key) => {
-    const value = record[key];
-    return typeof value === "string" || typeof value === "number" ? [`${key} ${value}`] : [];
-  }).join(" · ");
-}

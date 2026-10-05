@@ -194,3 +194,28 @@ Server actions. Each passes `requireActor()` first, stays on the page and return
 The first two live in `app/factories/[factoryId]/plcs/runtime-actions.ts` with `runtimeAction`, the last two in `app/factories/[factoryId]/simulator/actions.ts`. None of them writes a PLC tag: the simulator actions act on the simulated equipment, and PLC logic stays the only source of device commands.
 
 Read models: `getPlcProgramView`, `getPlcVersionsView`, `getPlcRuntimeView` and `readLivePlcState` (`lib/services/plc-runtime-view-service.ts`, see `docs/openplc-runtime.md`), and `getSimulationView`. A PLC or factory of another owner is not found.
+
+### `events`, `alarms` and the live channel (TASK-401)
+Services in `lib/services/event-service.ts` and `lib/services/live-service.ts`; dependencies from `getLiveDeps()`. A factory, PLC or alarm of another owner is not found.
+
+| Operation | Entry point | Rules |
+|---|---|---|
+| record events | `recordEvents(deps, events)`, `recordEvent` | the only way a runtime event is recorded; assigns id and time, applies alarm rules, publishes |
+| event history | `listEvents(db, actor, factoryId, { family, severities, deviceId, limit })` | newest first, at most 500 |
+| alarms | `listAlarms(db, actor, factoryId)` | active alarms, then the 25 most recently cleared |
+| acknowledge | `acknowledgeAlarm(deps, actor, alarmId)` | once per alarm; recorded with the actor |
+| live tags | `getLiveTags(deps, actor, factoryId)` | every tag of the factory's PLCs with its reading from the monitor's memory |
+| device states | `getDeviceStates(deps, factoryId)` | simulator memory while a simulation runs; otherwise marked as snapshot or stored |
+| monitoring | `syncFactoryMonitoring(deps, factoryId)`, `stopPlcMonitoring(deps, actor, plcId)` | one pass at a time per factory |
+| stream | `openLiveStream(deps, actor, factoryId, lastEventId, send)` | replay, snapshot, then live; returns the function that ends it |
+
+| Route | Returns |
+|---|---|
+| `GET /factories/[factoryId]/stream` | the server-sent event stream described in `docs/events-telemetry.md`; `Last-Event-ID` header or `?lastEventId=` resumes; 404 for an unknown or foreign factory |
+
+| Action (`app/factories/[factoryId]/live-actions.ts`) | Effect |
+|---|---|
+| `writeTagAction(factoryId, plcId, tagName, …)` with `value` | `writeTag` with source `UI`: `true` / `false` for a BOOL, a number otherwise; only command and setpoint tags |
+| `acknowledgeAlarmAction(factoryId, alarmId, …)` | `acknowledgeAlarm` |
+
+The stream is one-way. Nothing is written through it.

@@ -1,6 +1,5 @@
 import "server-only";
 import type { Db } from "@/lib/db/client";
-import type { RuntimeEventEnvelope } from "@/lib/domain/events";
 import type { Prisma, RuntimeState, TagQuality } from "@/lib/generated/prisma/client";
 
 const deviceInclude = {
@@ -41,21 +40,6 @@ export const simulationRepository = {
 
   setRuntimeStatus(db: Db, deviceIds: readonly string[], runtimeStatus: RuntimeState) {
     return db.deviceInstance.updateMany({ where: { id: { in: [...deviceIds] } }, data: { runtimeStatus } });
-  },
-
-  recordEvents(db: Db, events: readonly RuntimeEventEnvelope[]) {
-    return db.runtimeEvent.createMany({
-      data: events.map((event) => ({
-        id: event.id,
-        factoryId: event.factoryId,
-        deviceId: event.deviceId,
-        type: event.type,
-        severity: event.severity,
-        version: event.version,
-        payloadJson: event.payload as Prisma.InputJsonObject,
-        occurredAt: new Date(event.occurredAt),
-      })),
-    });
   },
 
   /** Stores the latest important state of each device; one row per device, overwritten. */

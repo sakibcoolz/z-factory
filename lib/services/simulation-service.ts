@@ -1,5 +1,4 @@
 import "server-only";
-import { randomUUID } from "node:crypto";
 import type { Actor } from "@/lib/auth/actor";
 import { factoryRepository } from "@/lib/db/repositories/factory-repository";
 import {
@@ -8,7 +7,7 @@ import {
   simulationRepository,
 } from "@/lib/db/repositories/simulation-repository";
 import { DomainError } from "@/lib/domain/errors";
-import type { RuntimeEventEnvelope } from "@/lib/domain/events";
+import type { NewRuntimeEvent } from "@/lib/domain/events";
 import type { RuntimeState } from "@/lib/domain/runtime-state";
 import {
   DEVICE_FAULTS,
@@ -28,6 +27,7 @@ import type { DeviceConfig, DeviceSnapshot, SimEvent } from "@/lib/runtimes/devi
 import type { DeviceSimulatorRuntime, SimulationStatus } from "@/lib/runtimes/device-sim/runtime";
 import { publishedModbusEndpoint } from "@/lib/runtimes/openplc/adapter";
 import { parseInput } from "@/lib/validation/parse";
+import { recordEvents as recordRuntimeEvents } from "./event-service";
 import { faultCodeSchema, forcedValueSchema } from "@/lib/validation/schemas";
 
 /**
@@ -204,18 +204,17 @@ function toSnapshotRow(device: DeviceSnapshot) {
   };
 }
 
-/** Persists and broadcasts events; a trip or its release also updates the device's stored status. */
-async function recordEvents(deps: SimulationDeps, events: RuntimeEventEnvelope[]): Promise<void> {
-  await simulationRepository.recordEvents(deps.db, events);
+/** Records and broadcasts events; a trip or its release also updates the device's stored status. */
+async function recordEvents(deps: SimulationDeps, events: readonly NewRuntimeEvent[]): Promise<void> {
+  await recordRuntimeEvents(deps, events);
   for (const event of events) {
     if (!event.deviceId || !event.type.endsWith("_STATE_CHANGED")) continue;
-    if (event.payload.to === "FAULTED") {
+    if (event.payload?.to === "FAULTED") {
       await simulationRepository.setRuntimeStatus(deps.db, [event.deviceId], "FAULTED");
-    } else if (event.payload.from === "FAULTED") {
+    } else if (event.payload?.from === "FAULTED") {
       await simulationRepository.setRuntimeStatus(deps.db, [event.deviceId], "RUNNING");
     }
   }
-  events.forEach((event) => deps.bus?.publish(event));
 }
 
 async function recordFactoryEvent(
@@ -224,18 +223,7 @@ async function recordFactoryEvent(
   type: string,
   payload: Record<string, unknown>,
 ) {
-  await recordEvents(deps, [
-    {
-      version: 1,
-      id: randomUUID(),
-      type,
-      factoryId,
-      deviceId: null,
-      severity: "INFO",
-      occurredAt: new Date().toISOString(),
-      payload,
-    },
-  ]);
+  await recordEvents(deps, [{ type, factoryId, deviceId: null, payload }]);
 }
 
 /** Why this plan cannot be started, if anything stands in the way. */

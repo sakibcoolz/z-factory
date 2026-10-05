@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DomainError } from "@/lib/domain/errors";
-import { eventDetail, type LocatedVariableView } from "@/lib/domain/plc-runtime-view";
+import { eventDetail } from "@/lib/domain/events";
+import type { LocatedVariableView } from "@/lib/domain/plc-runtime-view";
 import { toOperationState } from "./operation-state";
 import { iecTypeFor, isIecIdentifier, programNameFor, starterProgram } from "./program-template";
 

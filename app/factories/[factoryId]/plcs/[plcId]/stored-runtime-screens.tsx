@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LiveRefresh } from "@/components/live/live-refresh";
 import { ProgramEditor } from "@/components/plc/program-editor";
 import { StoredPlcShell } from "@/components/plc/stored-plc-shell";
 import { AutoRefresh } from "@/components/ui/auto-refresh";
@@ -298,7 +299,9 @@ export async function StoredPlcRuntime({ factoryId, plcId }: Ids) {
 
   return (
     <StoredPlcShell factory={factory} view={view} section="runtime">
-      {runtime.created ? <AutoRefresh intervalMs={5000} /> : null}
+      {/* Events of the factory refresh the page at once; the slower poll notices a container that died. */}
+      <LiveRefresh streamUrl={routes.stream(factoryId)} />
+      {runtime.created ? <AutoRefresh intervalMs={15000} /> : null}
       <Header view={view} title="Runtime" kicker="start › deploy › run › stop › remove" />
       <div className="grid grid-cols-4 gap-2.5">
         <div className="zf-cell">

@@ -27,8 +27,16 @@ export const routes = {
     `${factory(factoryId)}/devices/new/${architecture}`,
   simulator: (factoryId: string) => `${factory(factoryId)}/simulator`,
   runtime: (factoryId: string) => `${factory(factoryId)}/runtime`,
-  tags: (factoryId: string) => `${factory(factoryId)}/tags`,
-  events: (factoryId: string) => `${factory(factoryId)}/events`,
+  /** Live tags; `plc` narrows the list to one PLC. */
+  tags: (factoryId: string, plc?: string) =>
+    `${factory(factoryId)}/tags${plc ? `?plc=${encodeURIComponent(plc)}` : ""}`,
+  /** Alarms and recorded events, optionally filtered. */
+  events: (factoryId: string, query: { device?: string; family?: string; severity?: string } = {}) => {
+    const search = new URLSearchParams(Object.entries(query).filter(([, value]) => Boolean(value)));
+    return `${factory(factoryId)}/events${search.size > 0 ? `?${search}` : ""}`;
+  },
+  /** Server-sent events: the factory's live channel. */
+  stream: (factoryId: string) => `${factory(factoryId)}/stream`,
   plc,
   /** Pin view; `pin` selects one I/O point. */
   plcHardware: (factoryId: string, plcId: string, pin?: string) =>

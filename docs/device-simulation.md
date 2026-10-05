@@ -155,8 +155,8 @@ A latching fault trips the device: it stays faulted after the cause is cleared u
 
 ### Limits
 - The simulator screen of a stored factory (TASK-305) starts and stops the simulation, shows each device's command and feedback signals with the tags they are wired to, and injects, clears and resets faults. Forcing a sensor or switch value has a service but no control on the screen yet.
-- A simulation lives in the server process. After a server restart it is gone and has to be started again; the device states stored in the database still say what they were until then.
+- A simulation lives in the server process. After a server restart it is gone and has to be started again. Stored device states left over from it are corrected to stopped the next time a live screen or stream of the factory is opened (TASK-401).
 - A motor drives one load; a second `MECHANICALLY_DRIVES` connection from the same motor refuses the start.
 - The measured signal of a sensor is named in its profile, not on the `MEASURES` connection.
-- Device faults are stored as events; they do not raise `AlarmEvent` rows yet.
+- A device fault raises an alarm (`AlarmEvent`, code `FAULT:<code>`) that ends when the fault is gone, for a latching fault when the device leaves its faulted state, and in any case when the simulation stops (TASK-401).
 - Relays and contactors are not simulated.

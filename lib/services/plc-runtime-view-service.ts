@@ -4,9 +4,9 @@ import type { Actor } from "@/lib/auth/actor";
 import { plcRepository } from "@/lib/db/repositories/plc-repository";
 import { tagRepository } from "@/lib/db/repositories/tag-repository";
 import { isDomainError } from "@/lib/domain/errors";
+import { eventDetail } from "@/lib/domain/events";
 import {
   type DeploymentView,
-  eventDetail,
   type LocatedVariableView,
   type PlcProgramView,
   type PlcRuntimeView,

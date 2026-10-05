@@ -6,7 +6,7 @@
 | 01 | Core Next.js Platform | DONE | Phase 00 Done |
 | 02 | OpenPLC, Docker & Device Simulation Runtime | DONE | Phase 01 Done |
 | 03 | Factory Designer, Device Modeling & PLC Export | DONE | Phase 02 core runtime usable |
-| 04 | Events, Telemetry & 3D | PLANNED | Factory topology/runtime stable |
+| 04 | Events, Telemetry & 3D | IN PROGRESS | Factory topology/runtime stable |
 | 05 | External Gateway MVP | PLANNED | Modbus runtime externally reachable |
 | 06 | Process Module Framework & Go Simulation Service | PLANNED | Phase 02–05 foundations stable; ADR-0008 |
 | 07 | PLC-to-PLC Communication | PLANNED | Multi-PLC OpenPLC runtime + Modbus mapping stable |

@@ -131,6 +131,8 @@ Engineering value = raw × scale + offset. `readTag` / `readTags` decode registe
 ### Write permissions and command records
 `writeTag` refuses any tag that is not `COMMAND` or `SETPOINT` before anything is sent. An allowed write is stored as a `DeviceCommand` (`WRITE_TAG`, requested value, source) with status `ACCEPTED` once the PLC took the value, or `FAILED`. `appliedAt` stays empty: whether the device acted is decided by PLC logic and read back from feedback tags.
 
+Since TASK-401 every write is also a recorded event: `COMMAND_ACCEPTED` or `COMMAND_FAILED`, and `COMMAND_REJECTED` for a write to a tag that is not writable (which reaches no PLC). A write with source `GATEWAY` records `GATEWAY_COMMAND_RECEIVED` first; the gateway itself is Phase 05. The Live Tags screen writes with source `UI`.
+
 ### External endpoint
 Each PLC's Modbus server is published on one host endpoint, stored as a `RuntimePort`. By default a free loopback port from `RUNTIME_PORT_RANGE` is allocated on first start. `configureModbusEndpoint` sets an explicit bind address and port, validated against the allowed addresses, the port range and every port already published or reserved; it applies on the next start and is refused while a container exists. Inside the factory network other containers use `<service-name>:502`; containers on other networks cannot resolve or reach it.
 

@@ -94,6 +94,7 @@ Every function takes the `Actor` and treats a PLC of another owner as not found.
 - A program saved and deployed in one step that fails stays stored as `FAILED`, and the previously selected version is selected again, so the next start does not pick the failed one.
 - A start whose selected program fails leaves the container up without that program: the state the runtime reports is stored (`DEGRADED`), never `STARTING`.
 - A failed start, stop or remove, or a container that died, makes the device `FAULTED` with a `DEVICE_FAULTED` event.
+- While a runtime is being stopped its state is `STOPPING`, so nothing reads the container going down as a failure, and its tags are no longer read (TASK-401).
 - A runtime Z-Factory stopped stays `STOPPED` when its state is read again: the container ends with the stop signal's exit code, which is not a fault.
 - State mapping: container running + program `RUNNING` → `RUNNING`; running with no or a stopped program → `DEGRADED`; program `ERROR` or a non-zero container exit → `FAULTED`.
 

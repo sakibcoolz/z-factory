@@ -39,6 +39,18 @@ const serverEnvSchema = z.object({
   SIMULATION_TICK_MS: z.coerce.number().int().min(20).max(5000).default(100),
   /** How often the simulator persists a state snapshot of its devices, in milliseconds. */
   SIMULATION_SNAPSHOT_MS: z.coerce.number().int().min(1000).max(3_600_000).default(10_000),
+  /** How often the tags of a running PLC are read for live values, in milliseconds. */
+  TAG_POLL_MS: z.coerce.number().int().min(100).max(60_000).default(500),
+  /** Telemetry: a tag is stored at most this often, in milliseconds. */
+  TELEMETRY_MIN_INTERVAL_MS: z.coerce.number().int().min(100).max(3_600_000).default(1000),
+  /** Telemetry: a tag is stored at least this often even when it does not change, in milliseconds. */
+  TELEMETRY_MAX_INTERVAL_MS: z.coerce.number().int().min(1000).max(86_400_000).default(60_000),
+  /** Telemetry: a change below this percentage of the last stored value is not stored. */
+  TELEMETRY_DEADBAND_PERCENT: z.coerce.number().min(0).max(100).default(1),
+  /** Stored telemetry samples older than this many hours are removed. */
+  TELEMETRY_RETENTION_HOURS: z.coerce.number().int().min(1).max(8760).default(24),
+  /** Recorded events and cleared alarms older than this many days are removed. */
+  EVENT_RETENTION_DAYS: z.coerce.number().int().min(1).max(3650).default(30),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

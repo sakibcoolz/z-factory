@@ -12,7 +12,36 @@ describe("server environment contract", () => {
       RUNTIME_BIND_ADDRESSES: "127.0.0.1",
       SIMULATION_TICK_MS: 100,
       SIMULATION_SNAPSHOT_MS: 10_000,
+      TAG_POLL_MS: 500,
+      TELEMETRY_MIN_INTERVAL_MS: 1000,
+      TELEMETRY_MAX_INTERVAL_MS: 60_000,
+      TELEMETRY_DEADBAND_PERCENT: 1,
+      TELEMETRY_RETENTION_HOURS: 24,
+      EVENT_RETENTION_DAYS: 30,
     });
+  });
+
+  it("takes the live-value and telemetry settings as numbers within limits", () => {
+    expect(
+      parseServerEnv({
+        DATABASE_URL: url,
+        TAG_POLL_MS: "250",
+        TELEMETRY_DEADBAND_PERCENT: "0.5",
+        TELEMETRY_RETENTION_HOURS: "72",
+        EVENT_RETENTION_DAYS: "7",
+      }),
+    ).toMatchObject({
+      TAG_POLL_MS: 250,
+      TELEMETRY_DEADBAND_PERCENT: 0.5,
+      TELEMETRY_RETENTION_HOURS: 72,
+      EVENT_RETENTION_DAYS: 7,
+    });
+    expect(() => parseServerEnv({ DATABASE_URL: url, TAG_POLL_MS: "10" })).toThrowError(
+      new EnvironmentError(["TAG_POLL_MS"]),
+    );
+    expect(() => parseServerEnv({ DATABASE_URL: url, EVENT_RETENTION_DAYS: "0" })).toThrowError(
+      new EnvironmentError(["EVENT_RETENTION_DAYS"]),
+    );
   });
 
   it("takes the simulator timing as numbers within limits", () => {

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireActor } from "@/lib/auth/actor";
+import { type Actor, requireActor } from "@/lib/auth/actor";
 import { getDb } from "@/lib/db/client";
 import { DomainError, isDomainError } from "@/lib/domain/errors";
 import { runtimeStateLabel } from "@/lib/domain/runtime-state";
@@ -19,7 +19,8 @@ import {
   startPlc,
   stopPlc,
 } from "@/lib/services/plc-runtime-service";
-import { getRuntimeDeps } from "@/lib/services/runtime-deps";
+import { stopPlcMonitoring, syncFactoryMonitoring } from "@/lib/services/live-service";
+import { getLiveDeps, getRuntimeDeps } from "@/lib/services/runtime-deps";
 
 /**
  * Program and runtime operations of a stored PLC. Each action passes the authorization
@@ -36,6 +37,27 @@ function logFailure(action: string, error: unknown) {
     console.error(JSON.stringify({ level: "error", action, error: String(error) }));
   } else if (error.code === "RUNTIME_FAILURE") {
     console.error(JSON.stringify({ level: "error", action, message: error.message, details: error.details }));
+  }
+}
+
+/**
+ * A PLC that was started gets its tags read, one that was stopped does not any more.
+ * Live values are a consequence of the operation, never a reason for it to fail.
+ */
+async function syncLive(factoryId: string) {
+  try {
+    await syncFactoryMonitoring(getLiveDeps(), factoryId);
+  } catch (error) {
+    console.error(JSON.stringify({ level: "error", action: "live.sync", error: String(error) }));
+  }
+}
+
+/** The PLC is about to go away on purpose: stop reading it first. It is read again if it stays up. */
+async function pauseLive(actor: Actor, plcId: string) {
+  try {
+    await stopPlcMonitoring(getLiveDeps(), actor, plcId);
+  } catch (error) {
+    console.error(JSON.stringify({ level: "error", action: "live.pause", error: String(error) }));
   }
 }
 
@@ -95,6 +117,7 @@ export async function programAction(
     logFailure(`plc.program.${intent}`, error);
     return toOperationState(error);
   } finally {
+    if (intent === "deploy") await syncLive(factoryId);
     if (intent !== "check") revalidatePath(routes.plc(factoryId, plcId), "layout");
   }
 }
@@ -139,6 +162,7 @@ export async function runtimeAction(
   try {
     const actor = await requireActor();
     const deps = getRuntimeDeps();
+    if (operation === "stop" || operation === "restart" || operation === "remove") await pauseLive(actor, plcId);
     switch (operation) {
       case "start": {
         const { state } = await startPlc(deps, actor, plcId);
@@ -169,6 +193,7 @@ export async function runtimeAction(
     logFailure(`plc.runtime.${operation}`, error);
     return toOperationState(error);
   } finally {
+    await syncLive(factoryId);
     revalidatePath(routes.factory(factoryId), "layout");
   }
 }

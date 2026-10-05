@@ -244,11 +244,17 @@ Latest persisted important state; not the live authority. The device simulator o
 
 `version` is the payload-shape version (event payloads are versioned).
 
+Since TASK-401 the id is assigned by the server (UUID v7, strictly increasing within the server process) together with `occurredAt`, so events sort by `(occurredAt, id)` in the order they were recorded. Events written inside a configuration transaction keep the database default. Rows older than `EVENT_RETENTION_DAYS` are deleted.
+
 ### AlarmEvent
 `id, factoryId, deviceId, code, severity, message, sourceTagId, startedAt, clearedAt, acknowledgedAt`
 
+Written by the event service (TASK-401). `code` is `FAULT:<fault code>` for a simulated device fault, `RUNTIME_FAULT` for a failed PLC runtime, `PLC_LINK_DOWN` for a PLC that does not answer, and `TAG:<tag name>` with `sourceTagId` for an alarm tag set by PLC logic. At most one row per condition has `clearedAt` null; the service enforces this, not a constraint. Who acknowledged is in the `ALARM_ACKNOWLEDGED` event. Cleared rows older than `EVENT_RETENTION_DAYS` are deleted.
+
 ### TelemetrySample
 `id, factoryId, deviceId, tagId, valueNumber, valueJson, quality, sampledAt`
+
+Written by the tag monitor's sampling rule (TASK-401, `docs/events-telemetry.md` → Telemetry): `valueNumber` is the engineering value, 0 or 1 for a BOOL; `deviceId` is the device the tag carries a signal of, else the PLC. Rows older than `TELEMETRY_RETENTION_HOURS` are deleted. No screen reads them yet.
 
 For high-volume history, partitioning/retention should be introduced first. TimescaleDB may be considered later without changing PostgreSQL as the primary relational store.
 

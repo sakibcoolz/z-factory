@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import { AppShell } from "@/components/shell/app-shell";
 import { Content, EditorTabs, Panel } from "@/components/shell/editor";
 import { SideBar, SideSection, Tree } from "@/components/shell/side-bar";
@@ -9,11 +8,16 @@ import { StatePill, tagQualityTone } from "@/components/ui/state-pill";
 import { isWritableTagRole, TAG_QUALITIES, type TagQuality } from "@/lib/domain/tag";
 import { demoContext, isDemoFactory } from "@/lib/fixtures";
 import { devices, factory, type LiveTag, liveTags, plc } from "@/lib/fixtures/pump-house-demo";
+import { StoredTags } from "./stored-tags";
 
 export const metadata: Metadata = { title: "Live tags" };
 
+// Stored factories read live state on every request.
+export const dynamic = "force-dynamic";
+
 type TagsPageProps = {
   params: Promise<{ factoryId: string }>;
+  searchParams?: Promise<{ plc?: string | string[] }>;
 };
 
 const QUALITY_SHORT: Record<TagQuality, string> = {
@@ -30,9 +34,13 @@ function WriteCell({ tag, editing }: { tag: LiveTag; editing: boolean }) {
 }
 
 /** 2l — Live Tags: value · quality · timestamp, inline write with request/accept/actual. */
-export default async function TagsPage({ params }: TagsPageProps) {
+export default async function TagsPage({ params, searchParams }: TagsPageProps) {
   const { factoryId } = await params;
-  if (!isDemoFactory(factoryId)) notFound();
+  // Stored factories show their real tags, live; the demo factory keeps its fixture screen.
+  if (!isDemoFactory(factoryId)) {
+    const plc = (await searchParams)?.plc;
+    return StoredTags({ factoryId, plcId: typeof plc === "string" ? plc : undefined });
+  }
 
   const { tags, editing, lastWrite } = liveTags;
   const countByQuality = (quality: TagQuality) => tags.filter((tag) => tag.quality === quality).length;

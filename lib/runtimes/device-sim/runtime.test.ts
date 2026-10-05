@@ -145,7 +145,7 @@ function setup(options: { snapshotIntervalMs?: number } = {}) {
 
 describe("server-only boundary", () => {
   it("marks every simulator and event module as server-only", () => {
-    for (const relative of ["lib/runtimes/device-sim", "lib/events"]) {
+    for (const relative of ["lib/runtimes/device-sim", "lib/runtimes/tag-monitor", "lib/events"]) {
       const directory = join(process.cwd(), relative);
       const files = readdirSync(directory).filter((file) => file.endsWith(".ts") && !file.endsWith(".test.ts"));
       expect(files.length).toBeGreaterThan(0);

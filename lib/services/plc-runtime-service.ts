@@ -11,8 +11,10 @@ import { LOOPBACK_ADDRESS, type RuntimePolicy } from "@/lib/docker/policy";
 import { allocateHostPorts, assertPortBindings, listPublishedPorts } from "@/lib/docker/ports";
 import { OPENPLC_IMAGE_KEY } from "@/lib/docker/runtime-images";
 import { DomainError, isDomainError } from "@/lib/domain/errors";
+import type { EventSeverity } from "@/lib/domain/events";
 import type { RuntimeState } from "@/lib/domain/runtime-state";
 import type { ModbusArea } from "@/lib/domain/tag";
+import type { EventBus } from "@/lib/events/bus";
 import type { PrismaClient } from "@/lib/generated/prisma/client";
 import {
   createOpenPlcContainer,
@@ -32,6 +34,7 @@ import { MODBUS_CONTAINER_PORT } from "@/lib/runtimes/openplc/bundle";
 import { type CompileDiagnostic, compileStructuredText, MAX_SOURCE_BYTES } from "@/lib/runtimes/openplc/compiler";
 import { parseInput } from "@/lib/validation/parse";
 import { modbusEndpointInputSchema } from "@/lib/validation/schemas";
+import { recordEvent } from "./event-service";
 
 /**
  * Lifecycle of a PLC instance's OpenPLC runtime: versioned programs, start, deploy,
@@ -45,6 +48,8 @@ export type RuntimeDeps = {
   policy: RuntimePolicy;
   /** Secret the per-container API credentials are derived from. */
   runtimeSecret: string;
+  /** Live listeners (SSE) receive every event that is recorded. */
+  bus?: EventBus;
 };
 
 const notFound = () => new DomainError("NOT_FOUND", "The PLC does not exist.");
@@ -106,6 +111,17 @@ export function summarizeRuntimeStates(states: readonly RuntimeState[]): Runtime
   return active.length === states.length ? "RUNNING" : "DEGRADED";
 }
 
+/** Records an event of this PLC and publishes it to live listeners. */
+function emit(
+  deps: Pick<RuntimeDeps, "db" | "bus">,
+  device: PlcRecord,
+  type: string,
+  severity: EventSeverity = "INFO",
+  payload: Record<string, unknown> = {},
+) {
+  return recordEvent(deps, { type, factoryId: device.factoryId, deviceId: device.id, severity, payload });
+}
+
 async function setDeviceState(db: PrismaClient, device: PlcRecord, runtimeStatus: RuntimeState): Promise<void> {
   await plcRepository.setDeviceRuntime(db, device.id, { runtimeStatus });
   const summary = summarizeRuntimeStates(await plcRepository.plcRuntimeStates(db, device.factoryId));
@@ -113,18 +129,17 @@ async function setDeviceState(db: PrismaClient, device: PlcRecord, runtimeStatus
 }
 
 /** A runtime failure becomes a FAULTED device and a critical event; the error is rethrown. */
-async function failDevice(db: PrismaClient, device: PlcRecord, action: string, error: unknown): Promise<never> {
-  await setDeviceState(db, device, "FAULTED");
-  await plcRepository.recordEvent(db, {
-    factoryId: device.factoryId,
-    deviceId: device.id,
-    type: "DEVICE_FAULTED",
-    severity: "CRITICAL",
-    payloadJson: {
-      action,
-      code: isDomainError(error) ? error.code : "RUNTIME_FAILURE",
-      rule: isDomainError(error) && typeof error.details.rule === "string" ? error.details.rule : null,
-    },
+async function failDevice(
+  deps: Pick<RuntimeDeps, "db" | "bus">,
+  device: PlcRecord,
+  action: string,
+  error: unknown,
+): Promise<never> {
+  await setDeviceState(deps.db, device, "FAULTED");
+  await emit(deps, device, "DEVICE_FAULTED", "CRITICAL", {
+    action,
+    code: isDomainError(error) ? error.code : "RUNTIME_FAILURE",
+    rule: isDomainError(error) && typeof error.details.rule === "string" ? error.details.rule : null,
   });
   throw error;
 }
@@ -203,7 +218,7 @@ export async function startPlc(deps: RuntimeDeps, actor: Actor, plcId: string): 
   const { db, docker, policy } = deps;
   let { device } = await loadPlc(db, actor, plcId);
 
-  await plcRepository.recordEvent(db, { factoryId: device.factoryId, deviceId: device.id, type: "DEVICE_STARTING" });
+  await emit(deps, device, "DEVICE_STARTING");
   await setDeviceState(db, device, "STARTING");
 
   try {
@@ -285,7 +300,7 @@ export async function startPlc(deps: RuntimeDeps, actor: Actor, plcId: string): 
       runtimeVersion: `${OPENPLC_RUNTIME_NAME} ${runtimeVersion}`,
     });
   } catch (error) {
-    return failDevice(db, device, "start", error);
+    return failDevice(deps, device, "start", error);
   }
 
   if (device.plcProfile?.programVersionId) {
@@ -359,27 +374,20 @@ export async function deployProgramVersion(
           imageDigest: profile.imageDigest,
         },
       });
-      await plcRepository.recordEvent(transaction, {
-        factoryId: device.factoryId,
-        deviceId: device.id,
-        type: "PLC_PROGRAM_DEPLOYED",
-        payloadJson: { version: programVersion.version, md5: deployed.md5, warnings: deployed.warnings.length },
-      });
+    });
+    await emit(deps, device, "PLC_PROGRAM_DEPLOYED", "INFO", {
+      version: programVersion.version,
+      md5: deployed.md5,
+      warnings: deployed.warnings.length,
     });
     await setDeviceState(db, device, "RUNNING");
     return { version: programVersion.version };
   } catch (error) {
     await plcRepository.setProgramStatus(db, programVersion.id, "FAILED");
     const compileError = isDomainError(error, "VALIDATION");
-    await plcRepository.recordEvent(db, {
-      factoryId: device.factoryId,
-      deviceId: device.id,
-      type: "PLC_PROGRAM_DEPLOY_FAILED",
-      severity: compileError ? "WARNING" : "CRITICAL",
-      payloadJson: {
-        version: programVersion.version,
-        rule: isDomainError(error) && typeof error.details.rule === "string" ? error.details.rule : null,
-      },
+    await emit(deps, device, "PLC_PROGRAM_DEPLOY_FAILED", compileError ? "WARNING" : "CRITICAL", {
+      version: programVersion.version,
+      rule: isDomainError(error) && typeof error.details.rule === "string" ? error.details.rule : null,
     });
     // A program that does not compile never reached the runtime: the PLC keeps running
     // what it had. Anything else leaves the runtime in an unknown state, so re-read it.
@@ -433,13 +441,13 @@ export async function refreshPlcState(
   const state = device.runtimeStatus === "STOPPED" && !health.containerRunning ? "STOPPED" : health.state;
   if (state !== device.runtimeStatus) {
     await setDeviceState(db, device, state);
-    await plcRepository.recordEvent(db, {
-      factoryId: device.factoryId,
-      deviceId: device.id,
-      type: state === "RUNNING" ? "DEVICE_RUNNING" : state === "FAULTED" ? "DEVICE_FAULTED" : "DEVICE_STATE_CHANGED",
-      severity: state === "FAULTED" ? "CRITICAL" : "INFO",
-      payloadJson: { state, plcStatus: health.plcStatus ?? null },
-    });
+    await emit(
+      deps,
+      device,
+      state === "RUNNING" ? "DEVICE_RUNNING" : state === "FAULTED" ? "DEVICE_FAULTED" : "DEVICE_STATE_CHANGED",
+      state === "FAULTED" ? "CRITICAL" : "INFO",
+      { state, plcStatus: health.plcStatus ?? null },
+    );
   }
   return { state };
 }
@@ -448,13 +456,15 @@ export async function stopPlc(deps: RuntimeDeps, actor: Actor, plcId: string): P
   const { db, docker } = deps;
   const { device } = await loadPlc(db, actor, plcId);
   const target = requireTarget(device);
+  // On its way down: nothing should read the stopping container as a failed one.
+  await setDeviceState(db, device, "STOPPING");
   try {
     await stopOpenPlc(docker, target.containerId);
   } catch (error) {
-    await failDevice(db, device, "stop", error);
+    await failDevice(deps, device, "stop", error);
   }
   await setDeviceState(db, device, "STOPPED");
-  await plcRepository.recordEvent(db, { factoryId: device.factoryId, deviceId: device.id, type: "DEVICE_STOPPED" });
+  await emit(deps, device, "DEVICE_STOPPED");
 }
 
 /** Restarts the PLC's container. The runtime reloads the program it was running. */
@@ -466,7 +476,7 @@ export async function restartPlc(deps: RuntimeDeps, actor: Actor, plcId: string)
   try {
     await restartOpenPlc(docker, target.containerId, openPlcClient(target, deps.runtimeSecret));
   } catch (error) {
-    await failDevice(db, device, "restart", error);
+    await failDevice(deps, device, "restart", error);
   }
   return refreshPlcState(deps, actor, plcId);
 }
@@ -479,7 +489,7 @@ export async function removePlcRuntime(deps: RuntimeDeps, actor: Actor, plcId: s
     try {
       await removeOpenPlc(docker, device.dockerContainerId);
     } catch (error) {
-      await failDevice(db, device, "remove", error);
+      await failDevice(deps, device, "remove", error);
     }
   }
   await plcRepository.setDeviceRuntime(db, device.id, { dockerContainerId: null });
@@ -487,7 +497,7 @@ export async function removePlcRuntime(deps: RuntimeDeps, actor: Actor, plcId: s
   // so external clients find the PLC at the same address after it is recreated.
   await plcRepository.setRuntimeMetadata(db, device.id, { apiHostPort: null });
   await setDeviceState(db, device, "STOPPED");
-  await plcRepository.recordEvent(db, { factoryId: device.factoryId, deviceId: device.id, type: "DEVICE_STOPPED" });
+  await emit(deps, device, "DEVICE_STOPPED", "INFO", { removed: true });
 }
 
 /**
