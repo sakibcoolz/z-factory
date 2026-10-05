@@ -16,6 +16,7 @@ import {
   PLC_CATEGORY_CODE,
 } from "./device";
 import { PROGRAM_VERSION_STATUSES } from "./plc-runtime-view";
+import { MODULE_SIGNAL_DIRECTIONS } from "./process-module";
 import { RUNTIME_STATES } from "./runtime-state";
 import { ACCESS_MODES, MODBUS_AREAS, TAG_DATA_TYPES, TAG_QUALITIES, TAG_ROLES } from "./tag";
 
@@ -39,6 +40,7 @@ describe("domain enums match the database schema", () => {
     ["TagDataType", TAG_DATA_TYPES, prismaEnums.TagDataType],
     ["AccessMode", ACCESS_MODES, prismaEnums.AccessMode],
     ["ModbusArea", MODBUS_AREAS, prismaEnums.ModbusArea],
+    ["ModuleSignalDirection", MODULE_SIGNAL_DIRECTIONS, prismaEnums.ModuleSignalDirection],
   ] as const)("%s", (_name, domainValues, prismaEnum) => {
     expect(sorted(domainValues)).toEqual(sorted(Object.values(prismaEnum)));
   });
