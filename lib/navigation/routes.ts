@@ -4,6 +4,9 @@ export const PLC_ARCHITECTURE_SLUGS = ["compact", "modular"] as const;
 
 export type PlcArchitectureSlug = (typeof PLC_ARCHITECTURE_SLUGS)[number];
 
+export const PLC_EXPORT_FILES = ["plc.json", "io.csv", "tags.csv", "devices.csv"] as const;
+export type PlcExportFile = (typeof PLC_EXPORT_FILES)[number];
+
 const factory = (factoryId: string) => `/factories/${encodeURIComponent(factoryId)}`;
 const plc = (factoryId: string, plcId: string) => `${factory(factoryId)}/plcs/${encodeURIComponent(plcId)}`;
 
@@ -36,4 +39,10 @@ export const routes = {
   plcProgram: (factoryId: string, plcId: string) => `${plc(factoryId, plcId)}/program`,
   plcIoMapping: (factoryId: string, plcId: string) => `${plc(factoryId, plcId)}/io-mapping`,
   plcExport: (factoryId: string, plcId: string) => `${plc(factoryId, plcId)}/export`,
+  /** The report alone, for printing. `runtime` adds the stored runtime state. */
+  plcExportReport: (factoryId: string, plcId: string, runtime = false) =>
+    `${plc(factoryId, plcId)}/export/report${runtime ? "?runtime=1" : ""}`,
+  /** A download: `plc.json`, `io.csv`, `tags.csv` or `devices.csv`. */
+  plcExportFile: (factoryId: string, plcId: string, file: PlcExportFile) =>
+    `${plc(factoryId, plcId)}/export/files/${file}`,
 } as const;

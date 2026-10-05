@@ -28,6 +28,7 @@ Last architecture documentation update: 2026-10-05
 - Modbus tag mapping implemented (TASK-203 done): tag registry with derived Modbus addresses, typed read/write with permissions by role, command records, and a configurable, validated host endpoint per PLC. Not wired to any screen yet.
 - Device simulator implemented (TASK-204 done, ADR-0010): shared in-process simulator for VFD, motor, pump and other motor-driven loads, valve, sensor and switch; PLC bridge over Modbus; fault injection, reset and forced inputs; events and snapshots. Closed loop verified against a real OpenPLC runtime. Not wired to any screen yet.
 - Phase 02 complete.
+- PLC engineering export implemented (TASK-304 done): one normalized document per PLC rendered as a printable 15-section report, a JSON file and three CSV schedules, with a configuration revision and a redaction check.
 - Factory designer implemented (TASK-303 done): React Flow canvas for stored factories with a catalog palette, saved positions, typed and validated connections, a state overlay and a read-only topology view.
 - PLC configuration implemented (TASK-302 done): create a compact or modular PLC from the catalog, install modules, wire peripherals to channels with tags and Modbus addresses, data-driven pin view and I/O mapping for stored factories. Program, runtime and live sections are not wired for stored PLCs yet (proposed as TASK-305).
 - Device catalog implemented (TASK-301 done): four PLC targets and eight I/O modules verified against manufacturer documents with stored provenance, 26 generic simulated models, 35 categories, compatibility filtering, and the catalog screen reading the database.
@@ -43,4 +44,4 @@ Last architecture documentation update: 2026-10-05
 Phase task Markdown remains the execution unit. Existing Linear Phase 00–05 items remain synchronized. Newly documented Phase 06–07 tasks, including TASK-605 and TASK-701–704, must be mirrored to Linear before either phase becomes active. Phase 00 is closed.
 
 ## Next technical gate
-Phase 03 is in progress. Next is TASK-304 (PLC engineering export). TASK-305 (program, versions, runtime and simulator screens for stored PLCs) is proposed and not yet confirmed.
+Phase 03's four original tasks are implemented. TASK-305 (program, versions, runtime and simulator screens for stored PLCs) is proposed and not yet confirmed; without it a stored factory can be designed and exported but not started from the UI. After that comes Phase 04, starting with TASK-401 (events and live telemetry).

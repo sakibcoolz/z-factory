@@ -167,3 +167,13 @@ Services in `lib/services/topology-service.ts`; server actions in `app/factories
 | unlink | `unlinkDevices(…, { sourceId, targetId, relationship })` | a wired edge removes the device's whole wiring to that PLC |
 
 `wireExistingDevice` and `unwireDevice` (`lib/services/plc-config-service.ts`) wire and unwire a device that already exists, with the same checks as adding a peripheral.
+
+### `plc export` (TASK-304)
+Service: `buildPlcExport(db, actor, plcId, { includeRuntime })` in `lib/services/plc-export-service.ts`, returning the document described in `docs/plc-export.md`.
+
+| Route | Returns |
+|---|---|
+| `GET /factories/[factoryId]/plcs/[plcId]/export/files/plc.json` | the export document (`?runtime=1` adds the stored runtime state) |
+| `GET …/export/files/io.csv`, `tags.csv`, `devices.csv` | CSV schedules |
+
+Attachments with `Cache-Control: no-store`. 404 for an unknown file, a malformed id, a PLC of another factory or owner; 500 without detail when the redaction check stops an export.
