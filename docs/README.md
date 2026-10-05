@@ -22,6 +22,7 @@ The repository is documentation-first. Coding starts only through an approved ph
 - [Coding Standards](./coding-standards.md)
 - [Security](./security.md)
 - [Testing](./testing.md)
+- [MVP Demo Runbook](./demo-runbook.md)
 - [PLC Source Policy](./references/plc-source-policy.md)
 - [Graphify Workflow](./graphify.md)
 - [Linear Workflow](./linear-workflow.md)

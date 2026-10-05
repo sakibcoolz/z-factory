@@ -284,3 +284,17 @@ Services in `lib/services/gateway-service.ts`; dependencies from `getGatewayDeps
 | `mapGatewayTagAction(factoryId, connectionId, …)` with `tagId`, `access`, `externalName` | `mapGatewayTag` |
 
 The endpoint itself is not an HTTP API: it speaks Modbus TCP to the edge device (`docs/gateway-modbus.md` → gateway endpoints).
+
+### `factory lifecycle` and the `demo factory` (TASK-502)
+| Operation | Entry point | Rules |
+|---|---|---|
+| start factory | `startFactory(deps, actor, factoryId)` in `lib/services/factory-runtime-service.ts` | every PLC runtime in name order (one that runs is left alone), then live monitoring, the device simulation and the gateway endpoints; a PLC that does not start stops the sequence; a simulation that cannot start is reported, not an error |
+| stop factory | `stopFactory(deps, actor, factoryId)` | the simulation first (last states stored), then every started PLC; containers are stopped, not removed; gateway endpoints stay open |
+| demo factory | `createDemoFactory(deps, actor, { subnetCidr?, gatewayHost? })` in `lib/services/demo-service.ts` | builds the pump station of `docs/demo-runbook.md` from catalog models with the services the screens use; starts nothing; a second one is named "Pump Station Demo 2" |
+
+Dependencies from `getFactoryRuntimeDeps()` and `getGatewayDeps()`.
+
+| Action | Effect |
+|---|---|
+| `factoryRuntimeAction(factoryId, …)` with `operation` = `start` \| `stop` (`app/factories/[factoryId]/runtime/actions.ts`) | `startFactory` / `stopFactory`; answers when the operation has finished |
+| `createDemoFactoryAction(…)` (`app/factories/actions.ts`) | `createDemoFactory`, then opens the new factory's Runtime screen |

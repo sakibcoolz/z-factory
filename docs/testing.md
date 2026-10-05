@@ -24,6 +24,9 @@
 ## End-to-end reference scenario
 Pressure/level sensor -> OpenPLC logic -> VFD -> motor -> pump/process -> feedback tags; external edge gateway writes a setpoint/command and reads actual feedback; UI displays live state and an engineering export is generated.
 
+### As automated (TASK-502)
+`test/integration/e2e-demo.test.ts` runs this scenario against a real OpenPLC runtime (`TEST_DOCKER=1`): the pump station demo is built from the catalog and started as a factory; an edge client at the gateway endpoint writes the start command and the speed setpoint and reads actual frequency and pressure; the high-pressure interlock trips and is reset; a drive fault is injected and cleared; recorded commands, events, alarms and sampled telemetry are checked; the engineering export is produced; the factory is stopped. The manual version is `docs/demo-runbook.md`.
+
 ## Definition of Done
 Relevant tests pass locally/CI; new behavior has tests; failures and evidence are recorded in the task file.
 

@@ -43,7 +43,8 @@ PostgreSQL                 Docker Engine
 - `lib/events/`: in-process event bus, ordered event ids and the server-sent-events encoding (ADR-0011); server-only.
 - `lib/catalog/`: normalized PLC/peripheral catalog access.
 - `lib/assets/`: catalog 3D asset files: the storage directory behind an interface and the GLB check (ADR-0012); and what authoring an asset needs: the prompt built from catalog metadata, normalization of a GLB, and the Meshy client (TASK-403); server-only.
-- `scripts/`: commands a developer runs on the server. `catalog-assets.ts` (`npm run assets`) is the only caller of the asset authoring service.
+- `scripts/`: commands a developer runs on the server. `catalog-assets.ts` (`npm run assets`) is the only caller of the asset authoring service. `edge-client.mjs` is a dependency-free Modbus client that stands in for an edge device; it imports nothing of the application.
+- `lib/demo/`: the pump station of the MVP demo as data and program text (`docs/demo-runbook.md`); pure. The demo service builds a stored factory from it.
 - `lib/scene/`: pure rules of the 3D view: floor layout from the designer's canvas, generic shapes and footprints per category.
 - `lib/validation/`: Zod schemas for untrusted input plus pure compatibility, I/O occupancy and domain invariants.
 - `lib/export/`: engineering report/config package generation.
@@ -242,6 +243,9 @@ runtime / simulation / tag services --events--> event service --> RuntimeEvent, 
 - The tag monitor and the simulator are the only sources of live values. The stream and the live screens read their memory; the database is written to, and read only for history.
 - Every runtime event passes through one recording path that fixes its order. A reconnecting browser is sent the events after the last one it saw, then the whole current state.
 - A stored state no runtime stands behind is not shown as live: a simulated device is stopped when no simulation runs, whatever was last stored, and the stored state is corrected.
+
+### Factory lifecycle (TASK-502)
+`startFactory` brings a factory up in the order a plant is started: every PLC runtime, then live monitoring, then the device simulation, then the gateway endpoints. `stopFactory` takes the simulation down first, so the last device states are stored while the PLCs still answer, then the PLCs. Both only call the operations the single screens offer (`startPlc`, `startFactorySimulation`, `syncGatewayEndpoints`, …); there is no second way to start anything.
 
 ### External gateways (TASK-501, ADR-0013)
 ```text
