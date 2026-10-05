@@ -1,6 +1,7 @@
 # TASK-704 — PLC-to-PLC UI, Validation & E2E Tests
 
 Status: **PLANNED**
+Linear: [ZFA-32](https://linear.app/recruit-verse/issue/ZFA-32)
 
 ## Goal
 Expose PLC-to-PLC relationships and mappings in Z-Factory and prove the full communication path end to end.

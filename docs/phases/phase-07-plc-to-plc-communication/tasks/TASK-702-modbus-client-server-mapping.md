@@ -1,6 +1,7 @@
 # TASK-702 — Modbus TCP Client/Server Mapping
 
 Status: **PLANNED**
+Linear: [ZFA-30](https://linear.app/recruit-verse/issue/ZFA-30)
 
 ## Goal
 Define explicit Modbus TCP mappings for data exchange between PLC instances.

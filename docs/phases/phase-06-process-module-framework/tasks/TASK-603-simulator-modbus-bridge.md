@@ -1,6 +1,7 @@
 # TASK-603 — Simulator / Modbus Closed-Loop Bridge
 
 Status: **PLANNED**
+Linear: [ZFA-26](https://linear.app/recruit-verse/issue/ZFA-26)
 
 ## Goal
 Connect process simulation values to OpenPLC through validated command/feedback mappings.

@@ -1,6 +1,7 @@
 # TASK-604 — Process Module Designer & Validation
 
 Status: **PLANNED**
+Linear: [ZFA-27](https://linear.app/recruit-verse/issue/ZFA-27)
 
 ## Goal
 Let users compose a process module from existing factory devices and allocate its PLC I/O safely.

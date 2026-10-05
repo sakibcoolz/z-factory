@@ -1,6 +1,6 @@
 # TASK-501 — Industrial Edge / Raspberry Pi Connectivity
 
-Status: **IN PROGRESS**
+Status: **DONE**
 Linear: [ZFA-18](https://linear.app/recruit-verse/issue/ZFA-18)
 
 ## Objective
@@ -34,6 +34,9 @@ Allow a physical industrial edge gateway/Raspberry Pi on the LAN to reach select
 - **A device is a visit, not a connection.** Found in the browser check: a client that opens a connection per request was recorded once per request. It is now recorded when it first appears and after 15 seconds of silence.
 - **No schema change.** The gateway tables existed since TASK-102. No new variable, no new dependency.
 - **A screen without a wireframe.** `/factories/[factoryId]/gateways` follows the shell's conventions; `docs/design.md` describes it.
+
+## Closed (owner's decision, 2026-10-05)
+Checked against the code on the owner's request: every acceptance criterion is implemented and covered by tests, including the closed loop against a real OpenPLC runtime, so the task is closed. The check with a physical edge device on the LAN has not been run; it remains the owner's to do with `docs/gateway-modbus.md` → Checking from the edge device.
 
 ## Not in this task
 - **A physical edge device.** No Raspberry Pi was available to the session. The check from a real device on the LAN is described in `docs/gateway-modbus.md` and is the owner's to run.

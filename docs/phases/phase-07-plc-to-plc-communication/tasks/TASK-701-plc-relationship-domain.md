@@ -1,6 +1,7 @@
 # TASK-701 — PLC Relationship & Communication Domain
 
 Status: **PLANNED**
+Linear: [ZFA-29](https://linear.app/recruit-verse/issue/ZFA-29)
 
 ## User story
 As a Z-Factory engineer, I want to define a communication relationship between two PLC instances so that one PLC can coordinate, monitor or exchange data with another PLC without merging their programs or runtimes.

@@ -1,6 +1,7 @@
 # TASK-602 — Go Simulation Service Foundation
 
 Status: **PLANNED**
+Linear: [ZFA-25](https://linear.app/recruit-verse/issue/ZFA-25)
 
 ## Goal
 Implement the ADR-0008 Go service as an additive advanced-process runtime.

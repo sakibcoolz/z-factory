@@ -1,6 +1,7 @@
 # TASK-605 — Module PLC I/O Registry & Allocation
 
 Status: **PLANNED**
+Linear: [ZFA-28](https://linear.app/recruit-verse/issue/ZFA-28)
 
 ## User story
 As a Z-Factory engineer, I want every process-module instance to explicitly register the PLC inputs and outputs it consumes so that a boiler, tank, conveyor cell or future module can be connected to a PLC without hard-coding a universal I/O count or changing unrelated device/runtime code.

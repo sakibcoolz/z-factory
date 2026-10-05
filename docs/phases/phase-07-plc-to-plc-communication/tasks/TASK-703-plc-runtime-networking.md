@@ -1,6 +1,7 @@
 # TASK-703 — PLC-to-PLC Runtime Adapter & Docker Networking
 
 Status: **PLANNED**
+Linear: [ZFA-31](https://linear.app/recruit-verse/issue/ZFA-31)
 
 ## Goal
 Make independently running OpenPLC containers communicate through Modbus TCP on the isolated factory Docker network.
