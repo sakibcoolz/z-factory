@@ -9,7 +9,7 @@ Status: **IN PROGRESS**
 | TASK-303 React Flow topology | DONE |
 | TASK-304 PLC engineering export | DONE |
 | TASK-305 Stored PLC program, versions, runtime & simulator screens | DONE |
-| TASK-306 Factory overview device hierarchy | IN PROGRESS |
+| TASK-306 Factory overview device hierarchy | DONE |
 | TASK-307 Pin-to-pin wiring editor & validation | PLANNED |
 | TASK-308 Capability-driven programmable device UI & runtime | PLANNED |
 

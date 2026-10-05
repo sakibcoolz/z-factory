@@ -141,6 +141,37 @@ export const plcConfigRepository = {
     });
   },
 
+  /** Which devices of a factory are connected: wiring and relationships, and a gateway with the PLC it reads. */
+  async listFactoryLinks(
+    db: Db,
+    factoryId: string,
+  ): Promise<Array<{ sourceId: string; targetId: string; weak: boolean }>> {
+    const [connections, gateways] = await Promise.all([
+      db.deviceConnection.findMany({
+        where: { factoryId },
+        select: { sourceDeviceId: true, targetDeviceId: true, relationship: true },
+        distinct: ["sourceDeviceId", "targetDeviceId", "relationship"],
+      }),
+      db.gatewayPlcConnection.findMany({
+        where: { gateway: { factoryId } },
+        select: { plcInstanceId: true, gateway: { select: { deviceInstanceId: true } } },
+      }),
+    ]);
+    return [
+      ...connections.map((connection) => ({
+        sourceId: connection.sourceDeviceId,
+        targetId: connection.targetDeviceId,
+        // What a sensor measures says where it looks, not what it belongs to.
+        weak: connection.relationship === "MEASURES",
+      })),
+      ...gateways.map((connection) => ({
+        sourceId: connection.gateway.deviceInstanceId,
+        targetId: connection.plcInstanceId,
+        weak: false,
+      })),
+    ];
+  },
+
   /** PLC catalog models of one architecture, for the create form. */
   listPlcModels(db: Db, architectureType: "COMPACT" | "MODULAR") {
     return db.deviceModel.findMany({

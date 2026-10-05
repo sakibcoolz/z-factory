@@ -151,7 +151,8 @@ Services in `lib/services/plc-config-service.ts`; server actions in `app/factori
 | options for one model | `getPeripheralOptions(db, actor, plcId, deviceModelId)` | suggested name; per terminal the free compatible channels |
 | add peripheral | `addPeripheral(…, { deviceModelId, name, role, assignments })` | creates the device, wires each terminal, creates tags; all or nothing |
 | remove peripheral | `removePeripheral(db, actor, plcId, deviceId)` | frees channels, deletes their tags and the device |
-| devices of a factory | `listFactoryDevices(db, actor, factoryId)` | for the factory overview |
+| devices of a factory | `listFactoryDevices(db, actor, factoryId)` | flat, in name order; for the runtime and events screens |
+| device hierarchy | `getFactoryDeviceTree(db, actor, factoryId)` | for the factory overview: PLCs as roots, each device once below the PLC it is nearest to and under the device it is reached through; devices with no way to a PLC are roots of their own (`lib/domain/device-tree.ts`) |
 
 Wiring creates a `DeviceConnection` per terminal (`FEEDS_BACK_TO` device → PLC, `CONTROLS` PLC → device) and a tag bound to the I/O point: BOOL or INT16, read-only for gateways, with the device and, for simulated devices, the simulator signal. A protocol device gets one `COMMUNICATES_WITH` connection between ports.
 

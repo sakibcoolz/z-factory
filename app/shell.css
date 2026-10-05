@@ -571,6 +571,59 @@
   .zf-tbl tr[data-muted="true"] {
     opacity: 0.55;
   }
+  /* A table whose rows form a hierarchy: a root row opens and closes the rows below it. */
+  .zf-tbl-node {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .zf-tbl-node[data-depth="1"] {
+    padding-left: 22px;
+  }
+  .zf-tbl-node[data-depth="2"] {
+    padding-left: 44px;
+  }
+  .zf-tbl-node[data-depth="3"] {
+    padding-left: 66px;
+  }
+  .zf-tbl-node[data-depth="4"] {
+    padding-left: 88px;
+  }
+  .zf-tbl-toggle {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    background: none;
+    border: 1px solid var(--color-line);
+    color: var(--color-fg-muted);
+    font: 700 10px/1 var(--font-mono);
+    cursor: pointer;
+  }
+  .zf-tbl-toggle:hover {
+    color: var(--color-fg);
+    border-color: var(--color-line-strong);
+  }
+  .zf-tbl-toggle:focus-visible {
+    outline: 1px solid var(--color-focus);
+    outline-offset: 1px;
+  }
+  /* Keeps a root without anything below it in line with the roots that have a toggle. */
+  .zf-tbl-toggle[data-empty="true"] {
+    visibility: hidden;
+  }
+  .zf-tbl-branch {
+    flex: none;
+    color: var(--color-fg-dim);
+  }
+  .zf-tbl-count {
+    font: 400 10px/1 var(--font-mono);
+    color: var(--color-fg-dim);
+    white-space: nowrap;
+  }
 
   /* ── state pill ────────────────────────────────────────────── */
   .zf-st {

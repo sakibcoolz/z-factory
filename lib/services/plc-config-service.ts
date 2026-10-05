@@ -10,6 +10,7 @@ import { plcRepository } from "@/lib/db/repositories/plc-repository";
 import { tagRepository } from "@/lib/db/repositories/tag-repository";
 import type { ChannelSummary } from "@/lib/domain/catalog-view";
 import { type IoPointType, PLC_CATEGORY_CODE } from "@/lib/domain/device";
+import { buildDeviceTree, type DeviceTreeNode } from "@/lib/domain/device-tree";
 import { DomainError } from "@/lib/domain/errors";
 import type {
   AddablePeripheralView,
@@ -830,6 +831,22 @@ export async function listFactoryDevices(
     architectureType: device.deviceModel.architectureType,
     runtimeStatus: device.runtimeStatus,
   }));
+}
+
+/**
+ * The devices of a factory as they are connected: each PLC with the devices connected to
+ * it, and below a device what is reached through it. Every device appears once.
+ */
+export async function getFactoryDeviceTree(
+  db: PrismaClient,
+  actor: Actor,
+  factoryId: string,
+): Promise<DeviceTreeNode<FactoryDeviceView>[]> {
+  const [devices, links] = await Promise.all([
+    listFactoryDevices(db, actor, factoryId),
+    plcConfigRepository.listFactoryLinks(db, factoryId),
+  ]);
+  return buildDeviceTree(devices, links, (device) => device.architectureType !== null);
 }
 
 /** PLC catalog models of one architecture, for the create form. */

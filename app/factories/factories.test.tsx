@@ -20,7 +20,7 @@ const service = vi.hoisted(() => ({
   updateFactory: vi.fn(),
   deleteFactory: vi.fn(),
 }));
-const plcConfig = vi.hoisted(() => ({ listFactoryDevices: vi.fn() }));
+const plcConfig = vi.hoisted(() => ({ getFactoryDeviceTree: vi.fn() }));
 const actor = vi.hoisted(() => ({ requireActor: vi.fn() }));
 const dockerStatus = vi.hoisted(() => ({ getDockerEngineStatus: vi.fn() }));
 
@@ -214,7 +214,7 @@ describe("factory view and edit", () => {
   const params = Promise.resolve({ factoryId: FACTORY_ID });
 
   it("shows configuration and last persisted runtime state separately", async () => {
-    plcConfig.listFactoryDevices.mockResolvedValue([]);
+    plcConfig.getFactoryDeviceTree.mockResolvedValue([]);
     render(await FactoryPage({ params }));
 
     expect(screen.getByRole("heading", { name: "Pump House" })).toBeInTheDocument();
@@ -224,38 +224,49 @@ describe("factory view and edit", () => {
     expect(screen.getByText("No devices yet. Start with a PLC, then connect peripherals to it.")).toBeInTheDocument();
   });
 
-  it("lists the factory's devices, links PLCs to their screens and offers both PLC paths", async () => {
+  it("lists the factory's devices under the PLC they are connected to and offers both PLC paths", async () => {
     const device = { role: null, manufacturer: "Generic / simulated", runtimeStatus: "STOPPED" };
-    plcConfig.listFactoryDevices.mockResolvedValue([
+    const valve = {
+      ...device,
+      id: "01a10a0d-e48d-744e-ba58-dfb344f7e884",
+      name: "XV-101",
+      modelName: "Generic on/off valve, 24 V DC",
+      categoryCode: "VALVE",
+      categoryName: "Valve",
+      architectureType: null,
+    };
+    plcConfig.getFactoryDeviceTree.mockResolvedValue([
       {
-        ...device,
-        id: "01a10a0d-e48d-744e-ba58-dfb344f7e883",
-        name: "PLC-01",
-        role: "Pump station",
-        manufacturer: "Siemens",
-        modelName: "CPU 1214C DC/DC/DC",
-        categoryCode: "PLC",
-        categoryName: "PLC / programmable controller",
-        architectureType: "COMPACT",
+        device: {
+          ...device,
+          id: "01a10a0d-e48d-744e-ba58-dfb344f7e883",
+          name: "PLC-01",
+          role: "Pump station",
+          manufacturer: "Siemens",
+          modelName: "CPU 1214C DC/DC/DC",
+          categoryCode: "PLC",
+          categoryName: "PLC / programmable controller",
+          architectureType: "COMPACT",
+        },
+        children: [{ device: valve, children: [] }],
       },
-      {
-        ...device,
-        id: "01a10a0d-e48d-744e-ba58-dfb344f7e884",
-        name: "XV-101",
-        modelName: "Generic on/off valve, 24 V DC",
-        categoryCode: "VALVE",
-        categoryName: "Valve",
-        architectureType: null,
-      },
+      { device: { ...valve, id: "01a10a0d-e48d-744e-ba58-dfb344f7e885", name: "XV-900" }, children: [] },
     ]);
     render(await FactoryPage({ params }));
 
+    expect(screen.getByText("Devices · 3")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "PLC-01" })).toHaveAttribute(
       "href",
       `/factories/${FACTORY_ID}/plcs/01a10a0d-e48d-744e-ba58-dfb344f7e883`,
     );
     expect(screen.getByText("PLC · compact")).toBeInTheDocument();
     expect(screen.getByText("Pump station")).toBeInTheDocument();
+    // What is connected to the PLC is under its drop-down; a device connected to nothing is listed beside it.
+    expect(screen.getByText("1 device")).toBeInTheDocument();
+    expect(screen.queryByText("XV-101")).not.toBeInTheDocument();
+    expect(screen.getByText("XV-900")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show the devices connected to PLC-01" }));
     // A peripheral is listed but has no screen of its own.
     expect(screen.getByText("XV-101")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "XV-101" })).not.toBeInTheDocument();

@@ -280,6 +280,8 @@ For a stored factory the wireframe's single wizard is split into steps that each
 3. **Connections** (`plcs/[plcId]/connections`): connected devices with terminal → channel → address → tag, and the catalog peripherals the PLC still has room for. "Add" (`?add=`) opens a form with a name and, per terminal, the free compatible channels.
 4. **I/O mapping** (`plcs/[plcId]/io-mapping`): every channel with program address, Modbus address, tag and device.
 
+The factory overview lists the devices as they are connected (TASK-306). A PLC is a drop-down holding the devices connected to it, each under the device it is reached through (`PLC → drive → motor → pump`); a device appears once. A drop-down is closed at first and shows how many devices it holds and how many of them are faulted; "Expand all" and "Collapse all" open and close every one. A device with no way to a PLC is listed beside the PLCs, with what is connected to it below it. The hierarchy only reads the connections; they are changed in the designer and on the PLC screens.
+
 Differences from wireframes 2f, 2g, 2h and 2j:
 - No draft state and no "Next" step: each step is saved when submitted.
 - The channel panel is read-only; wiring is done from Connections, not by editing a pin.
