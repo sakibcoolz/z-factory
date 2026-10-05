@@ -47,7 +47,7 @@ PostgreSQL                 Docker Engine
 - `lib/process-modules/`: process-module type definitions as data: their shape and rules, the shipped types and the writer used by the seed (`docs/process-modules.md`). The rules of modules are pure (`lib/domain/process-module.ts`); the service is `lib/services/process-module-service.ts`.
 - `lib/demo/`: the pump station of the MVP demo as data and program text (`docs/demo-runbook.md`); pure. The demo service builds a stored factory from it.
 - `lib/scene/`: pure rules of the 3D view: floor layout from the designer's canvas, generic shapes and footprints per category.
-- `lib/validation/`: Zod schemas for untrusted input plus pure compatibility, I/O occupancy and domain invariants.
+- `lib/validation/`: Zod schemas for untrusted input plus pure compatibility, I/O occupancy and domain invariants. The rules of one wire between two endpoints are `lib/validation/wiring.ts` (ADR-0014).
 - `lib/export/`: engineering report/config package generation.
 - `lib/navigation/`: route builders; every screen URL is built here from Z-Factory IDs.
 - `lib/fixtures/`: static design fixtures behind the wireframe screens (TASK-104). Temporary: each fixture is replaced by its owning service/task and nothing outside `app/` and `components/` may depend on it.
@@ -94,6 +94,19 @@ ProgramVersion
 ```
 
 A factory may therefore run many OpenPLC containers from the same base image while each PLC executes a different control program.
+
+## Canonical wiring (TASK-307, ADR-0014)
+One wire between two exact endpoints is the only description of wiring. An endpoint is a terminal of a device, an I/O point of a PLC or a communication port; what it accepts and how many wires it takes is catalog data.
+
+```text
+designer wiring editor
+  -> lib/validation/wiring.ts   (one rule set: kind, direction, class, standard, protocol, duplicate, occupancy)
+  -> lib/services/wiring-service.ts   (lock both devices, validate, store one DeviceConnection)
+       -> a wire to a PLC channel also creates the tag at the channel's address
+  -> read by: tags and Modbus map, simulator bridge, PLC export, topology, device hierarchy, 3D
+```
+
+Nothing is wired because two devices are connected, and no other screen writes wiring: the PLC's Connections and I/O Mapping screens are projections. The editor shows, for every pair of endpoints, the refusal of the same rule function the service applies when the wire is stored.
 
 ## Programmable device abstraction
 The existing PLC program/version workflow is generalized through capability-driven adapters.

@@ -193,6 +193,22 @@ Assets are made on the server with `npm run assets` (`scripts/catalog-assets.ts`
 **Status.** The catalog screen shows per model whether it has an asset, is getting one, or failed to, and lists the versions with their state, source and the provider's last word. A failed or missing asset changes nothing else: the model is drawn as the generic shape of its category.
 
 
+## Endpoints and wiring (TASK-307, ADR-0014)
+What a device can be wired to is catalog data, stated per endpoint. Nothing is inferred from a device's category or name.
+
+- **Terminals** (`terminals` of a model) have a `kind`:
+  - `SIGNAL` (the default): one digital or analog signal with a direction seen from the device, a signal standard and optionally the simulator signal it carries. This is what a PLC channel is wired to.
+  - `POWER`: the supply. `direction: "OUTPUT"` supplies, `"INPUT"` takes; `signalType` names the voltage (`DC_24V`).
+  - `COMMON`: 0 V / reference potential. No direction and no signal type.
+  - `EARTH`: protective earth. No direction and no signal type.
+- **`maxConnections`** is how many wires a terminal takes. It is 1 unless the definition says otherwise, and no signal terminal of the shipped catalog has more than 1. Shared in the shipped catalog: the `+24V`, `0V` and `PE` terminals of the generic 24 V DC power supply (8 each) and the `COM` terminal of the hardwired drive (4).
+- **Ports** are bus endpoints and shared: `maxConnections` on a port (default 16) is the number of links Z-Factory allows on it. This is a limit of the simulation, not a vendor fact.
+- **PLC channels** are signal endpoints that take one wire; their standard and the standards they can be set to come from the channel definition as before.
+
+Generic models with supply terminals: the power supply (new category `POWER_SUPPLY`), the transmitters (`+24V` in, `0V`) and the hardwired drive (`COM`, `PE`). Vendor PLC records have no supply terminals: those are vendor facts and have not been sourced.
+
+The rules of a wire are in `lib/validation/wiring.ts`; see `docs/design.md` → Pin-to-pin wiring as built.
+
 ## Programming and configuration capabilities
 Programming behavior is model-specific and capability-driven.
 

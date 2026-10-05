@@ -147,10 +147,7 @@ Services in `lib/services/plc-config-service.ts`; server actions in `app/factori
 | configuration | `getPlcConfiguration(db, actor, plcId)` | hardware, rack and slots, every I/O point with device and tag, peripherals |
 | installable modules | `listInstallableModules(db, actor, plcId)` | only modules the catalog allows with the CPU |
 | install / remove module | `installModule(…, { moduleModelId, slotIndex })`, `removeModule(…, moduleId)` | compatibility, slot range 1…slot count, slot free; a module in use cannot be removed |
-| addable peripherals | `listAddablePeripherals(db, actor, plcId)` | each catalog peripheral with whether the PLC has room now, and why not |
-| options for one model | `getPeripheralOptions(db, actor, plcId, deviceModelId)` | suggested name; per terminal the free compatible channels |
-| add peripheral | `addPeripheral(…, { deviceModelId, name, role, assignments })` | creates the device, wires each terminal, creates tags; all or nothing |
-| remove peripheral | `removePeripheral(db, actor, plcId, deviceId)` | frees channels, deletes their tags and the device |
+| add a device with its wiring | `addPeripheral(…, { deviceModelId, name, role, assignments })` | creates the device and wires each signal terminal to the given or the first free compatible channel, through the same per-wire function as the wiring service; used by the demo factory and tests, by no screen |
 | devices of a factory | `listFactoryDevices(db, actor, factoryId)` | flat, in name order; for the runtime and events screens |
 | device hierarchy | `getFactoryDeviceTree(db, actor, factoryId)` | for the factory overview: PLCs as roots, each device once below the PLC it is nearest to and under the device it is reached through; devices with no way to a PLC are roots of their own (`lib/domain/device-tree.ts`) |
 
@@ -161,15 +158,30 @@ Services in `lib/services/topology-service.ts`; server actions in `app/factories
 
 | Operation | Entry point | Rules |
 |---|---|---|
-| topology | `getTopology(db, actor, factoryId)` | nodes with position and runtime state, one typed edge per relationship between two devices, palette of catalog models; Z-Factory ids only |
+| topology | `getTopology(db, actor, factoryId)` | nodes with position and runtime state; one logical edge per pair for all the wires between two devices (`WIRED_TO`, with each wire pin to pin) and one edge per relationship that is not wiring; palette of catalog models; Z-Factory ids only |
 | place device | `placeDevice(…, { deviceModelId, x, y, name? })` | creates the instance (a PLC through `createPlc`); free numbered name when none is given |
 | move devices | `moveDevices(…, [{ deviceId, x, y }])` | every device must belong to the factory |
 | rename | `renameDevice(db, actor, deviceId, { name, role })` | name unique in the factory; existing tag names are kept |
 | delete device | `removeDevice(db, actor, deviceId)` | frees the PLC channels it used and their tags first; a PLC goes through `deletePlc` |
-| link | `linkDevices(…, { fromId, toId, kind? })` | relationship derived by `linkOptions`; returns `CHOOSE` with options when several apply; all connection rules enforced |
-| unlink | `unlinkDevices(…, { sourceId, targetId, relationship })` | a wired edge removes the device's whole wiring to that PLC |
+| link | `linkDevices(…, { fromId, toId, kind? })` | relationship derived by `linkOptions`; returns `CHOOSE` with options when several apply, and `WIRE` when the two are to be wired pin by pin: nothing is stored until a wire is (`wiring` below); a port link is a wire between two ports within what each port takes |
+| unlink | `unlinkDevices(…, { sourceId, targetId, relationship })` | a relationship edge is removed as one; `WIRED_TO` removes every wire between the two devices |
 
-`wireExistingDevice` and `unwireDevice` (`lib/services/plc-config-service.ts`) wire and unwire a device that already exists, with the same checks as adding a peripheral.
+### `wiring` (TASK-307, ADR-0014)
+Services in `lib/services/wiring-service.ts`; server actions in `app/factories/[factoryId]/designer/actions.ts`. Every function takes the `Actor`; a factory of another owner is not found, and a device of another factory is not a device of this one. Rules in `lib/validation/wiring.ts`.
+
+An endpoint is `{ deviceId, type, id }` with `type = DEVICE_IO | PLC_IO_POINT | PROTOCOL_PORT` and the id of the terminal definition, the I/O point or the port.
+
+| Operation | Entry point | Rules |
+|---|---|---|
+| endpoints of two devices | `getPairWiring(db, actor, factoryId, firstId, secondId, replacingWireId?)` | every endpoint of both with what it is and the wires on it; the wires between the two; for every pair of endpoints the refusal, if any. With `replacingWireId` the ends of that wire count as free |
+| add a wire | `connectWire(db, actor, factoryId, { from, to })` | one wire between two exact endpoints; refused wiring is never stored; a wire to a PLC channel creates its tag at the channel's address |
+| move a wire | `reconnectWire(db, actor, factoryId, wireId, { from, to })` | the new wire is validated first; old and new change in one transaction or not at all |
+| remove a wire | `disconnectWire(db, actor, factoryId, wireId)` | a PLC channel is free again and its tag removed; the devices stay |
+| remove all wires of two devices | `disconnectDevices(db, actor, factoryId, firstId, secondId)` | what removing a wiring edge does; port links are not wires of that edge |
+
+Refusals carry `details.rule`, `details.from` and `details.to`: `wire-same-device` (VALIDATION), `wire-kind`, `wire-direction`, `wire-signal-class`, `wire-signal-type`, `wire-protocol`, `wire-plc-to-plc` (INCOMPATIBLE), `wire-duplicate` (CONFLICT), `wire-occupied` (OCCUPIED_ENDPOINT). The message names both endpoints, e.g. `PT-102 / OUT is 4–20 mA; PLC-01 / AI 0 takes 0–10 V.`
+
+`unwireDevice` (`lib/services/plc-config-service.ts`) removes every wire between a PLC and one device; deleting a device uses it.
 
 ### `process-modules` (TASK-601)
 Services in `lib/services/process-module-service.ts`. Module types are shared reference data, not owned by a factory. Every function on a module takes the `Actor`; a module, factory or device of another owner is not found. There is no screen, route or server action yet (TASK-604), and no PLC binding (`process-modules/io-registry`, TASK-605).

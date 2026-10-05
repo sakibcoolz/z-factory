@@ -10,7 +10,7 @@ Status: **IN PROGRESS**
 | TASK-304 PLC engineering export | DONE |
 | TASK-305 Stored PLC program, versions, runtime & simulator screens | DONE |
 | TASK-306 Factory overview device hierarchy | DONE |
-| TASK-307 Pin-to-pin wiring editor & validation | PLANNED |
+| TASK-307 Pin-to-pin wiring editor & validation | DONE |
 | TASK-308 Capability-driven programmable device UI & runtime | PLANNED |
 
 Exit criteria: users can create factory-specific devices from catalog models, configure compact/modular PLCs, connect exact compatible endpoints with validated pin-to-pin wiring, derive tags/I/O/protocol mappings from that single wiring source, program/configure supported controller classes through capability-driven UI, persist topology, and export a complete engineering snapshot.
