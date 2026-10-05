@@ -50,6 +50,11 @@ export type LiveMessage =
    * as fresh as `at`. Without it the PLC did not answer, or is no longer read.
    */
   | { kind: "tags"; factoryId: string; plcId: string; at: string; confirmed: boolean; readings: LiveTagReading[] }
+  /**
+   * The state of every device, sent after recorded events that may have changed one.
+   * Worked out by the server from runtime memory, so no client derives state from events.
+   */
+  | { kind: "devices"; factoryId: string; at: string; devices: LiveDeviceState[] }
   /** The whole live state, sent when a client connects or reconnects. */
   | { kind: "snapshot"; snapshot: LiveSnapshot }
   /** Proof of life while nothing else is sent. */
@@ -58,7 +63,7 @@ export type LiveMessage =
   | { kind: "reset"; reason: "UNKNOWN_EVENT" | "TOO_MANY_EVENTS" };
 
 export type LiveMessageKind = LiveMessage["kind"];
-export const LIVE_MESSAGE_KINDS = ["event", "tags", "snapshot", "heartbeat", "reset"] as const;
+export const LIVE_MESSAGE_KINDS = ["event", "tags", "devices", "snapshot", "heartbeat", "reset"] as const;
 
 /** A value older than this, with nothing newer arriving, is shown as stale. */
 export const DEFAULT_STALE_AFTER_MS = 5000;

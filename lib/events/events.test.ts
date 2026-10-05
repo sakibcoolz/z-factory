@@ -121,6 +121,9 @@ describe("server-sent events encoding", () => {
     expect(tags.startsWith("event: tags\ndata: {")).toBe(true);
     expect(tags).not.toContain("\nid:");
     expect(encodeSse({ kind: "reset", reason: "UNKNOWN_EVENT" })).not.toContain("\nid:");
+    const devices = encodeSse({ kind: "devices", factoryId: "factory-1", at: "2026-10-05T05:00:00.000Z", devices: [] });
+    expect(devices.startsWith("event: devices\ndata: {")).toBe(true);
+    expect(devices).not.toContain("\nid:");
   });
 
   it("keeps a message on one data line whatever its text contains", () => {

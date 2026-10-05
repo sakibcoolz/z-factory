@@ -1,18 +1,8 @@
 import type { ReactNode } from "react";
-import { type RuntimeState, runtimeStateLabel } from "@/lib/domain/runtime-state";
+import { type RuntimeState, runtimeStateLabel, runtimeStateTone as stateTone } from "@/lib/domain/runtime-state";
 import type { TagQuality } from "@/lib/domain/tag";
 
 export type Tone = "run" | "deg" | "flt" | "start" | "off" | "disc" | "neutral";
-
-const RUNTIME_STATE_TONE: Record<RuntimeState, Tone> = {
-  STOPPED: "off",
-  STARTING: "start",
-  RUNNING: "run",
-  DEGRADED: "deg",
-  FAULTED: "flt",
-  STOPPING: "start",
-  DISCONNECTED: "disc",
-};
 
 const TAG_QUALITY_TONE: Record<TagQuality, Tone> = {
   GOOD: "run",
@@ -22,7 +12,7 @@ const TAG_QUALITY_TONE: Record<TagQuality, Tone> = {
 };
 
 export function runtimeStateTone(state: RuntimeState): Tone {
-  return RUNTIME_STATE_TONE[state];
+  return stateTone(state);
 }
 
 export function tagQualityTone(quality: TagQuality): Tone {

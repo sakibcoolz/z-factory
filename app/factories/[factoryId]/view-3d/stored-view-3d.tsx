@@ -1,4 +1,3 @@
-import { LiveRefresh } from "@/components/live/live-refresh";
 import { SceneView } from "@/components/scene/scene-view";
 import { AppShell } from "@/components/shell/app-shell";
 import { EditorTabs, Toolbar } from "@/components/shell/editor";
@@ -34,8 +33,6 @@ export async function StoredView3d({ factoryId }: { factoryId: string }) {
         right: [`${withAsset}/${scene.devices.length} catalog assets`, "three.js"],
       }}
     >
-      {/* Stored states change with recorded events; the scene follows them. */}
-      <LiveRefresh streamUrl={routes.stream(factory.id)} />
       <EditorTabs
         tabs={[
           { label: factory.name, href: routes.factory(factory.id) },
@@ -55,6 +52,7 @@ export async function StoredView3d({ factoryId }: { factoryId: string }) {
       </Toolbar>
       <SceneView
         scene={scene}
+        streamUrl={routes.stream(factory.id)}
         transformAction={sceneTransformAction.bind(null, factory.id)}
         plcLinks={plcLinks}
         designerHref={routes.designer(factory.id)}

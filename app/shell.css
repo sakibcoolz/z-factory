@@ -1088,6 +1088,34 @@
     font: 600 11px/1.2 var(--font-body);
     color: var(--color-fg);
   }
+  /* The state under a device's name, in the same colours as the state pills. */
+  .zf-scene-label[data-tone="run"] {
+    border-color: var(--color-ok-line);
+  }
+  .zf-scene-label[data-tone="run"] span {
+    color: var(--color-ok);
+  }
+  .zf-scene-label[data-tone="flt"] {
+    border-color: var(--color-accent);
+  }
+  .zf-scene-label[data-tone="flt"] span {
+    color: var(--color-fault-fg);
+  }
+  .zf-scene-label[data-tone="deg"] {
+    border-color: var(--color-warn-line);
+  }
+  .zf-scene-label[data-tone="deg"] span {
+    color: var(--color-warn-fg);
+  }
+  .zf-scene-label[data-tone="disc"] {
+    border-color: var(--color-ext-line);
+  }
+  .zf-scene-label[data-tone="disc"] span {
+    color: var(--color-ext);
+  }
+  .zf-scene-label[data-tone="start"] span {
+    color: var(--color-info);
+  }
   .zf-scene-label[data-selected="true"] {
     border-color: var(--color-focus);
   }
