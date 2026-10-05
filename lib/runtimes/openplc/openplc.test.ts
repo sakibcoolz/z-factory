@@ -294,4 +294,20 @@ describe("modbus tcp client", () => {
       "modbus-unreachable",
     );
   });
+
+  it("fails instead of waiting forever when the server closes without answering", async () => {
+    // What a stopping PLC does: the connection is accepted, then closed with no response.
+    server = createServer((socket) => {
+      socket.on("data", () => socket.end());
+    });
+    await new Promise<void>((resolve) => server?.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    const endpoint = { host: "127.0.0.1", port: typeof address === "object" && address ? address.port : 0 };
+
+    const started = Date.now();
+    await expectDomainError(readModbus(endpoint, "HOLDING_REGISTER", 0), "RUNTIME_FAILURE", "modbus-closed");
+    await expectDomainError(writeModbus(endpoint, "COIL", 0, true), "RUNTIME_FAILURE", "modbus-closed");
+    // Well below the 3 s response timeout: the close itself ends the exchange.
+    expect(Date.now() - started).toBeLessThan(1500);
+  });
 });
