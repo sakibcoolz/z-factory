@@ -140,7 +140,7 @@ describe("catalog model view", () => {
           modelName: "CPU 1511-1 PN",
           architectureType: "MODULAR",
           builtInChannels: [],
-          racks: [{ name: "S7-1500 mounting rail", slotCount: 32, notes: null }],
+          racks: [{ name: "S7-1500 mounting rail", slotCount: 31, notes: null }],
           modules: [
             {
               modelName: "AI 8xU/I/RTD/TC ST",
@@ -158,7 +158,7 @@ describe("catalog model view", () => {
       />,
     );
     expect(screen.getByText("through modules")).toBeInTheDocument();
-    expect(screen.getByText("Installable modules · S7-1500 mounting rail, 32 slots")).toBeInTheDocument();
+    expect(screen.getByText("Installable modules · S7-1500 mounting rail, 31 slots")).toBeInTheDocument();
     expect(screen.getByText("8 × AI · 4–20 mA / ±10 V")).toBeInTheDocument();
     unmount();
 

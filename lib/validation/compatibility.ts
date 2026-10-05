@@ -29,19 +29,25 @@ const accepts = (channel: PlcChannel, terminal: DeviceTerminal) =>
   channel.ioType === requiredIoPointType(terminal.direction, terminal.ioType) &&
   channelAccepts(channel, terminal.signalType);
 
+/** Indexes of the channels that can take each terminal. */
+export function terminalOptions(terminals: readonly DeviceTerminal[], channels: readonly PlcChannel[]): number[][] {
+  return terminals.map((terminal) => channels.flatMap((channel, index) => (accepts(channel, terminal) ? [index] : [])));
+}
+
 /**
- * Places every terminal on its own channel. Terminals with the fewest candidates are
- * placed first, so a scarce channel is not spent on a terminal that had other options.
+ * Gives every terminal its own channel and returns the channel index per terminal
+ * (undefined where none was left). Terminals with the fewest candidates are placed first,
+ * so a scarce channel is not spent on a terminal that had other options. Channels in
+ * `reserved` are never handed out.
  */
-export function matchTerminals(
+export function assignTerminals(
   terminals: readonly DeviceTerminal[],
   channels: readonly PlcChannel[],
-): { compatible: boolean; terminals: TerminalMatch[] } {
-  const options = terminals.map((terminal) =>
-    channels.flatMap((channel, index) => (accepts(channel, terminal) ? [index] : [])),
-  );
-  const used = new Set<number>();
-  const satisfied = new Array<boolean>(terminals.length).fill(false);
+  reserved: ReadonlySet<number> = new Set(),
+): Array<number | undefined> {
+  const options = terminalOptions(terminals, channels);
+  const used = new Set(reserved);
+  const assigned = new Array<number | undefined>(terminals.length).fill(undefined);
   const order = terminals
     .map((_, index) => index)
     .sort((a, b) => (options[a]?.length ?? 0) - (options[b]?.length ?? 0));
@@ -49,14 +55,24 @@ export function matchTerminals(
     const free = (options[index] ?? []).find((channel) => !used.has(channel));
     if (free === undefined) continue;
     used.add(free);
-    satisfied[index] = true;
+    assigned[index] = free;
   }
+  return assigned;
+}
+
+/** Places every terminal on its own channel and reports which ones found a place. */
+export function matchTerminals(
+  terminals: readonly DeviceTerminal[],
+  channels: readonly PlcChannel[],
+): { compatible: boolean; terminals: TerminalMatch[] } {
+  const options = terminalOptions(terminals, channels);
+  const assigned = assignTerminals(terminals, channels);
   const matches = terminals.map((terminal, index) => ({
     terminalLabel: terminal.terminalLabel,
     required: requiredIoPointType(terminal.direction, terminal.ioType),
     signalType: terminal.signalType,
     candidates: options[index]?.length ?? 0,
-    satisfied: satisfied[index] === true,
+    satisfied: assigned[index] !== undefined,
   }));
   return { compatible: matches.every((match) => match.satisfied), terminals: matches };
 }

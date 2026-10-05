@@ -159,3 +159,28 @@ export const modbusEndpointInputSchema = z.strictObject({
   hostPort,
 });
 export type ModbusEndpointInput = z.infer<typeof modbusEndpointInputSchema>;
+
+/** Creating a PLC instance from a catalog model. Its process role is separate from its name. */
+export const plcInputSchema = z.strictObject({
+  factoryId: z.uuid(),
+  deviceModelId: z.uuid(),
+  name: deviceNameSchema,
+  role: z.string().trim().max(120).optional(),
+});
+export type PlcInput = z.infer<typeof plcInputSchema>;
+
+export const moduleInstallInputSchema = z.strictObject({
+  moduleModelId: z.uuid(),
+  /** Slot number on the rack, starting at 1. */
+  slotIndex: z.number().int().min(1).max(64),
+});
+
+/** Adding a peripheral to a PLC: the device instance, and optionally which channel each terminal takes. */
+export const peripheralInputSchema = z.strictObject({
+  deviceModelId: z.uuid(),
+  name: deviceNameSchema,
+  role: z.string().trim().max(120).optional(),
+  /** Terminal id → I/O point id. Terminals left out get the first free compatible channel. */
+  assignments: z.record(z.uuid(), z.uuid()).default({}),
+});
+export type PeripheralInput = z.infer<typeof peripheralInputSchema>;

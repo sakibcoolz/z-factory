@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import { PlcSectionNav } from "@/components/plc/plc-section-nav";
 import { AppShell } from "@/components/shell/app-shell";
 import { Content, EditorTabs } from "@/components/shell/editor";
@@ -10,8 +9,12 @@ import { RuntimeStatePill } from "@/components/ui/state-pill";
 import { demoContext, isDemoPlc } from "@/lib/fixtures";
 import { factory, plc, plcOverview } from "@/lib/fixtures/pump-house-demo";
 import { routes } from "@/lib/navigation/routes";
+import { StoredPlcOverview } from "./stored-screens";
 
 export const metadata: Metadata = { title: "PLC overview" };
+
+// Stored PLCs read the database on every request.
+export const dynamic = "force-dynamic";
 
 type PlcPageProps = {
   params: Promise<{ factoryId: string; plcId: string }>;
@@ -31,7 +34,8 @@ const monoRows = (rows: ReadonlyArray<readonly [string, string]>) =>
 /** 2h — PLC Details / Edit: overview with section navigation and version metadata. */
 export default async function PlcPage({ params }: PlcPageProps) {
   const { factoryId, plcId } = await params;
-  if (!isDemoPlc(factoryId, plcId)) notFound();
+  // Stored PLCs render from the database; the demo PLC keeps its fixture screen.
+  if (!isDemoPlc(factoryId, plcId)) return StoredPlcOverview({ factoryId, plcId });
 
   const overview = plcOverview;
 

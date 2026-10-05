@@ -27,6 +27,12 @@ export const routes = {
   tags: (factoryId: string) => `${factory(factoryId)}/tags`,
   events: (factoryId: string) => `${factory(factoryId)}/events`,
   plc,
+  /** Pin view; `pin` selects one I/O point. */
+  plcHardware: (factoryId: string, plcId: string, pin?: string) =>
+    `${plc(factoryId, plcId)}/hardware${pin ? `?pin=${encodeURIComponent(pin)}` : ""}`,
+  /** Peripherals; `add` opens the form for one catalog model. */
+  plcConnections: (factoryId: string, plcId: string, add?: string) =>
+    `${plc(factoryId, plcId)}/connections${add ? `?add=${encodeURIComponent(add)}` : ""}`,
   plcProgram: (factoryId: string, plcId: string) => `${plc(factoryId, plcId)}/program`,
   plcIoMapping: (factoryId: string, plcId: string) => `${plc(factoryId, plcId)}/io-mapping`,
   plcExport: (factoryId: string, plcId: string) => `${plc(factoryId, plcId)}/export`,

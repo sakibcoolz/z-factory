@@ -1,5 +1,6 @@
 import "server-only";
 import type { Actor } from "@/lib/auth/actor";
+import type { Db } from "@/lib/db/client";
 import { plcRepository } from "@/lib/db/repositories/plc-repository";
 import { tagRepository } from "@/lib/db/repositories/tag-repository";
 import { DomainError, isDomainError } from "@/lib/domain/errors";
@@ -23,7 +24,7 @@ import {
 } from "@/lib/protocols/modbus/located-address";
 import { modbusEndpoint } from "@/lib/runtimes/openplc/adapter";
 import { parseInput } from "@/lib/validation/parse";
-import { tagInputSchema } from "@/lib/validation/schemas";
+import { type TagInput, tagInputSchema } from "@/lib/validation/schemas";
 import { assertSignalBinding } from "@/lib/validation/simulation";
 import { assertNoAddressOverlap, assertTagAccess } from "@/lib/validation/tag";
 import { loadPlc, requireTarget, type RuntimeDeps } from "./plc-runtime-service";
@@ -110,7 +111,20 @@ function toRow(tag: Tag & { protocolArea: ModbusArea; protocolAddress: number; l
 export async function createTag(db: PrismaClient, actor: Actor, plcId: string, input: unknown): Promise<ModbusMapRow> {
   const data = parseInput(tagInputSchema, input);
   const { device } = await loadPlc(db, actor, plcId);
+  return db.$transaction((transaction) => createTagInTransaction(transaction, device, data));
+}
 
+/**
+ * Creates a tag inside a transaction the caller owns, so a tag can be created together
+ * with what it belongs to (wiring a device to an I/O point). `plcIoPointId` binds the tag
+ * to that point; only then may it use the point's address.
+ */
+export async function createTagInTransaction(
+  transaction: Db,
+  device: { id: string; factoryId: string },
+  data: TagInput,
+  binding: { plcIoPointId?: string } = {},
+): Promise<ModbusMapRow> {
   const located = parseLocatedAddress(data.logicalAddress);
   assertDataTypeFits(located, data.dataType);
   const location = toModbusLocation(located);
@@ -134,7 +148,7 @@ export async function createTag(db: PrismaClient, actor: Actor, plcId: string, i
     });
   }
   if (sourceDeviceId) {
-    const source = await tagRepository.findDeviceInFactory(db, sourceDeviceId, device.factoryId);
+    const source = await tagRepository.findDeviceInFactory(transaction, sourceDeviceId, device.factoryId);
     if (!source) {
       throw new DomainError("NOT_FOUND", "The source device does not exist in this factory.", {
         field: "sourceDeviceInstanceId",
@@ -149,7 +163,19 @@ export async function createTag(db: PrismaClient, actor: Actor, plcId: string, i
     }
   }
 
-  return db.$transaction(async (transaction) => {
+  const logicalAddress = formatLocatedAddress(located);
+  const point = await tagRepository.findIoPointByAddress(transaction, device.id, logicalAddress);
+  if (point && point.id !== binding.plcIoPointId) {
+    throw new DomainError(
+      "CONFLICT",
+      `${logicalAddress} is the address of a PLC I/O point; its tag is created by wiring a device to it.`,
+      {
+        rule: "io-point-address",
+        field: "logicalAddress",
+      },
+    );
+  }
+  {
     const existing = (await tagRepository.listByPlc(transaction, device.id)).filter(mapped);
     assertNoAddressOverlap(
       { name: data.name, protocolArea: location.area, protocolAddress: location.address, dataType: data.dataType },
@@ -176,7 +202,8 @@ export async function createTag(db: PrismaClient, actor: Actor, plcId: string, i
       dataType: data.dataType,
       direction: DIRECTION[located.region],
       role: data.role,
-      logicalAddress: formatLocatedAddress(located),
+      logicalAddress,
+      plcIoPointId: binding.plcIoPointId ?? null,
       protocol: "MODBUS_TCP",
       protocolArea: location.area,
       protocolAddress: location.address,
@@ -194,7 +221,7 @@ export async function createTag(db: PrismaClient, actor: Actor, plcId: string, i
     await plcRepository.bumpModbusMappingVersion(transaction, device.id);
     if (!mapped(created)) throw new DomainError("INVARIANT", "The tag was stored without its mapping.");
     return toRow(created);
-  });
+  }
 }
 
 export async function deleteTag(db: PrismaClient, actor: Actor, plcId: string, name: string): Promise<void> {

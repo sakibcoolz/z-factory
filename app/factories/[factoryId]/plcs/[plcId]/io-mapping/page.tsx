@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import { PlcSectionNav } from "@/components/plc/plc-section-nav";
 import { AppShell } from "@/components/shell/app-shell";
 import { Content, EditorTabs, Toolbar } from "@/components/shell/editor";
@@ -10,8 +9,12 @@ import { StatePill } from "@/components/ui/state-pill";
 import { demoContext, isDemoPlc } from "@/lib/fixtures";
 import { ioMapping, plc, program } from "@/lib/fixtures/pump-house-demo";
 import { routes } from "@/lib/navigation/routes";
+import { StoredPlcIoMapping } from "../stored-screens";
 
 export const metadata: Metadata = { title: "I/O mapping" };
+
+// Stored PLCs read the database on every request.
+export const dynamic = "force-dynamic";
 
 type IoMappingPageProps = {
   params: Promise<{ factoryId: string; plcId: string }>;
@@ -20,7 +23,8 @@ type IoMappingPageProps = {
 /** 2j — I/O Mapping / Pinout: channel › logical address › tag › Modbus area. */
 export default async function IoMappingPage({ params }: IoMappingPageProps) {
   const { factoryId, plcId } = await params;
-  if (!isDemoPlc(factoryId, plcId)) notFound();
+  // Stored PLCs render from the database; the demo PLC keeps its fixture screen.
+  if (!isDemoPlc(factoryId, plcId)) return StoredPlcIoMapping({ factoryId, plcId });
 
   const { rows } = ioMapping;
   const unmapped = rows.filter((row) => row.tag === null).length;

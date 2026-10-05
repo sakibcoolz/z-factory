@@ -63,8 +63,12 @@ async function loadDeviceIo(db: Db, endpoint: Endpoint, deviceModelId: string, s
  */
 export async function connectDevices(db: PrismaClient, input: unknown) {
   const data = parseInput(connectionInputSchema, input);
+  return db.$transaction((transaction) => connectDevicesInTransaction(transaction, data));
+}
 
-  return db.$transaction(async (transaction) => {
+/** The same checks and writes inside a transaction the caller owns. */
+export async function connectDevicesInTransaction(transaction: Db, data: ConnectionInput) {
+  {
     const [source, target] = await Promise.all([
       loadDevice(transaction, data.source, "source"),
       loadDevice(transaction, data.target, "target"),
@@ -103,5 +107,5 @@ export async function connectDevices(db: PrismaClient, input: unknown) {
       if (point) await connectionRepository.markIoPointOccupied(transaction, point.id);
     }
     return connection;
-  });
+  }
 }

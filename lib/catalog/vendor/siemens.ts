@@ -122,7 +122,8 @@ export const siemens: CatalogInput = {
       manufacturer: MANUFACTURER,
       family: S7_1500,
       name: "S7-1500 mounting rail",
-      slotCount: 32,
+      // Slots hold the modules next to the CPU; the CPU itself takes none of them.
+      slotCount: 31,
       notes: "Modules per rack, max. 32: CPU + 31 modules (CPU 1511-1 PN equipment manual).",
     },
   ],
