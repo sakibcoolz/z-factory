@@ -137,12 +137,7 @@ describeDb("the edge deployment of a PLC and the Thin Client Agent (TASK-503a)",
   }, 120_000);
 
   afterAll(async () => {
-    if (agent && agent.exitCode === null) {
-      await new Promise<void>((resolve) => {
-        agent?.once("exit", () => resolve());
-        agent?.kill("SIGTERM");
-      });
-    }
+    await stopProcess(agent);
     rmSync(dir, { recursive: true, force: true });
     if (docker) {
       const filters = { label: [`${RUN_LABEL}=${runId}`] };
@@ -222,15 +217,6 @@ describeDb("the edge deployment of a PLC and the Thin Client Agent (TASK-503a)",
         const response = await fetch(`http://127.0.0.1:${healthPort}${path}`).catch(() => undefined);
         return response?.ok ? ((await response.json()) as Record<string, unknown>) : undefined;
       };
-      const until = async <T>(what: string, check: () => Promise<T | undefined>, timeoutMs = 20_000) => {
-        const deadline = Date.now() + timeoutMs;
-        for (;;) {
-          const result = await check();
-          if (result !== undefined) return result;
-          if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
-          await sleep(200);
-        }
-      };
       await until("the agent", () => health("/healthz"));
       expect(await health("/healthz")).toMatchObject({ status: "ok", workers: 0 });
       expectAgentDirectories(dir);
@@ -287,7 +273,214 @@ describeDb("the edge deployment of a PLC and the Thin Client Agent (TASK-503a)",
     },
     400_000,
   );
+
+  itAgent(
+    "closes the loop over MQTT: telemetry up, a checked command down, PLC logic, feedback, ack; and spools an outage (TASK-503c)",
+    async () => {
+      // The agent of the previous test makes way for one with an uplink.
+      await stopProcess(agent);
+      const mqttPort = await freePort();
+      const broker = await docker!.createContainer({
+        Image: "eclipse-mosquitto:2",
+        Cmd: ["mosquitto", "-c", "/mosquitto-no-auth.conf"],
+        Labels: { [RUN_LABEL]: runId },
+        HostConfig: { PortBindings: { "1883/tcp": [{ HostIp: "127.0.0.1", HostPort: String(mqttPort) }] } },
+      });
+      await broker.start();
+      const brokerName = (await broker.inspect()).Name.replace(/^\//, "");
+
+      // The cloud: what mosquitto_sub sees, and commands sent with mosquitto_pub.
+      const seen: Array<{ topic: string; body: Record<string, unknown> | null }> = [];
+      let subscriber: ChildProcess | undefined;
+      const subscribe = () => {
+        subscriber = spawn("docker", ["exec", brokerName, "mosquitto_sub", "-t", "zfactory/#", "-v", "-q", "1"]);
+        let pending = "";
+        subscriber.stdout?.on("data", (chunk: Buffer) => {
+          pending += chunk.toString();
+          const lines = pending.split("\n");
+          pending = lines.pop() ?? "";
+          for (const line of lines) {
+            const space = line.indexOf(" ");
+            const topic = space < 0 ? line : line.slice(0, space);
+            let body: Record<string, unknown> | null = null;
+            try {
+              body = space < 0 ? null : (JSON.parse(line.slice(space + 1)) as Record<string, unknown>);
+            } catch {
+              body = null;
+            }
+            seen.push({ topic, body });
+          }
+        });
+      };
+      await until("the broker", async () => {
+        const probe = spawn("docker", ["exec", brokerName, "mosquitto_pub", "-t", "probe", "-m", "x"]);
+        return (await new Promise<number | null>((resolve) => probe.once("exit", resolve))) === 0 ? true : undefined;
+      });
+      subscribe();
+      const publish = async (topic: string, body: unknown) => {
+        const child = spawn("docker", [
+          "exec",
+          brokerName,
+          "mosquitto_pub",
+          "-q",
+          "1",
+          "-t",
+          topic,
+          "-m",
+          JSON.stringify(body),
+        ]);
+        expect(await new Promise<number | null>((resolve) => child.once("exit", resolve))).toBe(0);
+      };
+
+      const edge = mkdtempSync(join(tmpdir(), "zfactory-agent-mqtt-"));
+      const health = await freePort();
+      const args = ["-dir", edge, "-health", `127.0.0.1:${health}`, "-scan", "200ms", "-settle", "0s"];
+      const mqtt = [
+        "-mqtt-url",
+        `tcp://127.0.0.1:${mqttPort}`,
+        "-site-id",
+        "plant-1",
+        "-agent-id",
+        "edge-1",
+        "-heartbeat",
+        "1s",
+        "-replay-rate",
+        "20",
+      ];
+      let mqttAgent = spawn(binary ?? "", [...args, ...mqtt], { stdio: ["ignore", "pipe", "pipe"] });
+      mqttAgent.stdout?.resume();
+      mqttAgent.stderr?.resume();
+      const status = async () => {
+        const response = await fetch(`http://127.0.0.1:${health}/v1/status`).catch(() => undefined);
+        return response?.ok
+          ? ((await response.json()) as { uplink: { connected: boolean; spool: { entries: number } } })
+          : undefined;
+      };
+      try {
+        await until("the agent", status);
+        const document = await exportEdgeDeployment(db, alice, plcId, { pollIntervalMs: 200 });
+        const name = edgeDeploymentFileName("PLC-01");
+        writeFileSync(join(edge, "staging", `.${name}.tmp`), JSON.stringify(document));
+        renameSync(join(edge, "staging", `.${name}.tmp`), join(edge, "staging", name));
+
+        const root = "zfactory/plant-1/edge-1";
+        type Value = { id: string; name: string; value: unknown; quality: string };
+        const latest = (live = true) => {
+          const batches = seen.filter(
+            (m) => m.topic === `${root}/telemetry/${plcId}` && (!live || m.body?.replayed !== true),
+          );
+          return batches.at(-1)?.body as { values: Value[]; configVersion: number; replayed?: boolean } | undefined;
+        };
+        const value = (name: string) => latest()?.values.find((v) => v.name === name);
+        await until("telemetry over MQTT", async () => (value("Speed_Ref")?.quality === "GOOD" ? true : undefined));
+        // What reaches the cloud is what Z-Factory reads from the PLC.
+        for (const tag of ["Start_Cmd", "Running", "Speed_Ref", "Run_Hours"]) {
+          expect(value(tag)?.value, tag).toEqual((await readTag(runtime, alice, plcId, tag)).value);
+        }
+        expect(latest()?.configVersion).toBe(document.configVersion);
+
+        const mapping = (tagName: string) => document.deployment.mappings.find((m) => m.name === tagName)!.id;
+        const command = (id: string, tagName: string, commandValue: unknown) => ({
+          schema: "zfactory.command",
+          version: 1,
+          commandId: id,
+          plcId,
+          mappingId: mapping(tagName),
+          value: commandValue,
+          configVersion: document.configVersion,
+          issuedAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 30_000).toISOString(),
+          requestedBy: "integration-test",
+        });
+        const acks = (id: string) =>
+          seen.filter((m) => m.topic === `${root}/ack/${plcId}` && m.body?.commandId === id).map((m) => m.body!);
+
+        // A setpoint from the cloud: written to the command tag, the program carries it to its output.
+        await publish(`${root}/command/${plcId}`, command("e2e-speed", "Speed_SP", 30));
+        await until("the setpoint applied", async () => (acks("e2e-speed").length >= 2 ? true : undefined));
+        expect(acks("e2e-speed").map((a) => a.status)).toEqual(["ACCEPTED", "APPLIED"]);
+        expect(acks("e2e-speed")[1]).toMatchObject({ observed: 30 });
+        await until("the program's output in telemetry", async () =>
+          value("Speed_Ref")?.value === 30 ? true : undefined,
+        );
+
+        // A stop from the cloud: the program withdraws its output, the feedback says so.
+        await publish(`${root}/command/${plcId}`, command("e2e-stop", "Start_Cmd", false));
+        await until("the stop applied", async () => (acks("e2e-stop").at(-1)?.status === "APPLIED" ? true : undefined));
+        await until("Running off in telemetry", async () =>
+          value("Running")?.value === false && value("Speed_Ref")?.value === 0 ? true : undefined,
+        );
+        expect(await readTag(runtime, alice, plcId, "Running")).toMatchObject({ value: false });
+
+        // The program's own output cannot be written from the cloud.
+        await publish(`${root}/command/${plcId}`, command("e2e-force", "Running", true));
+        await until("the refusal", async () => (acks("e2e-force").length > 0 ? true : undefined));
+        expect(acks("e2e-force")[0]).toMatchObject({ status: "REJECTED", rule: "not-writable" });
+        await sleep(500);
+        expect(await readTag(runtime, alice, plcId, "Running")).toMatchObject({ value: false });
+
+        // The broker goes away: polling goes on into the spool, which survives an agent restart.
+        await stopProcess(subscriber);
+        await broker.stop({ t: 0 });
+        await until("the spool to fill", async () =>
+          ((await status())?.uplink.spool.entries ?? 0) >= 5 ? true : undefined,
+        );
+        await stopProcess(mqttAgent);
+        mqttAgent = spawn(binary ?? "", [...args, ...mqtt], { stdio: ["ignore", "pipe", "pipe"] });
+        mqttAgent.stdout?.resume();
+        mqttAgent.stderr?.resume();
+        const kept = await until("the agent back with its spool", async () => {
+          const entries = (await status())?.uplink.spool.entries;
+          return entries !== undefined && entries >= 5 ? entries : undefined;
+        });
+        expect(kept).toBeGreaterThanOrEqual(5);
+
+        // The broker returns: the backlog is replayed and the live loop goes on.
+        await broker.start();
+        await until("the broker again", async () => {
+          const probe = spawn("docker", ["exec", brokerName, "mosquitto_pub", "-t", "probe", "-m", "x"]);
+          return (await new Promise<number | null>((resolve) => probe.once("exit", resolve))) === 0 ? true : undefined;
+        });
+        const before = seen.length;
+        subscribe();
+        await until(
+          "the spool to drain",
+          async () =>
+            (await status())?.uplink.spool.entries === 0 && (await status())?.uplink.connected ? true : undefined,
+          60_000,
+        );
+        const replayed = seen
+          .slice(before)
+          .filter((m) => m.topic === `${root}/telemetry/${plcId}` && m.body?.replayed === true);
+        expect(replayed.length).toBeGreaterThanOrEqual(kept);
+        await until("live telemetry again", async () => (latest()?.values.length ? true : undefined));
+      } finally {
+        await stopProcess(subscriber);
+        await stopProcess(mqttAgent);
+        rmSync(edge, { recursive: true, force: true });
+      }
+    },
+    400_000,
+  );
 });
+
+async function stopProcess(child: ChildProcess | undefined) {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+  await new Promise<void>((resolve) => {
+    child.once("exit", () => resolve());
+    child.kill("SIGTERM");
+  });
+}
+
+async function until<T>(what: string, check: () => Promise<T | undefined>, timeoutMs = 20_000): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const result = await check();
+    if (result !== undefined) return result;
+    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
+    await sleep(200);
+  }
+}
 
 /** The agent creates its directories when it starts. */
 function expectAgentDirectories(dir: string) {
