@@ -34,6 +34,7 @@ import {
   stopProcessBridge,
 } from "@/lib/services/process-bridge-service";
 import { assignModuleDevice, createModule, listModuleTypes } from "@/lib/services/process-module-service";
+import { runScenario, type ScenarioDeps } from "@/lib/services/scenario-service";
 import { createTag, readTag, writeTag } from "@/lib/services/tag-service";
 import { cidrsOverlap } from "@/lib/validation/network";
 import { createGenericModel, openTestDb, resetDb } from "./harness";
@@ -433,6 +434,111 @@ describeLoop("process simulation in a closed loop with a real OpenPLC runtime", 
     const types = await eventTypes();
     expect(types).toEqual(expect.arrayContaining(["PROCESS_OVERRIDE_SET", "PROCESS_OVERRIDE_CLEARED"]));
   }, 90_000);
+
+  it("runs a closed-loop scenario on a process override twice with the same outcome (TASK-804)", async () => {
+    const scenarioDeps: ScenarioDeps = {
+      runtime,
+      simulation: { db, simulator: new DeviceSimulatorRuntime() },
+      process: deps,
+    };
+    const plc = "PLC-01";
+    const expectTag = (tag: string, value: number | boolean, extra: Record<string, number> = {}) => ({
+      kind: "EXPECT",
+      plc,
+      tag,
+      op: "EQ",
+      value,
+      withinS: 10,
+      ...extra,
+    });
+    // Nothing writes the trip or the run command: the program decides on the overridden value.
+    const scenario = {
+      name: "High discharge pressure",
+      steps: [
+        expectTag("PH_Running", true),
+        expectTag("High_Pressure_Trip", false, { holdS: 0.5 }),
+        { kind: "OVERRIDE", module: "PH-01", signal: "DISCHARGE_PRESSURE", value: 3.5 },
+        expectTag("PH_Pressure", 3.5, { tolerance: 0.01, withinS: 5 }),
+        expectTag("High_Pressure_Trip", true, { withinS: 5 }),
+        expectTag("PH_Run_Cmd", false, { withinS: 5 }),
+        // The model answers the withdrawn command: the duty pump stops.
+        expectTag("PH_Running", false),
+        { kind: "OVERRIDE", module: "PH-01", signal: "DISCHARGE_PRESSURE", value: 3.8 },
+        expectTag("PH_Pressure", 3.8, { tolerance: 0.01, withinS: 5 }),
+        { kind: "CLEAR" },
+        // Back in AUTO the model's own value returns; the trip stays until the program is reset.
+        expectTag("PH_Pressure", 0, { tolerance: 0.01 }),
+        expectTag("High_Pressure_Trip", true, { holdS: 0.5 }),
+        { kind: "WRITE", plc, tag: "Reset_Cmd", value: true },
+        expectTag("High_Pressure_Trip", false, { withinS: 5 }),
+        { kind: "WRITE", plc, tag: "Reset_Cmd", value: false },
+        expectTag("PH_Running", true),
+        { kind: "EXPECT", plc, tag: "PH_Pressure", op: "GT", value: 2.5, withinS: 15 },
+      ],
+    };
+
+    const first = await runScenario(scenarioDeps, alice, factoryId, scenario);
+    expect(first.failure).toBeNull();
+    const second = await runScenario(scenarioDeps, alice, factoryId, scenario);
+    // Repeatable: the same steps pass and read the same values; only the timing differs.
+    for (const report of [first, second]) {
+      expect(report.status).toBe("PASSED");
+      expect(report.overrides.map(({ atS: _atS, ...entry }) => entry)).toEqual([
+        { target: "PH-01 · DISCHARGE_PRESSURE", mode: "MANUAL_OVERRIDE", value: 3.5 },
+        { target: "PH-01 · DISCHARGE_PRESSURE", mode: "MANUAL_OVERRIDE", value: 3.8 },
+      ]);
+    }
+    const observed = (report: typeof first) =>
+      report.steps.map((step) => [step.status, typeof step.observed === "boolean" ? step.observed : null]);
+    expect(observed(second)).toEqual(observed(first));
+    expect((await listProcessOverrides(deps, alice, moduleId)).every((entry) => entry.mode === "AUTO")).toBe(true);
+
+    // The record says which values were overridden, by which run, and when they were back in AUTO.
+    const events = await listEvents(db, alice, factoryId, { limit: 500 });
+    const ofRun = (runId: string) =>
+      events
+        .filter((event) => event.payload.runId === runId)
+        .map((event) => event.type)
+        .reverse();
+    expect(ofRun(second.runId)).toEqual([
+      "SCENARIO_STARTED",
+      "PROCESS_OVERRIDE_SET",
+      "PROCESS_OVERRIDE_CHANGED",
+      "PROCESS_OVERRIDE_CLEARED",
+      "SCENARIO_COMPLETED",
+    ]);
+    const changed = events.find(
+      (event) => event.type === "PROCESS_OVERRIDE_CHANGED" && event.payload.runId === second.runId,
+    );
+    expect(changed?.payload).toMatchObject({
+      module: "PH-01",
+      code: "DISCHARGE_PRESSURE",
+      mode: "MANUAL_OVERRIDE",
+      value: 3.8,
+      from: { mode: "MANUAL_OVERRIDE", value: 3.5 },
+      scenario: "High discharge pressure",
+      by: "alice",
+    });
+
+    // A step the simulation refuses fails the run, is recorded as rejected, and leaves everything in AUTO.
+    const refused = await runScenario(scenarioDeps, alice, factoryId, {
+      name: "Override a command",
+      steps: [
+        { kind: "OVERRIDE", module: "PH-01", signal: "DISCHARGE_PRESSURE", value: 1 },
+        { kind: "OVERRIDE", module: "PH-01", signal: "DUTY_RUN_CMD", value: 0 },
+        expectTag("PH_Running", true),
+      ],
+    });
+    expect(refused.status).toBe("FAILED");
+    expect(refused.steps.map((step) => step.status)).toEqual(["PASSED", "FAILED", "SKIPPED"]);
+    expect(refused.failure).toMatch(/Step 2 .*command the PLC gives/);
+    const rejected = (await listEvents(db, alice, factoryId, { limit: 50 })).find(
+      (event) => event.type === "PROCESS_OVERRIDE_REJECTED",
+    );
+    expect(rejected?.payload).toMatchObject({ code: "DUTY_RUN_CMD", rule: "process-override-signal" });
+    expect((await listProcessOverrides(deps, alice, moduleId)).every((entry) => entry.mode === "AUTO")).toBe(true);
+    expect(await until("PH_Running", (value) => value === true)).toBe(true);
+  }, 240_000);
 
   it("marks the module DISCONNECTED while the PLC is away, then stops cleanly", async () => {
     await stopPlc(runtime, alice, plcId);

@@ -37,6 +37,7 @@ const FAMILY_LABEL: Record<EventFamily, string> = {
   ALARM: "Alarms",
   COMMAND: "Commands",
   LINK: "Connections",
+  SCENARIO: "Scenarios",
   OTHER: "Other",
 };
 

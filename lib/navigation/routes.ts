@@ -28,6 +28,8 @@ export const routes = {
   newDevice: (factoryId: string, architecture: PlcArchitectureSlug) =>
     `${factory(factoryId)}/devices/new/${architecture}`,
   simulator: (factoryId: string) => `${factory(factoryId)}/simulator`,
+  /** Closed-loop test scenarios of the factory (TASK-804). */
+  scenarios: (factoryId: string) => `${factory(factoryId)}/scenarios`,
   runtime: (factoryId: string) => `${factory(factoryId)}/runtime`,
   /** External gateways of the factory: their endpoints and the tags they are given. */
   gateways: (factoryId: string) => `${factory(factoryId)}/gateways`,

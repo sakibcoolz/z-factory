@@ -179,6 +179,7 @@ export async function StoredSimulator({ factoryId }: { factoryId: string }) {
         tabs={[
           { label: factory.name, href: routes.factory(factory.id) },
           { label: "Simulator", active: true },
+          { label: "Scenarios", href: routes.scenarios(factory.id) },
           { label: "Runtime", href: routes.runtime(factory.id) },
         ]}
         crumb="approximation for control testing · not certification"
