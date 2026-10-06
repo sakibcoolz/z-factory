@@ -384,6 +384,14 @@ export async function StoredPlcExport({ factoryId, plcId, runtime }: Ids & { run
             {label}
           </a>
         ))}
+        <a
+          className="zf-btn"
+          href={routes.plcEdgeDeployment(factoryId, plcId)}
+          download
+          title="The file the Z-Factory Thin Client Agent runs this PLC from: its Modbus endpoint and tags; only command and setpoint tags can be written from the cloud."
+        >
+          Edge deployment (JSON)
+        </a>
         <Button variant="ghost" href={`${routes.plcExport(factoryId, plcId)}${runtime ? "" : "?runtime=1"}`}>
           {runtime ? "Leave out runtime status" : "Include runtime status"}
         </Button>

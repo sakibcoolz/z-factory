@@ -6,7 +6,7 @@ Status: **IN PROGRESS**
 |---|---|
 | TASK-501 Industrial edge/Raspberry Pi connectivity | DONE |
 | TASK-502 End-to-end virtual factory demo | DONE |
-| TASK-503 Z-Factory Thin Client Agent — File-Driven Dynamic PLC Connectivity, Concurrency & MQTT Cloud Uplink | TODO |
+| TASK-503 Z-Factory Thin Client Agent — File-Driven Dynamic PLC Connectivity, Concurrency & MQTT Cloud Uplink | IN PROGRESS (503a done; 503b MQTT, 503c spool follow) |
 
 Phase 05 is reopened for the production edge-agent follow-up in TASK-503. TASK-501/502 remain complete and define the existing controlled gateway endpoint and virtual E2E proof.
 

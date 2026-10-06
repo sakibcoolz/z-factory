@@ -1,0 +1,28 @@
+# systemd unit for the Z-Factory Thin Client Agent (docs/thin-client-agent.md).
+# Install: copy the binary to /usr/local/bin/zfactory-agent, this file to
+# /etc/systemd/system/, create the user, then `systemctl enable --now zfactory-agent`.
+[Unit]
+Description=Z-Factory Thin Client Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=zfactory-agent
+Group=zfactory-agent
+ExecStart=/usr/local/bin/zfactory-agent -dir /etc/zfactory-agent -health 127.0.0.1:9180
+Restart=on-failure
+RestartSec=5s
+# Graceful shutdown: the agent stops its workers within its own timeout.
+TimeoutStopSec=30s
+# It needs its directory and the network, nothing else.
+ReadWritePaths=/etc/zfactory-agent
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+CapabilityBoundingSet=
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

@@ -355,6 +355,20 @@ Not an API of the application: these functions are called by `scripts/catalog-as
 
 `getCatalogOverview` and `getCatalogModel` report the result: per model `asset: { state: READY | PENDING | FAILED | NONE, activeVersion }`, per model detail every version with status, source, provider status and message, and `totals.withAsset`.
 
+### `edge deployment` (TASK-503, ADR-0017)
+| Operation | Entry point | Rules |
+|---|---|---|
+| export a PLC's edge deployment | `exportEdgeDeployment(db, actor, plcId, { host?, port?, unitId?, pollIntervalMs?, timeoutMs? })` in `lib/services/edge-deployment-service.ts`; download `GET /factories/{factoryId}/plcs/{plcId}/edge.json` with the same query options | see below |
+
+Rules:
+- The document is `zfactory.edge-deployment` version 1, with `configVersion` = the PLC's Modbus mapping version and `checksum` = `sha256:` over the compact `deployment` JSON.
+- Every mapped tag is in it. Only `EXTERNAL_COMMAND` tags are `WRITE`, and they carry their engineering range.
+- The host and port default to the runtime's published Modbus endpoint; without one the export is refused with `edge-endpoint-required` (409).
+- An invalid option is refused with 400, a foreign PLC with 404.
+- The document carries no secret.
+
+The format and the agent's handling are in `docs/thin-client-agent.md`.
+
 ### `gateways` (TASK-501, ADR-0013)
 Services in `lib/services/gateway-service.ts`; dependencies from `getGatewayDeps()`; server actions in `app/factories/[factoryId]/gateways/actions.ts`, which stay on the page and return `{ notice?, message? }`. A factory, gateway or connection of another owner is not found.
 
