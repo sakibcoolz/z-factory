@@ -73,6 +73,40 @@ describe("the process simulation client", () => {
     );
   });
 
+  it("sets, clears and lists overrides on the instance's measured values", async () => {
+    const calls: Array<{ url: string; method?: string; body?: unknown }> = [];
+    const state = { signal: "LEVEL", mode: "MANUAL_OVERRIDE", effective: 97 };
+    const fetcher = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      calls.push({
+        url: String(url),
+        method: init?.method,
+        body: init?.body ? JSON.parse(String(init.body)) : undefined,
+      });
+      return String(url).endsWith("/overrides") ? json(200, { signals: [state] }) : json(200, state);
+    });
+    const client = createProcessSimClient({
+      url: "http://sim.local:7700",
+      token: "secret-token-0123456789",
+      fetch: fetcher,
+    });
+    await client.setOverride("m 1", "LEVEL", { mode: "MANUAL_OVERRIDE", value: 97, source: "alice" });
+    await client.clearOverride("m 1", "LEVEL", "alice");
+    expect(await client.overrides("m 1")).toEqual([state]);
+    expect(calls).toEqual([
+      {
+        url: "http://sim.local:7700/v1/instances/m%201/overrides/LEVEL",
+        method: "PUT",
+        body: { mode: "MANUAL_OVERRIDE", value: 97, source: "alice" },
+      },
+      {
+        url: "http://sim.local:7700/v1/instances/m%201/overrides/LEVEL?source=alice",
+        method: "DELETE",
+        body: undefined,
+      },
+      { url: "http://sim.local:7700/v1/instances/m%201/overrides", method: "GET", body: undefined },
+    ]);
+  });
+
   it("says when the service cannot be reached", async () => {
     const client = createProcessSimClient({
       url: "http://127.0.0.1:1",

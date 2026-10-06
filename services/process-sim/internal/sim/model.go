@@ -145,3 +145,21 @@ func towards(value, target, rate, dt float64) float64 {
 		return target
 	}
 }
+
+// Measured is one output of a model that stands for a measurement the PLC reads — a
+// process value or a switch — and that a test may therefore replace (Phase 08,
+// TASK-801). Commands, actuator states and the model's own alarms are never measured
+// values: they are what the PLC or the model decides.
+type Measured struct {
+	Name string  `json:"name"`
+	Unit string  `json:"unit"`
+	Bool bool    `json:"bool"`
+	Min  float64 `json:"min"`
+	Max  float64 `json:"max"`
+}
+
+// Overridable is implemented by models with measured outputs. The ranges follow the
+// parameters the model was last reset with.
+type Overridable interface {
+	Measured() []Measured
+}

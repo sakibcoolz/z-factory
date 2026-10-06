@@ -172,6 +172,9 @@ class FakeService {
       return this.snapshot(instance);
     },
     events: async (id, after = 0) => this.get(id).events.filter((event) => event.seq > after),
+    overrides: async () => [],
+    setOverride: async () => Promise.reject(new Error("not used")),
+    clearOverride: async () => Promise.reject(new Error("not used")),
   };
 }
 

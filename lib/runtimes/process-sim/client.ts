@@ -5,6 +5,8 @@ import type {
   ProcessSimEvent,
   ProcessSimHealth,
   ProcessSimMetrics,
+  ProcessSimOverrideRequest,
+  ProcessSimSignalState,
   ProcessSimSnapshot,
 } from "@/lib/domain/process-sim";
 
@@ -85,6 +87,15 @@ export function createProcessSimClient(options: {
     step: (id: string, ticks = 1) => request<ProcessSimSnapshot>("POST", `${instance(id)}/step?ticks=${ticks}`),
     setInputs: (id: string, inputs: Record<string, number>) =>
       request<ProcessSimSnapshot>("PUT", `${instance(id)}/inputs`, inputs),
+    overrides: (id: string) =>
+      request<{ signals: ProcessSimSignalState[] }>("GET", `${instance(id)}/overrides`).then((body) => body.signals),
+    setOverride: (id: string, signal: string, override: ProcessSimOverrideRequest) =>
+      request<ProcessSimSignalState>("PUT", `${instance(id)}/overrides/${encodeURIComponent(signal)}`, override),
+    clearOverride: (id: string, signal: string, source?: string) =>
+      request<ProcessSimSignalState>(
+        "DELETE",
+        `${instance(id)}/overrides/${encodeURIComponent(signal)}${source ? `?source=${encodeURIComponent(source)}` : ""}`,
+      ),
     events: (id: string, after = 0) =>
       request<{ events: ProcessSimEvent[] }>("GET", `${instance(id)}/events?after=${after}`).then(
         (body) => body.events,

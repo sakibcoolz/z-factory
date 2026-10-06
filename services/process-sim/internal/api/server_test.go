@@ -130,3 +130,43 @@ func TestLifecycleOverHttp(t *testing.T) {
 		t.Fatalf("unknown field: %d", response.StatusCode)
 	}
 }
+
+func TestOverridesOverHttp(t *testing.T) {
+	ts := newServer(t)
+	if status, _ := call(t, ts, "PUT", "/v1/instances/t1", tankConfig("t1"), true); status != 200 {
+		t.Fatalf("load: %d", status)
+	}
+	status, body := call(t, ts, "PUT", "/v1/instances/t1/overrides/LEVEL", map[string]any{"mode": "MANUAL_OVERRIDE", "value": 97, "source": "tester"}, true)
+	if status != 200 || body["mode"] != "MANUAL_OVERRIDE" || body["effective"] != float64(97) {
+		t.Fatalf("set: %d %v", status, body)
+	}
+	status, body = call(t, ts, "GET", "/v1/instances/t1", nil, true)
+	if status != 200 || body["outputs"].(map[string]any)["LEVEL"] != float64(97) {
+		t.Fatalf("inspect: %d %v", status, body)
+	}
+	status, body = call(t, ts, "GET", "/v1/instances/t1/overrides", nil, true)
+	if status != 200 || len(body["signals"].([]any)) != 2 {
+		t.Fatalf("list: %d %v", status, body)
+	}
+	if status, body = call(t, ts, "PUT", "/v1/instances/t1/overrides/INLET_VALVE_CMD", map[string]any{"mode": "MANUAL_OVERRIDE", "value": 1}, true); status != 422 || body["code"] != "invalid-configuration" {
+		t.Fatalf("command: %d %v", status, body)
+	}
+	if status, _ = call(t, ts, "PUT", "/v1/instances/t1/overrides/LEVEL", map[string]any{"mode": "MANUAL_OVERRIDE", "value": 101}, true); status != 422 {
+		t.Fatalf("range: %d", status)
+	}
+	if status, _ = call(t, ts, "PUT", "/v1/instances/t1/overrides/LEVEL", map[string]any{"mode": "MANUAL_OVERRIDE", "valu": 1}, true); status != 400 {
+		t.Fatalf("unknown field: %d", status)
+	}
+	if status, _ = call(t, ts, "PUT", "/v1/instances/t1/overrides/NOPE", map[string]any{"mode": "MANUAL_OVERRIDE", "value": 1}, true); status != 404 {
+		t.Fatalf("unknown signal: %d", status)
+	}
+	for range 2 {
+		status, body = call(t, ts, "DELETE", "/v1/instances/t1/overrides/LEVEL?source=tester", nil, true)
+		if status != 200 || body["mode"] != "AUTO" {
+			t.Fatalf("clear: %d %v", status, body)
+		}
+	}
+	if status, _ = call(t, ts, "DELETE", "/v1/instances/t1/overrides/LEVEL", nil, false); status != 401 {
+		t.Fatalf("token: %d", status)
+	}
+}

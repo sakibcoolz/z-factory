@@ -50,6 +50,9 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /v1/instances/{id}/step", auth(s.step))
 	mux.Handle("PUT /v1/instances/{id}/inputs", auth(s.inputs))
 	mux.Handle("GET /v1/instances/{id}/events", auth(s.events))
+	mux.Handle("GET /v1/instances/{id}/overrides", auth(s.listOverrides))
+	mux.Handle("PUT /v1/instances/{id}/overrides/{signal}", auth(s.setOverride))
+	mux.Handle("DELETE /v1/instances/{id}/overrides/{signal}", auth(s.clearOverride))
 	return s.logged(mux)
 }
 
@@ -204,6 +207,39 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"events": events})
+}
+
+func (s *Server) listOverrides(w http.ResponseWriter, r *http.Request) {
+	states, err := s.engine.Overrides(r.PathValue("id"))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"signals": states})
+}
+
+func (s *Server) setOverride(w http.ResponseWriter, r *http.Request) {
+	var request engine.OverrideRequest
+	if err := decode(w, r, &request); err != nil {
+		writeJSON(w, http.StatusBadRequest, problem{Error: err.Error(), Code: "bad-request"})
+		return
+	}
+	state, err := s.engine.SetOverride(r.PathValue("id"), r.PathValue("signal"), request)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, state)
+}
+
+// clearOverride returns a measured output to AUTO; `?source=` names who asked.
+func (s *Server) clearOverride(w http.ResponseWriter, r *http.Request) {
+	state, err := s.engine.ClearOverride(r.PathValue("id"), r.PathValue("signal"), r.URL.Query().Get("source"))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, state)
 }
 
 func (s *Server) fail(w http.ResponseWriter, err error) {
