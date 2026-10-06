@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   PLC_LINK_CLIENTS,
   PLC_LINK_LIMITS,
+  PLC_LINK_OPERATIONS,
   PLC_LINK_PROTOCOLS,
   PLC_RELATIONSHIPS,
 } from "@/lib/domain/plc-communication";
@@ -35,3 +36,17 @@ export const plcLinkUpdateSchema = z.strictObject({
 });
 
 export type PlcLinkUpdate = z.infer<typeof plcLinkUpdateSchema>;
+
+/** One value over a link (TASK-702): the client's tag, the server's tag, and what flows. */
+export const plcLinkMappingInputSchema = z.strictObject({
+  operation: z.enum(PLC_LINK_OPERATIONS),
+  localTagId: z.uuid(),
+  remoteTagId: z.uuid(),
+  updateIntervalMs: bounded(PLC_LINK_LIMITS.pollIntervalMs).nullable().optional(),
+  enabled: z.boolean().optional(),
+});
+
+export const plcLinkMappingUpdateSchema = z.strictObject({
+  updateIntervalMs: bounded(PLC_LINK_LIMITS.pollIntervalMs).nullable().optional(),
+  enabled: z.boolean().optional(),
+});

@@ -346,7 +346,7 @@ export function PlcReport({ document }: PlcReportProps) {
         />
         {network.plcLinks.length > 0 ? (
           <Table
-            columns={["Relationship", "Peer PLC", "Role", "Server", "Unit", "Poll", "State", "Version"]}
+            columns={["Relationship", "Peer PLC", "Role", "Server", "Unit", "Poll", "Values", "State", "Version"]}
             rows={network.plcLinks.map((link) => [
               link.relationship.toLowerCase().replace("_", " "),
               link.peer,
@@ -354,6 +354,7 @@ export function PlcReport({ document }: PlcReportProps) {
               `${link.serverHost}:${link.serverPort} (${link.protocol})`,
               String(link.unitId),
               `${link.pollIntervalMs} ms`,
+              String(link.mappings),
               link.enabled ? "enabled" : "disabled",
               `v${link.configVersion}`,
             ])}

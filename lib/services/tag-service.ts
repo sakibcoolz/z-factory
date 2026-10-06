@@ -2,6 +2,7 @@ import "server-only";
 import type { Actor } from "@/lib/auth/actor";
 import type { Db } from "@/lib/db/client";
 import { plcRepository } from "@/lib/db/repositories/plc-repository";
+import { plcCommunicationRepository } from "@/lib/db/repositories/plc-communication-repository";
 import { tagRepository } from "@/lib/db/repositories/tag-repository";
 import { DomainError, isDomainError } from "@/lib/domain/errors";
 import { type TagAuthority, tagAuthority } from "@/lib/domain/tag-authority";
@@ -89,7 +90,10 @@ function mapped(tag: Tag): tag is Tag & { protocolArea: ModbusArea; protocolAddr
   return tag.protocolArea !== null && tag.protocolAddress !== null && tag.logicalAddress !== null;
 }
 
-function toRow(tag: Tag & { protocolArea: ModbusArea; protocolAddress: number; logicalAddress: string }): ModbusMapRow {
+function toRow(
+  tag: Tag & { protocolArea: ModbusArea; protocolAddress: number; logicalAddress: string },
+  linkInputs: ReadonlySet<string> = new Set(),
+): ModbusMapRow {
   return {
     name: tag.name,
     role: tag.role,
@@ -108,7 +112,7 @@ function toRow(tag: Tag & { protocolArea: ModbusArea; protocolAddress: number; l
     unit: tag.unit,
     sourceDeviceInstanceId: tag.sourceDeviceInstanceId,
     sourceSignal: tag.sourceSignal,
-    authority: tagAuthority(tag),
+    authority: tagAuthority({ ...tag, linkInput: linkInputs.has(tag.id) }),
   };
 }
 
@@ -233,7 +237,7 @@ export async function createTagInTransaction(
     });
     await plcRepository.bumpModbusMappingVersion(transaction, device.id);
     if (!mapped(created)) throw new DomainError("INVARIANT", "The tag was stored without its mapping.");
-    return toRow(created);
+    return toRow(created, new Set());
   }
 }
 
@@ -258,7 +262,10 @@ export async function getModbusMap(db: PrismaClient, actor: Actor, plcId: string
     endpoint: port?.hostPort
       ? { bindAddress: port.bindAddress, hostPort: port.hostPort, containerPort: port.containerPort }
       : null,
-    rows: (await tagRepository.listByPlc(db, device.id)).filter(mapped).map(toRow),
+    rows: await (async () => {
+      const linkInputs = await plcCommunicationRepository.linkInputTagIds(db, [device.id]);
+      return (await tagRepository.listByPlc(db, device.id)).filter(mapped).map((tag) => toRow(tag, linkInputs));
+    })(),
   };
 }
 

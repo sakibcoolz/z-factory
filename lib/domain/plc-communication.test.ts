@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { DomainError } from "@/lib/domain/errors";
 import {
+  checkLinkMapping,
   checkPlcLink,
+  type LinkTag,
   type LinkEndpointPlc,
   plcLinkServerHost,
   type PlcLinkView,
@@ -94,5 +96,163 @@ describe("PLC-to-PLC link rules", () => {
       },
       mappings: [],
     });
+  });
+});
+
+describe("PLC link mappings", () => {
+  const link = { clientPlcId: "a", serverPlcId: "b" };
+  const tag = (plcId: string, name: string, overrides: Partial<LinkTag> = {}): LinkTag => ({
+    id: name,
+    plcId,
+    name,
+    dataType: "INT16",
+    unit: null,
+    role: "STATUS",
+    accessMode: "READ_ONLY",
+    logicalAddress: "%MW10",
+    plcIoPointId: null,
+    sourceSignal: null,
+    protocolArea: "HOLDING_REGISTER",
+    protocolAddress: 1034,
+    moduleBound: false,
+    ...overrides,
+  });
+  const command = (name: string, overrides: Partial<LinkTag> = {}) =>
+    tag("b", name, {
+      role: "COMMAND",
+      accessMode: "READ_WRITE",
+      logicalAddress: "%QX100.0",
+      dataType: "BOOL",
+      protocolArea: "COIL",
+      ...overrides,
+    });
+  const mappingRule = (fn: () => unknown) => rule(fn);
+
+  it("reads any server tag into free %M memory of the client", () => {
+    expect(
+      mappingRule(() =>
+        checkLinkMapping(
+          "READ",
+          tag("a", "B_TEMP"),
+          tag("b", "TEMP", { logicalAddress: "%IW0", protocolArea: "INPUT_REGISTER" }),
+          link,
+        ),
+      ),
+    ).toBeUndefined();
+    // A remote output is observed, never driven: reading it is fine.
+    expect(
+      mappingRule(() =>
+        checkLinkMapping(
+          "READ",
+          tag("a", "B_RUN", { dataType: "BOOL", logicalAddress: "%MX5.0", protocolArea: "COIL" }),
+          tag("b", "RUN", { dataType: "BOOL", logicalAddress: "%QX0.0", protocolArea: "COIL", plcIoPointId: "p1" }),
+          link,
+        ),
+      ),
+    ).toBeUndefined();
+  });
+
+  it("refuses a READ into anything the link does not alone own", () => {
+    const remote = tag("b", "TEMP");
+    expect(mappingRule(() => checkLinkMapping("READ", tag("a", "Q", { logicalAddress: "%QW3" }), remote, link))).toBe(
+      "plc-link-local-read",
+    );
+    expect(mappingRule(() => checkLinkMapping("READ", tag("a", "AI", { plcIoPointId: "p" }), remote, link))).toBe(
+      "plc-link-local-read",
+    );
+    expect(
+      mappingRule(() =>
+        checkLinkMapping("READ", tag("a", "C", { role: "SETPOINT", accessMode: "READ_WRITE" }), remote, link),
+      ),
+    ).toBe("plc-link-local-read");
+    expect(mappingRule(() => checkLinkMapping("READ", tag("a", "D", { sourceSignal: "value" }), remote, link))).toBe(
+      "plc-link-local-read",
+    );
+    expect(mappingRule(() => checkLinkMapping("READ", tag("a", "M", { moduleBound: true }), remote, link))).toBe(
+      "plc-link-local-read",
+    );
+  });
+
+  it("writes only a value the client's program computes, and only to a command or setpoint of the server", () => {
+    const programOutput = tag("a", "START_B", { dataType: "BOOL", logicalAddress: "%QX101.0", protocolArea: "COIL" });
+    expect(mappingRule(() => checkLinkMapping("WRITE", programOutput, command("START"), link))).toBeUndefined();
+    expect(
+      mappingRule(() =>
+        checkLinkMapping(
+          "WRITE",
+          tag("a", "SP_B", { logicalAddress: "%MW20" }),
+          command("SP", {
+            role: "SETPOINT",
+            dataType: "INT16",
+            logicalAddress: "%QW100",
+            protocolArea: "HOLDING_REGISTER",
+          }),
+          link,
+        ),
+      ),
+    ).toBeUndefined();
+    // A gateway's command on the client would reach the server past the client's program.
+    const gatewayCommand = tag("a", "GW", {
+      role: "COMMAND",
+      accessMode: "READ_WRITE",
+      dataType: "BOOL",
+      logicalAddress: "%QX102.0",
+    });
+    expect(mappingRule(() => checkLinkMapping("WRITE", gatewayCommand, command("START"), link))).toBe(
+      "plc-link-local-write",
+    );
+    expect(
+      mappingRule(() =>
+        checkLinkMapping(
+          "WRITE",
+          tag("a", "IN", { dataType: "BOOL", plcIoPointId: "p", logicalAddress: "%MX0.0" }),
+          command("START"),
+          link,
+        ),
+      ),
+    ).toBe("plc-link-local-write");
+    // The server's own outputs and feedback are not written from outside.
+    expect(
+      mappingRule(() =>
+        checkLinkMapping(
+          "WRITE",
+          programOutput,
+          tag("b", "RUN", { dataType: "BOOL", logicalAddress: "%QX0.0", plcIoPointId: "p" }),
+          link,
+        ),
+      ),
+    ).toBe("plc-link-remote-write");
+    expect(
+      mappingRule(() =>
+        checkLinkMapping("WRITE", programOutput, tag("b", "FB", { dataType: "BOOL", logicalAddress: "%MX0.1" }), link),
+      ),
+    ).toBe("plc-link-remote-write");
+  });
+
+  it("checks the ends, the mapping, the type and the unit", () => {
+    expect(mappingRule(() => checkLinkMapping("READ", tag("b", "X"), tag("b", "Y"), link))).toBe("plc-link-tag-plc");
+    expect(mappingRule(() => checkLinkMapping("READ", tag("a", "X"), tag("a", "Y"), link))).toBe("plc-link-tag-plc");
+    expect(
+      mappingRule(() =>
+        checkLinkMapping("READ", tag("a", "X"), tag("b", "Y", { protocolArea: null, protocolAddress: null }), link),
+      ),
+    ).toBe("plc-link-modbus");
+    expect(mappingRule(() => checkLinkMapping("READ", tag("a", "X", { dataType: "BOOL" }), tag("b", "Y"), link))).toBe(
+      "plc-link-data-type",
+    );
+    expect(
+      mappingRule(() => checkLinkMapping("READ", tag("a", "X", { unit: "bar" }), tag("b", "Y", { unit: "°C" }), link)),
+    ).toBe("plc-link-unit");
+    // Widths and scaling may differ: the codec carries engineering values and saturates.
+    expect(
+      mappingRule(() =>
+        checkLinkMapping(
+          "READ",
+          tag("a", "X", { dataType: "FLOAT32", logicalAddress: "%MD3" }),
+          tag("b", "Y", { unit: "bar" }),
+          link,
+        ),
+      ),
+    ).toBeUndefined();
   });
 });

@@ -213,6 +213,7 @@ describeDb("PLC-to-PLC links", () => {
         pollIntervalMs: 500,
         enabled: true,
         configVersion: 4,
+        mappings: 0,
       },
     ]);
     const b = await buildPlcExport(db, alice, plcB);
