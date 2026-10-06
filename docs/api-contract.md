@@ -239,7 +239,7 @@ Services in `lib/services/module-io-service.ts` (docs/process-modules.md → The
 Refusals carry a rule in `details.rule`: the mapping rules of docs/process-simulation.md → Bridge (`module-signal-direction`, `module-signal-profile`, `signal-plc-driven`, `signal-address`, `signal-data-type`, `signal-range`, `signal-unit`, `modbus-mapping`, `tag-in-use`), plus `tag-mapped` (`OCCUPIED_ENDPOINT`), `signal-bound`, `signal-unbound`, `module-io-type`, `module-io-profile`, `module-io-tag`, `duplicate-signal`.
 
 ### `plc-communications` (TASK-701)
-Services in `lib/services/plc-communication-service.ts`. Every function takes the `Actor`; a factory, PLC or link of another owner is not found. No screen yet (TASK-704); mappings over a link are TASK-702.
+Services in `lib/services/plc-communication-service.ts`. Every function takes the `Actor`; a factory, PLC or link of another owner is not found. No screen yet (TASK-704).
 
 | Operation | Entry point | Rules |
 |---|---|---|
@@ -252,7 +252,12 @@ Services in `lib/services/plc-communication-service.ts`. Every function takes th
 | versions | `listPlcLinkVersions(db, actor, linkId)` | newest first, each with its snapshot |
 | export | `exportPlcLink(db, actor, linkId)` | `z-factory.plc-link` v1: PLCs by name, roles, endpoint, state, mappings (empty until TASK-702) |
 
-Every change records `PLC_LINK_CHANGED` (family LINK) on the source PLC with `action` created / updated / enabled / disabled / removed and the version.
+| mappings | `listPlcLinkMappings(db, actor, linkId)` | READs first; each with both tags (name, located address, Modbus area and address, type, unit, scale), its own and effective interval, `enabled`, `quality` (null until the runtime of TASK-703) |
+| add mapping | `addPlcLinkMapping(db, actor, linkId, { operation, localTagId, remoteTagId, updateIntervalMs?, enabled? })` | the rules of `docs/database.md` → PlcCommunicationMapping; one writer per value (`plc-link-one-writer`, `OCCUPIED_ENDPOINT`); a new link version |
+| change mapping | `updatePlcLinkMapping(db, actor, linkId, mappingId, { updateIntervalMs?, enabled? })` | a new link version |
+| remove mapping | `removePlcLinkMapping(db, actor, linkId, mappingId)` | the tags stay; a new link version |
+
+Every change records `PLC_LINK_CHANGED` (family LINK) on the source PLC with `action` created / updated / enabled / disabled / removed / mapping added / mapping changed / mapping removed and the version. The export (`z-factory.plc-link`) lists the mappings by tag names with the remote area and address.
 
 ### `plc export` (TASK-304)
 Service: `buildPlcExport(db, actor, plcId, { includeRuntime })` in `lib/services/plc-export-service.ts`, returning the document described in `docs/plc-export.md`.
