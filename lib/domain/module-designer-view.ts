@@ -6,7 +6,7 @@
 import type { ModuleIoCandidate, ModuleIoRegistry } from "@/lib/domain/module-io-view";
 import type { ModuleDetail, ModuleTypeDetail } from "@/lib/domain/process-module-view";
 import type { ProcessQuality } from "@/lib/domain/process-bridge";
-import type { ProcessSimStatus } from "@/lib/domain/process-sim";
+import type { ProcessSimMode, ProcessSimProfile, ProcessSimStatus } from "@/lib/domain/process-sim";
 
 /** A factory device that can fill a role: category accepted, not yet in that role. */
 export type AssignableDevice = {
@@ -34,6 +34,32 @@ export type ModuleRuntimeView = {
   error: string | null;
   /** Null when the simulation service is configured; else why nothing can run. */
   serviceNote: string | null;
+  /**
+   * Values the PLC reads that a test may override (Phase 08, TASK-802): the module's INPUT
+   * signals the process model declares measured; empty while the module does not run.
+   */
+  testInputs: TestInputView[];
+};
+
+/** One value the PLC reads, as the test controls show it. */
+export type TestInputView = {
+  signal: string;
+  name: string;
+  unit: string;
+  bool: boolean;
+  min: number;
+  max: number;
+  mode: ProcessSimMode;
+  calculated: number;
+  effective: number;
+  /** A manual override's value, or the profile of a scenario. */
+  value: number | null;
+  profile: ProcessSimProfile | null;
+  /** Simulated time the current mode began at, and who set it. */
+  sinceTimeS: number;
+  source: string | null;
+  /** The PLC tag the value reaches, when the signal is bound. */
+  tag: string | null;
 };
 
 export type ModuleDesignerView = {

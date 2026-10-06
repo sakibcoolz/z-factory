@@ -2,11 +2,12 @@ import "server-only";
 import type { Actor } from "@/lib/auth/actor";
 import { plcConfigRepository } from "@/lib/db/repositories/plc-config-repository";
 import type { ModuleDesignerView, ModuleRuntimeView, ModulesScreenView } from "@/lib/domain/module-designer-view";
-import { roleAcceptsCategory } from "@/lib/domain/process-module";
+import type { ModuleIoRegistry } from "@/lib/domain/module-io-view";
+import { type ModuleSignal, roleAcceptsCategory } from "@/lib/domain/process-module";
 import type { PrismaClient } from "@/lib/generated/prisma/client";
 import { getFactory } from "./factory-service";
 import { getModuleIoRegistry, listBindableTags } from "./module-io-service";
-import { getProcessBridgeState, type ProcessBridgeDeps } from "./process-bridge-service";
+import { getProcessBridgeState, listProcessOverrides, type ProcessBridgeDeps } from "./process-bridge-service";
 import { getModule, getModuleType, listModules, listModuleTypes } from "./process-module-service";
 
 /**
@@ -43,6 +44,7 @@ async function runtimeOf(process: ProcessBridgeDeps | null, actor: Actor, factor
     plcs: [],
     error: null,
     serviceNote,
+    testInputs: [],
   };
   if (!process) return empty;
   const state = await getProcessBridgeState(process, actor, factoryId);
@@ -61,7 +63,45 @@ async function runtimeOf(process: ProcessBridgeDeps | null, actor: Actor, factor
     plcs: snapshot.plcs,
     error: snapshot.error,
     serviceNote,
+    testInputs: [],
   };
+}
+
+/** The measured values of a running module that the PLC reads, with their mode and values (TASK-802). */
+async function withTestInputs(
+  runtime: ModuleRuntimeView,
+  process: ProcessBridgeDeps | null,
+  actor: Actor,
+  moduleId: string,
+  signals: readonly ModuleSignal[],
+  registry: ModuleIoRegistry,
+): Promise<ModuleRuntimeView> {
+  if (!process || !runtime.bridgeRunning || runtime.status === null) return runtime;
+  const states = await listProcessOverrides(process, actor, moduleId).catch(() => []);
+  const testInputs = states.flatMap((state) => {
+    const signal = signals.find((candidate) => candidate.key === state.signal && candidate.direction === "INPUT");
+    if (!signal) return [];
+    const binding = registry.rows.find((row) => row.signal.key === signal.key)?.binding ?? null;
+    return [
+      {
+        signal: state.signal,
+        name: signal.name,
+        unit: state.unit || signal.unit || "",
+        bool: state.bool,
+        min: state.min,
+        max: state.max,
+        mode: state.mode,
+        calculated: state.calculated,
+        effective: state.effective,
+        value: state.value ?? null,
+        profile: state.profile ?? null,
+        sinceTimeS: state.sinceTimeS,
+        source: state.source ?? null,
+        tag: binding ? `${binding.plcName} · ${binding.tagName}` : null,
+      },
+    ];
+  });
+  return { ...runtime, testInputs };
 }
 
 /** One module's screen: detail, type, registry with candidates, assignable devices, PLC nodes and live state. */
@@ -114,6 +154,13 @@ export async function getModuleDesigner(
     candidates,
     assignable,
     plcs,
-    runtime: await runtimeOf(process, actor, detail.factoryId, moduleId),
+    runtime: await withTestInputs(
+      await runtimeOf(process, actor, detail.factoryId, moduleId),
+      process,
+      actor,
+      moduleId,
+      detail.signals,
+      registry,
+    ),
   };
 }
