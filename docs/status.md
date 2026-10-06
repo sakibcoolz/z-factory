@@ -61,6 +61,8 @@ Last architecture documentation update: 2026-10-06
 - Cross-factory PLC-to-PLC links are out of scope for Phase 07.
 
 ## Planning gate
+- TASK-205 = ZFA-38 (Todo): program-authoritative I/O semantics and physical-target boundary.
+
 - TASK-205 is planned and must be mirrored to Linear as the Phase 02 follow-up for ADR-0015.
 
 - New follow-up tasks are mirrored to Linear: TASK-307 = ZFA-34 (Done), TASK-308 = ZFA-35 (Done), TASK-309 = ZFA-37 (Done), TASK-405 = ZFA-36 (Done).
