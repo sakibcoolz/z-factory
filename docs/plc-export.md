@@ -15,7 +15,7 @@ The PDF-oriented report should contain:
 8. Modbus/register map including type/scaling/access/role
 9. Connected device schedule
 10. Device-to-device/control relationships
-11. Gateway/network/protocol configuration
+11. Gateway/network/protocol configuration (with the PLC-to-PLC links the PLC takes part in, TASK-701)
 12. Program/config/runtime versions
 13. Runtime health/status snapshot when requested
 14. Topology/wiring diagram
