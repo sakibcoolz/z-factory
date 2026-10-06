@@ -27,7 +27,7 @@ Last architecture documentation update: 2026-10-06
 - OpenPLC runtime adapter implemented (TASK-202 done, ADR-0009): Structured Text is compiled with STruC++, deployed to the official OpenPLC Runtime v4 container and executed; program versions, runtime metadata, state and events are persisted; raw tag access over Modbus TCP works. Operated from the PLC screens since TASK-305.
 - Modbus tag mapping implemented (TASK-203 done): tag registry with derived Modbus addresses, typed read/write with permissions by role, command records, and a configurable, validated host endpoint per PLC. Typed tag reading and writing has no screen yet (Live Tags, TASK-401).
 - Device simulator implemented (TASK-204 done, ADR-0010): shared in-process simulator for VFD, motor, pump and other motor-driven loads, valve, sensor and switch; PLC bridge over Modbus; fault injection, reset and forced inputs; events and snapshots. Closed loop verified against a real OpenPLC runtime. Operated from the simulator screen since TASK-305.
-- Phase 02 complete.
+- Phase 02 core tasks 201–204 are complete. Phase 02 is reopened for TASK-205 (planned): program-authoritative I/O semantics and the physical-target boundary.
 - Program, versions, runtime and simulator screens implemented for stored PLCs (TASK-305 done): edit, check, save and deploy Structured Text; versions and deployment snapshots; start, deploy, restart, stop and remove the OpenPLC runtime with its state and failures; start and stop the device simulation with live device states and fault injection. Verified in a browser and against a real OpenPLC runtime.
 - PLC engineering export implemented (TASK-304 done): one normalized document per PLC rendered as a printable 15-section report, a JSON file and three CSV schedules, with a configuration revision and a redaction check.
 - Factory designer implemented (TASK-303 done): React Flow canvas for stored factories with a catalog palette, saved positions, typed and validated connections, a state overlay and a read-only topology view.
@@ -61,6 +61,8 @@ Last architecture documentation update: 2026-10-06
 - Cross-factory PLC-to-PLC links are out of scope for Phase 07.
 
 ## Planning gate
+- TASK-205 is planned and must be mirrored to Linear as the Phase 02 follow-up for ADR-0015.
+
 - New follow-up tasks are mirrored to Linear: TASK-307 = ZFA-34 (Done), TASK-308 = ZFA-35 (Done), TASK-309 = ZFA-37 (Done), TASK-405 = ZFA-36 (Done).
 
 Phase task Markdown remains the execution unit. Linear mirrors every task of Phases 00–07: the Phase 06 tasks TASK-601–605 are ZFA-24 to ZFA-28 and the Phase 07 tasks TASK-701–704 are ZFA-29 to ZFA-32, each in its phase milestone and in the backlog (mirrored 2026-10-05). Phase 06 was started by the owner on 2026-10-05 with TASK-601; Phase 07 is not active until the owner starts a task of it. Phase 00 is closed.
