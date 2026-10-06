@@ -24,6 +24,9 @@ Examples:
 - CONNECTION_UP / CONNECTION_DOWN
 - FAULT_INJECTED / FAULT_CLEARED
 - ALARM_RAISED / ALARM_ACKNOWLEDGED / ALARM_CLEARED
+- PROCESS_BRIDGE_STARTED / PROCESS_BRIDGE_STOPPED
+- PROCESS_STATE_CHANGED / PROCESS_QUALITY_CHANGED (family PROCESS)
+- PROCESS_ALARM_RAISED / PROCESS_ALARM_CLEARED
 
 ## Event envelope
 ```json
@@ -48,6 +51,11 @@ Telemetry persistence is configurable by tag/device. Use sampling, change thresh
 
 ## Quality
 Live values should carry quality/state such as GOOD, STALE, BAD, DISCONNECTED and a timestamp so the UI can distinguish a valid value from an old one.
+
+A process module in the bridge (TASK-603, docs/process-simulation.md → Bridge) carries `GOOD`, `STALE` (the simulation service could not advance the model; the values are from an earlier cycle) or `DISCONNECTED` (a PLC the module exchanges with does not answer; its commands count as de-energized). Changes are recorded as `PROCESS_QUALITY_CHANGED` with `module`, `from`, `to` and the cause.
+
+### Process alarms (TASK-603)
+An ALARM signal of a process module that becomes active records `PROCESS_ALARM_RAISED` (`module`, `moduleId`, `code` = signal key, `name`) and raises the alarm `PROCESS:<module>/<signal>` without a device; it clears with `PROCESS_ALARM_CLEARED`, and `PROCESS_BRIDGE_STOPPED` clears every process alarm of the factory. The model's own `ALARM_*` events are not repeated; its other events (`PUMP_STARTED`, …) are recorded as `PROCESS_STATE_CHANGED` with `module`, `event`, `message`, `tick` and the model's values.
 
 ## Implementation (TASK-204)
 - Envelope type: `lib/domain/events.ts`. In-process bus: `lib/events/bus.ts` (`getEventBus()`); it keeps no history. The SSE transport is not built yet.

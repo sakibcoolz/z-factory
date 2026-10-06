@@ -135,6 +135,11 @@ function toDeviceView(assignment: ModuleRecord["devices"][number]): ModuleDevice
   };
 }
 
+/** A stored module as its screen shows it, with the issues that keep it from being complete. */
+export function toModuleDetail(record: ModuleRecord): ModuleDetail {
+  return toDetail(record);
+}
+
 function toDetail(record: ModuleRecord): ModuleDetail {
   const type = toModuleTypeDefinition(record.processModuleType);
   const signals = effectiveSignals(type.signals, record.profile);

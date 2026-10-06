@@ -4,8 +4,8 @@ The process simulation service (`services/process-sim`, Go) is the ADR-0008 runt
 process modules: a deterministic tick loop that hosts many module instances in one
 process, behind a small JSON API that only the Z-Factory server talks to. It computes the
 process response to what the PLC commands; the PLC stays the control authority. Built in
-TASK-602; the bridge to PLC tags is TASK-603, the module designer TASK-604, the I/O
-registry TASK-605.
+TASK-602; the bridge to PLC tags is below (TASK-603); the module designer is TASK-604, the
+I/O registry TASK-605.
 
 ## Boundaries
 - **Additive.** Nothing of Phases 02–05 depends on it. The shared device simulator
@@ -97,8 +97,83 @@ the inflow and outflow rates; an empty tank gives nothing; alarms at the configu
 
 The service's model versions are the model's equations; a changed model is a new version
 and Z-Factory names the version it configured (`modelVersion`), so a mismatch is refused.
-The shipped process module types still carry `simulatorModelType: null`; naming the model
-on a type is a new type version and belongs with the bridge (TASK-603).
+The shipped module types `PUMP_HOUSE` and `TANK` name the model of the same name in
+`simulatorModelType` (`lib/process-modules/types.ts`; `PROCESS_SIM_MODELS` in
+`lib/domain/process-sim.ts` gives the version). The column was reserved for this and is the
+one thing a stored type version takes after the fact (migration `process_model_link`):
+roles, signals and settings stay as they are, so nothing bound to them moves.
+
+## Bridge (TASK-603)
+The process bridge (`lib/runtimes/process-bridge/runtime.ts`, service
+`lib/services/process-bridge-service.ts`) is the closed loop between the models in the
+service and the PLCs of a factory:
+
+```text
+PLC program -> tag the program drives (%Q/%M) -> Modbus read  -> module OUTPUT signal -> model input
+model output -> module INPUT/ALARM signal     -> Modbus write -> memory tag (%M)      -> PLC program
+```
+
+**Mappings.** One module signal is carried by one PLC tag. The bridge receives mappings as
+`{ moduleId, signalKey, tagId }`; storing and allocating them is the module I/O registry
+(TASK-605). Whoever supplies them, `lib/domain/process-bridge.ts` decides whether they are
+accepted, with the same rules the device simulator applies to device signals:
+
+| Rule | Refuses |
+| --- | --- |
+| `module-signal-direction` | an INTERNAL signal: the model computes it, no tag carries it |
+| `modbus-mapping` | a tag without a Modbus mapping, or one of another factory |
+| `tag-in-use` | a tag that already carries a device signal |
+| `signal-plc-driven` | a tag a gateway may write (COMMAND/SETPOINT, READ_WRITE): the process is wired to what the program computes (ADR-0006) |
+| `signal-address` | a command into the process that is not on `%Q` or `%M`; feedback that is not on `%M` (the runtime's Modbus server does not accept writes to `%I` or `%Q`, ADR-0009) |
+| `signal-data-type` | on/off on a register tag or a number on a BOOL tag; numeric widths may differ, the codec scales |
+| `signal-range` | a signal range the tag's `raw × scale + offset` range cannot carry |
+| `signal-unit` | a tag whose unit differs from the signal's (a tag without a unit takes the signal's) |
+| `duplicate-signal`, `duplicate-tag` | a signal mapped twice; a tag carrying two signals |
+| `address-overlap` | two mapped tags of one PLC whose registers or bits share an address |
+| `required-signal` | a required signal of the module's profile without a mapping |
+| `module-role-*`, `module-interlock` | an incomplete module (docs/process-modules.md): it does not run |
+
+A module with any issue is *blocked* and the bridge does not start; the error names the
+module, the rule and the signal (`rule: process-mapping`). A module whose type names no
+model is *skipped* with a reason. Optional signals may stay unmapped: the model uses its
+defaults (a pump house without a speed setpoint runs at full speed).
+
+**Timing.** The models are loaded with the `manual` clock. Every `PROCESS_BRIDGE_CYCLE_MS`
+(default 200) the bridge reads the PLC-driven tags of every module, sends changed inputs,
+steps each model by `cycleMs / PROCESS_SIM_TICK_MS` ticks (default 100 ms per tick, so two
+ticks) and writes the outputs that changed, plus a periodic refresh of everything. One
+cycle is therefore exactly one cycle of simulated time, however long the exchange took: a
+slow PLC or a slow service makes the process wait, never jump ahead. A cycle still in
+flight makes the next timer tick a no-op.
+
+**Codecs and scaling.** The PLC bridge of the device simulator carries the values
+(`lib/runtimes/device-sim/bridge.ts`): BOOL on coils, INT16/UINT16/INT32/UINT32/FLOAT32 on
+holding registers with the tag's byte order, word order, scale and offset; a value beyond
+the tag's range saturates. The model sees engineering values: a `%QW` setpoint with scale
+0.01 arrives as 75.5 %, and a pressure in bar is written as a REAL into `%MD`, so the
+program declares it `REAL`.
+
+**Quality.** Every module carries a quality: `GOOD`; `STALE` while the service could not
+advance the model (its values are from an earlier cycle; the PLC keeps the last feedback,
+nothing is invented); `DISCONNECTED` while a PLC the module exchanges with does not answer
+(it gets no feedback and its commands count as de-energized, as with the device
+simulator). A service that restarted and forgot an instance gets it loaded again on the
+next cycle. Changes are recorded as `PROCESS_QUALITY_CHANGED`.
+
+**Events.** `PROCESS_BRIDGE_STARTED`/`STOPPED` (factory level); `CONNECTION_UP`/`DOWN`
+with `link: process-bridge` per PLC; `PROCESS_STATE_CHANGED` for the model's own events
+(`PUMP_STARTED`, …) with the module, event, message and tick; `PROCESS_ALARM_RAISED`/
+`CLEARED` derived from the module's ALARM signals, which raise and clear an alarm coded
+`PROCESS:<module>/<signal>` (docs/events-telemetry.md). Stopping the bridge clears its
+alarms. Live module state (status, quality, inputs, outputs, active alarms, PLC links) is
+read from bridge memory; events are the history.
+
+**Lifecycle.** `startProcessBridge(deps, actor, factoryId, mappings)` plans, validates,
+loads and starts; it needs `PROCESS_SIM_URL`/`PROCESS_SIM_TOKEN` and a configured Modbus
+endpoint on every mapped PLC (a PLC that is not running drives nothing until it comes up).
+`stopProcessBridge` unloads the models; `stopFactory` stops the bridge first. `startFactory`
+does not start it until the registry (TASK-605) supplies the mappings. The module's stored
+`status` follows the bridge (RUNNING/STOPPED).
 
 ## Observability
 Structured JSON logs (`log/slog`) for every request, instance lifecycle change and event.
@@ -113,8 +188,9 @@ tick, model types.
   a distroless static binary as a non-root user, read-only filesystem, all capabilities
   dropped, `no-new-privileges`, 1 CPU, 256 MB, 128 processes, port `127.0.0.1:7700`.
 - Z-Factory: `PROCESS_SIM_URL` and `PROCESS_SIM_TOKEN` (both optional; without them there
-  is no process simulation). The client is `createProcessSimClient` in
-  `lib/runtimes/process-sim/client.ts`.
+  is no process simulation), `PROCESS_SIM_TICK_MS` and `PROCESS_BRIDGE_CYCLE_MS` for the
+  bridge. The client is `createProcessSimClient` in `lib/runtimes/process-sim/client.ts`.
 - Tests: `go test -race ./...` in the service; `test/integration/process-sim.test.ts`
   starts the built binary when `PROCESS_SIM_BIN` names it, drives it through the client and
-  restarts it. CI builds the binary and runs both.
+  restarts it; `test/integration/process-bridge-runtime.test.ts` runs the bridge between the
+  binary and a real OpenPLC runtime (`TEST_DOCKER=1`). CI builds the binary and runs all.

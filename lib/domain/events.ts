@@ -29,7 +29,17 @@ export type NewRuntimeEvent = {
  * Event families shown as filters. Every event type belongs to exactly one; a type the
  * list does not know is an `OTHER` event, so a new type never disappears from a view.
  */
-export const EVENT_FAMILIES = ["LIFECYCLE", "PROGRAM", "DEVICE", "FAULT", "ALARM", "COMMAND", "LINK", "OTHER"] as const;
+export const EVENT_FAMILIES = [
+  "LIFECYCLE",
+  "PROGRAM",
+  "DEVICE",
+  "PROCESS",
+  "FAULT",
+  "ALARM",
+  "COMMAND",
+  "LINK",
+  "OTHER",
+] as const;
 export type EventFamily = (typeof EVENT_FAMILIES)[number];
 
 const FAMILY_BY_TYPE: Record<string, EventFamily> = {
@@ -44,6 +54,12 @@ const FAMILY_BY_TYPE: Record<string, EventFamily> = {
   CONTAINER_EXITED: "LIFECYCLE",
   SIMULATION_STARTED: "LIFECYCLE",
   SIMULATION_STOPPED: "LIFECYCLE",
+  PROCESS_BRIDGE_STARTED: "LIFECYCLE",
+  PROCESS_BRIDGE_STOPPED: "LIFECYCLE",
+  PROCESS_STATE_CHANGED: "PROCESS",
+  PROCESS_QUALITY_CHANGED: "PROCESS",
+  PROCESS_ALARM_RAISED: "ALARM",
+  PROCESS_ALARM_CLEARED: "ALARM",
   PLC_PROGRAM_DEPLOYED: "PROGRAM",
   PLC_PROGRAM_DEPLOY_FAILED: "PROGRAM",
   DEVICE_STATE_CHANGED: "DEVICE",
@@ -88,6 +104,8 @@ export function eventTypesOf(family: EventFamily): string[] {
 const EVENT_DETAIL_KEYS = [
   "message",
   "name",
+  "module",
+  "event",
   "action",
   "tag",
   "value",

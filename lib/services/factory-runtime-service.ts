@@ -6,6 +6,7 @@ import { getFactory } from "./factory-service";
 import { type GatewayDeps, syncGatewayEndpoints } from "./gateway-service";
 import { type LiveDeps, stopPlcMonitoring, syncFactoryMonitoring } from "./live-service";
 import { type RuntimeDeps, startPlc, stopPlc } from "./plc-runtime-service";
+import { type ProcessBridgeDeps, stopProcessBridge } from "./process-bridge-service";
 import {
   getSimulationState,
   type SimulationDeps,
@@ -25,6 +26,11 @@ export type FactoryRuntimeDeps = {
   simulation: SimulationDeps;
   live: LiveDeps;
   gateway: GatewayDeps;
+  /**
+   * The process bridge (TASK-603). Stopping the factory stops it; starting it needs the
+   * module I/O mappings of the registry (TASK-605), so a factory start does not start it yet.
+   */
+  process?: ProcessBridgeDeps;
 };
 
 export type FactoryRuntimeResult = {
@@ -86,8 +92,8 @@ export async function startFactory(
 }
 
 /**
- * Stops the factory: the simulation first, so the last device states are stored while the
- * PLCs still answer, then every PLC runtime. Gateway endpoints stay open and answer that
+ * Stops the factory: the process bridge and the simulation first, so the last states are
+ * stored while the PLCs still answer, then every PLC runtime. Gateway endpoints stay open and answer that
  * the PLC does not respond; containers are stopped, not removed.
  */
 export async function stopFactory(
@@ -96,6 +102,7 @@ export async function stopFactory(
   factoryId: string,
 ): Promise<FactoryRuntimeResult> {
   const factory = await getFactory(deps.runtime.db, actor, factoryId);
+  if (deps.process?.bridge.isRunning(factory.id)) await stopProcessBridge(deps.process, actor, factory.id);
   if (deps.simulation.simulator.isRunning(factory.id)) await stopFactorySimulation(deps.simulation, actor, factory.id);
 
   const stopped: FactoryRuntimeResult["plcs"] = [];

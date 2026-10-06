@@ -75,7 +75,7 @@ export type ModuleTypeDefinition = {
   name: string;
   version: number;
   description: string | null;
-  /** The process model that simulates the type; null until one exists (TASK-602). */
+  /** The process model (`services/process-sim`) that simulates the type; null for a type without one. */
   simulatorModelType: string | null;
   /** Selectable variants; roles and signals may apply to some of them only. */
   profiles: string[];

@@ -32,6 +32,7 @@ const FAMILY_LABEL: Record<EventFamily, string> = {
   LIFECYCLE: "Lifecycle",
   PROGRAM: "Program",
   DEVICE: "Device state",
+  PROCESS: "Process",
   FAULT: "Faults",
   ALARM: "Alarms",
   COMMAND: "Commands",

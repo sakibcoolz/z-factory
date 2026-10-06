@@ -1074,7 +1074,7 @@ model ProcessModuleType {
   name               String
   version            Int      @default(1)
   description        String?
-  /// The process model that simulates this type (TASK-602); null until one exists.
+  /// The process model (services/process-sim) that simulates this type; null for a type without one.
   simulatorModelType String?
   /// Selectable variants of the template; a signal may apply to some of them only.
   profiles           String[]
@@ -1156,7 +1156,7 @@ model ProcessModuleInstance {
   processModuleTypeId String       @db.Uuid
   name                String
   location            String?
-  /// Last stored runtime state; a module runs only once a process runtime exists (TASK-602).
+  /// Last stored runtime state: RUNNING while the process bridge runs the module (TASK-603).
   status              RuntimeState @default(STOPPED)
   /// The selected profile of the type; null when the type has none.
   profile             String?

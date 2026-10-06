@@ -2,7 +2,14 @@ import "server-only";
 import type { Actor } from "@/lib/auth/actor";
 import { type EventFilter, eventRepository } from "@/lib/db/repositories/event-repository";
 import { factoryRepository } from "@/lib/db/repositories/factory-repository";
-import { type AlarmEffect, alarmEffects, alarmState, type AlarmState, FAULT_ALARM_PREFIX } from "@/lib/domain/alarms";
+import {
+  type AlarmEffect,
+  alarmEffects,
+  alarmState,
+  type AlarmState,
+  FAULT_ALARM_PREFIX,
+  PROCESS_ALARM_PREFIX,
+} from "@/lib/domain/alarms";
 import { DomainError } from "@/lib/domain/errors";
 import {
   EVENT_VERSION,
@@ -97,7 +104,9 @@ async function applyEffect(
               notIn: effect.stillActive.map((code) => `${FAULT_ALARM_PREFIX}${code}`),
             },
           }
-        : { factoryId, code: { startsWith: FAULT_ALARM_PREFIX } },
+        : effect.kind === "CLEAR_PROCESS"
+          ? { factoryId, code: { startsWith: PROCESS_ALARM_PREFIX } }
+          : { factoryId, code: { startsWith: FAULT_ALARM_PREFIX } },
   );
   if (active.length === 0) return [];
   await eventRepository.clearAlarms(
