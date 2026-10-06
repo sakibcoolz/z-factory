@@ -18,6 +18,17 @@ Cloud / Remote UI
 
 The gateway must not directly mutate VFD, motor, pump or valve simulator state.
 
+## Local output ownership
+Modbus access must not be interpreted as ownership of a PLC's local physical outputs.
+
+A gateway writes only explicit command/setpoint/communication tags. PLC logic then evaluates permissives/interlocks and writes the local output image. On a real PLC, the CPU writes that output image to the physical output module directly during its scan cycle.
+
+```text
+Gateway Modbus write -> command/setpoint -> PLC logic -> %Q output -> physical/simulated device
+```
+
+A direct Modbus write to an address that represents a local output may exist at the raw runtime/protocol level, but Z-Factory must not expose it as the normal production-control path. Direct output forcing, if added later, is a separate diagnostic feature with explicit safety controls.
+
 ## Feedback path
 
 ```text
