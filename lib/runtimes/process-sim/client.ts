@@ -58,7 +58,10 @@ export function createProcessSimClient(options: {
         case "not-found":
           throw new DomainError("NOT_FOUND", message, { rule: "process-sim" });
         case "invalid-configuration":
-          throw new DomainError("VALIDATION", message, { rule: "process-sim-configuration" });
+          // The service prefixes its refusals; the reason itself is what a person needs.
+          throw new DomainError("VALIDATION", message.replace(/^invalid configuration: /, ""), {
+            rule: "process-sim-configuration",
+          });
         case "wrong-state":
           throw new DomainError("CONFLICT", message, { rule: "process-sim-state" });
         case "unauthorized":

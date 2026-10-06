@@ -14,7 +14,12 @@ import {
   rebindModuleSignal,
   releaseModuleSignal,
 } from "@/lib/services/module-io-service";
-import { startProcessBridge, stopProcessBridge } from "@/lib/services/process-bridge-service";
+import {
+  clearProcessOverride,
+  setProcessOverride,
+  startProcessBridge,
+  stopProcessBridge,
+} from "@/lib/services/process-bridge-service";
 import {
   addModuleInterlock,
   assignModuleDevice,
@@ -215,5 +220,44 @@ export async function processBridgeAction(
     const state = await startProcessBridge(deps, actor, factoryId);
     const count = state.running ? state.modules.length : 0;
     return `The process bridge runs ${count} module${count === 1 ? "" : "s"}.${state.skipped.length > 0 ? ` Left alone: ${state.skipped.map((entry) => entry.name).join(", ")}.` : ""}`;
+  });
+}
+
+/**
+ * Overrides a value the PLC reads, or clears it (Phase 08, TASK-802). Only the simulation
+ * changes: the PLC program sees the new value and decides; no PLC output is written.
+ */
+export async function overrideAction(
+  factoryId: string,
+  moduleId: string,
+  signal: string,
+  _previous: OperationState,
+  formData: FormData,
+): Promise<OperationState> {
+  const operation = field(formData, "operation");
+  return run(factoryId, moduleId, `override.${operation}`, async () => {
+    const actor = await requireActor();
+    const deps = getProcessBridgeDeps();
+    if (operation === "clear") {
+      const state = await clearProcessOverride(deps, actor, moduleId, signal);
+      return `${signal} is back to AUTO: ${state.effective}${state.unit ? ` ${state.unit}` : ""} from the model.`;
+    }
+    const number = (name: string) => {
+      const value = field(formData, name);
+      if (value === "")
+        throw new DomainError("VALIDATION", `Enter ${name === "value" ? "a value" : name}.`, { field: name });
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed)) throw new DomainError("VALIDATION", `${value} is not a number.`, { field: name });
+      return parsed;
+    };
+    const mode = field(formData, "mode");
+    const state =
+      mode === "SCENARIO"
+        ? await setProcessOverride(deps, actor, moduleId, signal, {
+            mode: "SCENARIO",
+            profile: { kind: "RAMP", from: number("from"), to: number("to"), durationS: number("durationS") },
+          })
+        : await setProcessOverride(deps, actor, moduleId, signal, { mode: "MANUAL_OVERRIDE", value: number("value") });
+    return `${signal} is in ${state.mode}: the PLC now reads ${state.effective}${state.unit ? ` ${state.unit}` : ""}; the model calculates ${state.calculated}.`;
   });
 }

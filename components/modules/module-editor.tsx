@@ -7,7 +7,14 @@ import type { ModuleIoRow } from "@/lib/domain/module-io-view";
 import type { ProcessQuality } from "@/lib/domain/process-bridge";
 import type { OperationState } from "@/lib/plc/operation-state";
 import { routes } from "@/lib/navigation/routes";
-import { ImportIoForm, InterlockForm, ModuleSettingsForm, RoleAssignForm, SignalBindForm } from "./module-forms";
+import {
+  ImportIoForm,
+  InterlockForm,
+  ModuleSettingsForm,
+  RoleAssignForm,
+  SignalBindForm,
+  TestInputRow,
+} from "./module-forms";
 import { ReadinessPill } from "./module-list";
 import { ModuleTopology } from "./module-topology";
 
@@ -21,6 +28,8 @@ export type ModuleEditorActions = {
   interlock: Action;
   importIo: Action;
   bridge: Action;
+  /** Overrides one value the PLC reads (Phase 08). */
+  override: (signal: string) => Action;
 };
 
 /** The editor's sections, in the order of docs/design.md. */
@@ -407,6 +416,34 @@ export function ModuleEditor({ view, actions }: { view: ModuleDesignerView; acti
             ))}
           </tbody>
         </table>
+      ) : null}
+      {runtime.testInputs.length > 0 ? (
+        <>
+          <SectionRule>
+            <span id="test-inputs" className="zf-k">
+              Test inputs · values the PLC reads
+            </span>
+          </SectionRule>
+          <p className="zf-error whitespace-normal" role="note">
+            Changing a value here changes what the PLC program reads: it may switch outputs, trip interlocks or raise
+            alarms. Only the simulation changes; the PLC&apos;s outputs stay its own and are read-only here.
+          </p>
+          <table className="zf-tbl" aria-label="Test inputs">
+            <thead>
+              <tr>
+                <th>Value the PLC reads</th>
+                <th>Delivered</th>
+                <th>Source</th>
+                <th>Test control</th>
+              </tr>
+            </thead>
+            <tbody>
+              {runtime.testInputs.map((input) => (
+                <TestInputRow key={input.signal} input={input} action={actions.override(input.signal)} />
+              ))}
+            </tbody>
+          </table>
+        </>
       ) : null}
       <p className="zf-sub">
         Live values come from bridge memory and are read on each refresh; the history is in{" "}

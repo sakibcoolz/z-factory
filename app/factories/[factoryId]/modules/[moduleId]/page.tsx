@@ -20,6 +20,7 @@ import {
   moduleDeviceAction,
   moduleInterlockAction,
   moduleSignalAction,
+  overrideAction,
   processBridgeAction,
   updateModuleAction,
 } from "./actions";
@@ -113,6 +114,7 @@ export default async function ModulePage({ params }: ModulePageProps) {
             interlock: bind(moduleInterlockAction),
             importIo: bind(importModuleIoAction),
             bridge: bind(processBridgeAction),
+            override: (signal) => overrideAction.bind(null, factoryId, moduleId, signal),
           }}
         />
       </Content>

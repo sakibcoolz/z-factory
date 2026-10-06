@@ -16,6 +16,7 @@ const actions: ModuleEditorActions = {
   interlock: noop,
   importIo: noop,
   bridge: noop,
+  override: () => noop,
 };
 
 const signal = (
@@ -267,6 +268,7 @@ const view: ModuleDesignerView = {
     plcs: [],
     error: null,
     serviceNote: null,
+    testInputs: [],
   },
 };
 
@@ -362,6 +364,90 @@ describe("module editor", () => {
     expect(live.getByText("2.94 bar")).toBeInTheDocument();
     expect(live.getAllByText("on")).toHaveLength(2);
     expect(live.getByText("42")).toBeInTheDocument();
+  });
+});
+
+describe("test inputs (Phase 08)", () => {
+  const running = (testInputs: ModuleDesignerView["runtime"]["testInputs"]): ModuleDesignerView => ({
+    ...view,
+    module: { ...detail, readyToRun: true, status: "RUNNING" },
+    runtime: {
+      ...view.runtime,
+      bridgeRunning: true,
+      status: "RUNNING",
+      quality: "GOOD",
+      tick: 100,
+      timeS: 10,
+      outputs: { PRESSURE: 3.5 },
+      testInputs,
+    },
+  });
+  const pressure = {
+    signal: "PRESSURE",
+    name: "pressure",
+    unit: "bar",
+    bool: false,
+    min: 0,
+    max: 12,
+    mode: "AUTO" as const,
+    calculated: 2.94,
+    effective: 2.94,
+    value: null,
+    profile: null,
+    sinceTimeS: 0,
+    source: null,
+    tag: "PLC-01 · PH_Pressure",
+  };
+
+  it("lists each value the PLC reads with what is delivered and where it comes from, and warns", () => {
+    render(
+      <ModuleEditor
+        view={running([
+          pressure,
+          {
+            ...pressure,
+            signal: "VALVE_OPEN",
+            name: "valve open",
+            unit: "",
+            bool: true,
+            min: 0,
+            max: 1,
+            effective: 1,
+            calculated: 0,
+            mode: "MANUAL_OVERRIDE",
+            value: 1,
+            sinceTimeS: 4.2,
+            source: "alice",
+            tag: null,
+          },
+        ])}
+        actions={actions}
+      />,
+    );
+    const table = within(screen.getByRole("table", { name: "Test inputs" }));
+    expect(table.getByText("2.94 bar")).toBeInTheDocument();
+    expect(table.getByText("AUTO")).toBeInTheDocument();
+    expect(table.getByText("from the model")).toBeInTheDocument();
+    expect(table.getByText("pressure → PLC-01 · PH_Pressure")).toBeInTheDocument();
+    expect(table.getByText("MANUAL_OVERRIDE")).toBeInTheDocument();
+    expect(table.getByText("model: off")).toBeInTheDocument();
+    expect(table.getByText("since 4.2 s · by alice")).toBeInTheDocument();
+    expect(screen.getByRole("note")).toHaveTextContent(/may switch outputs/);
+    // Clear is offered only where there is something to clear.
+    const rows = table.getAllByRole("row").slice(1);
+    expect(within(rows[0]!).getByRole("button", { name: "Clear" })).toBeDisabled();
+    expect(within(rows[1]!).getByRole("button", { name: "Clear" })).toBeEnabled();
+    // A switch takes on/off, a number a value or a ramp.
+    expect(within(rows[1]!).getByRole("combobox", { name: "Value for VALVE_OPEN" })).toBeInTheDocument();
+    fireEvent.change(within(rows[0]!).getByRole("combobox", { name: "Mode for PRESSURE" }), {
+      target: { value: "SCENARIO" },
+    });
+    expect(within(rows[0]!).getByRole("spinbutton", { name: "Ramp to for PRESSURE" })).toBeInTheDocument();
+  });
+
+  it("shows no test controls while the module does not run", () => {
+    render(<ModuleEditor view={view} actions={actions} />);
+    expect(screen.queryByRole("table", { name: "Test inputs" })).not.toBeInTheDocument();
   });
 });
 

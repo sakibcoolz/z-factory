@@ -1,7 +1,7 @@
 "use client";
 
 import { type ReactNode, useActionState, useState } from "react";
-import type { AssignableDevice } from "@/lib/domain/module-designer-view";
+import type { AssignableDevice, TestInputView } from "@/lib/domain/module-designer-view";
 import type { ModuleIoCandidate, ModuleIoRow } from "@/lib/domain/module-io-view";
 import { INTERLOCK_OPERATORS, type ModuleSignal } from "@/lib/domain/process-module";
 import type { ModuleDetail, ModuleTypeDetail } from "@/lib/domain/process-module-view";
@@ -362,5 +362,156 @@ export function ImportIoForm({ action }: { action: Action }) {
       </p>
       <Result state={state} pending={pending} />
     </form>
+  );
+}
+
+const formatValue = (value: number, input: TestInputView) =>
+  input.bool ? (value !== 0 ? "on" : "off") : `${value}${input.unit ? ` ${input.unit}` : ""}`;
+
+const modeLabel = (input: TestInputView) => {
+  if (input.mode === "AUTO") return "AUTO";
+  if (input.mode === "MANUAL_OVERRIDE") return "MANUAL_OVERRIDE";
+  const profile = input.profile;
+  return profile?.kind === "RAMP"
+    ? `SCENARIO ramp ${profile.from} → ${profile.to} in ${profile.durationS} s`
+    : "SCENARIO";
+};
+
+/**
+ * One value the PLC reads, with its test controls (Phase 08, TASK-802): what is delivered and
+ * where it comes from, a manual value or a ramp, and Clear back to AUTO. The server checks the
+ * range; its refusal is shown under the row.
+ */
+export function TestInputRow({ input, action }: { input: TestInputView; action: Action }) {
+  const [state, formAction, pending] = useActionState(action, EMPTY_OPERATION_STATE);
+  const [mode, setMode] = useState<"MANUAL_OVERRIDE" | "SCENARIO">("MANUAL_OVERRIDE");
+  const id = (name: string) => `override-${input.signal}-${name}`;
+  const overridden = input.mode !== "AUTO";
+  return (
+    <tr data-mode={input.mode}>
+      <td>
+        <span className="mono">{input.signal}</span>
+        <span className="zf-sub block">{`${input.name}${input.tag ? ` → ${input.tag}` : ""}`}</span>
+      </td>
+      <td className="mono">
+        <b className="text-fg-strong">{formatValue(input.effective, input)}</b>
+        {overridden ? <span className="zf-sub block">{`model: ${formatValue(input.calculated, input)}`}</span> : null}
+      </td>
+      <td>
+        <span className="mono" data-overridden={overridden}>
+          {modeLabel(input)}
+        </span>
+        <span className="zf-sub block">
+          {overridden
+            ? `since ${input.sinceTimeS.toFixed(1)} s${input.source ? ` · by ${input.source}` : ""}`
+            : "from the model"}
+        </span>
+      </td>
+      <td>
+        <form action={formAction} className="flex flex-col gap-1" aria-label={`Override ${input.signal}`}>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {input.bool ? (
+              <>
+                <input type="hidden" name="mode" value="MANUAL_OVERRIDE" />
+                <select
+                  id={id("value")}
+                  name="value"
+                  className="zf-input"
+                  aria-label={`Value for ${input.signal}`}
+                  defaultValue="1"
+                  disabled={pending}
+                >
+                  <option value="1">on</option>
+                  <option value="0">off</option>
+                </select>
+              </>
+            ) : (
+              <>
+                <select
+                  id={id("mode")}
+                  name="mode"
+                  className="zf-input"
+                  aria-label={`Mode for ${input.signal}`}
+                  value={mode}
+                  onChange={(event) => setMode(event.target.value as "MANUAL_OVERRIDE" | "SCENARIO")}
+                  disabled={pending}
+                >
+                  <option value="MANUAL_OVERRIDE">manual value</option>
+                  <option value="SCENARIO">ramp</option>
+                </select>
+                {mode === "MANUAL_OVERRIDE" ? (
+                  <input
+                    id={id("value")}
+                    name="value"
+                    type="number"
+                    step="any"
+                    className="zf-input mono w-24"
+                    aria-label={`Value for ${input.signal}`}
+                    placeholder={`${input.min}–${input.max}`}
+                    disabled={pending}
+                  />
+                ) : (
+                  <>
+                    <input
+                      name="from"
+                      type="number"
+                      step="any"
+                      className="zf-input mono w-20"
+                      aria-label={`Ramp from for ${input.signal}`}
+                      placeholder="from"
+                      defaultValue={input.effective}
+                      disabled={pending}
+                    />
+                    <input
+                      name="to"
+                      type="number"
+                      step="any"
+                      className="zf-input mono w-20"
+                      aria-label={`Ramp to for ${input.signal}`}
+                      placeholder="to"
+                      disabled={pending}
+                    />
+                    <input
+                      name="durationS"
+                      type="number"
+                      step="any"
+                      min={0.1}
+                      className="zf-input mono w-20"
+                      aria-label={`Ramp seconds for ${input.signal}`}
+                      placeholder="s"
+                      disabled={pending}
+                    />
+                  </>
+                )}
+                <span className="zf-sub">{input.unit}</span>
+              </>
+            )}
+            <button
+              type="submit"
+              name="operation"
+              value="set"
+              className="zf-btn"
+              data-variant="primary"
+              data-size="sm"
+              disabled={pending}
+            >
+              {pending ? "Setting…" : "Override"}
+            </button>
+            <button
+              type="submit"
+              name="operation"
+              value="clear"
+              className="zf-btn"
+              data-size="sm"
+              disabled={pending || !overridden}
+              title={overridden ? undefined : "Already AUTO"}
+            >
+              Clear
+            </button>
+          </div>
+          <Result state={state} pending={pending} />
+        </form>
+      </td>
+    </tr>
   );
 }
