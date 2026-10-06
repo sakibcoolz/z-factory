@@ -70,5 +70,7 @@ Last architecture documentation update: 2026-10-06
 
 Phase task Markdown remains the execution unit. Linear mirrors every task of Phases 00–07: the Phase 06 tasks TASK-601–605 are ZFA-24 to ZFA-28 and the Phase 07 tasks TASK-701–704 are ZFA-29 to ZFA-32, each in its phase milestone and in the backlog (mirrored 2026-10-05). Phase 06 was started by the owner on 2026-10-05 with TASK-601; Phase 07 is not active until the owner starts a task of it. Phase 00 is closed.
 
+- Phase 08 is planned: controlled Go-simulator input overrides, operator UI, PLC-output-to-simulator command bridging, and deterministic closed-loop E2E testing. The phase preserves ADR-0015: simulator/UI changes inputs; PLC logic owns outputs.
+
 ## Next technical gate
 Phases 00 to 05, the MVP, are done. One thing was not exercised: an external gateway on physical hardware (the gateway endpoint is verified with a software edge client and against a real OpenPLC runtime). Phase 06 is done: TASK-601 to TASK-605. Phase 07 is planned and follows when the owner starts it.
