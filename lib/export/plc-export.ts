@@ -86,6 +86,8 @@ export type ExportPlcLink = {
   pollIntervalMs: number;
   enabled: boolean;
   configVersion: number;
+  /** Values carried over the link (TASK-702). */
+  mappings: number;
 };
 
 export type PlcExportDocument = {

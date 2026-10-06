@@ -13,7 +13,7 @@ Phase 02 OpenPLC runtime and Modbus mapping are stable enough to run multiple PL
 | Task | Status |
 |---|---|
 | TASK-701 PLC relationship & communication domain | DONE |
-| TASK-702 Modbus TCP client/server mapping | PLANNED |
+| TASK-702 Modbus TCP client/server mapping | DONE |
 | TASK-703 PLC-to-PLC runtime adapter & Docker networking | PLANNED |
 | TASK-704 PLC-to-PLC UI, validation & E2E tests | PLANNED |
 

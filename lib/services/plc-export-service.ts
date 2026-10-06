@@ -271,6 +271,7 @@ export async function buildPlcExport(
         pollIntervalMs: link.pollIntervalMs,
         enabled: link.enabled,
         configVersion: link.configVersion,
+        mappings: link.mappingCount,
       })),
     },
     topology: {

@@ -93,6 +93,23 @@ const CONSTRAINTS: Record<string, ConstraintRule> = {
     code: "VALIDATION",
     message: "Port, unit id or poll interval of the link is out of range.",
   },
+  PlcCommunicationMapping_one_reader_per_local_tag: {
+    code: "OCCUPIED_ENDPOINT",
+    message: "This tag is already filled by another PLC link.",
+  },
+  PlcCommunicationMapping_one_writer_per_remote_tag: {
+    code: "OCCUPIED_ENDPOINT",
+    message: "This command tag is already written by another PLC link.",
+  },
+  PlcCommunicationMapping_plcCommunicationConnectionId_localTagId_remoteTagId_key: {
+    code: "CONFLICT",
+    message: "This link already carries these two tags.",
+  },
+  PlcCommunicationMapping_distinct_tags_check: { code: "VALIDATION", message: "A mapping joins two different tags." },
+  PlcCommunicationMapping_interval_check: {
+    code: "VALIDATION",
+    message: "The update interval is out of range (50–60000 ms).",
+  },
   ModulePlcIoMapping_tagId_key: {
     code: "OCCUPIED_ENDPOINT",
     message: "This tag already carries a module signal.",

@@ -15,6 +15,8 @@ import {
 import { DomainError } from "@/lib/domain/errors";
 import type { RuntimeState } from "@/lib/domain/runtime-state";
 import { serviceNameFor } from "@/lib/domain/service-name";
+import type { ModbusArea, TagDataType } from "@/lib/domain/tag";
+import { type AuthorityTag, tagAuthority, TAG_AUTHORITY_LABELS } from "@/lib/domain/tag-authority";
 
 export const PLC_RELATIONSHIPS = ["COMMUNICATES_WITH", "SUPERVISES"] as const;
 export type PlcRelationship = (typeof PLC_RELATIONSHIPS)[number];
@@ -123,7 +125,7 @@ export type PlcLinkView = {
   pollIntervalMs: number;
   enabled: boolean;
   configVersion: number;
-  /** Mappings over the link (TASK-702); none yet. */
+  /** Mappings over the link (TASK-702). */
   mappingCount: number;
   createdAt: string;
   updatedAt: string;
@@ -152,10 +154,21 @@ export type PlcLinkSnapshot = {
     pollIntervalMs: number;
     enabled: boolean;
   };
-  mappings: Array<Record<string, string | number | boolean | null>>;
+  mappings: PlcLinkMappingSnapshot[];
 };
 
-export function toPlcLinkSnapshot(view: PlcLinkView): PlcLinkSnapshot {
+export type PlcLinkMappingSnapshot = {
+  operation: PlcLinkOperation;
+  localTag: string;
+  remoteTag: string;
+  remoteArea: ModbusArea | null;
+  remoteAddress: number | null;
+  dataType: TagDataType;
+  updateIntervalMs: number | null;
+  enabled: boolean;
+};
+
+export function toPlcLinkSnapshot(view: PlcLinkView, mappings: readonly PlcLinkMappingView[] = []): PlcLinkSnapshot {
   return {
     schema: PLC_LINK_EXPORT_SCHEMA,
     schemaVersion: PLC_LINK_EXPORT_SCHEMA_VERSION,
@@ -172,6 +185,147 @@ export function toPlcLinkSnapshot(view: PlcLinkView): PlcLinkSnapshot {
       pollIntervalMs: view.pollIntervalMs,
       enabled: view.enabled,
     },
-    mappings: [],
+    mappings: mappings.map((mapping) => ({
+      operation: mapping.operation,
+      localTag: mapping.localTag.name,
+      remoteTag: mapping.remoteTag.name,
+      remoteArea: mapping.remoteTag.area,
+      remoteAddress: mapping.remoteTag.address,
+      dataType: mapping.remoteTag.dataType,
+      updateIntervalMs: mapping.updateIntervalMs,
+      enabled: mapping.enabled,
+    })),
   };
 }
+
+// ───────────────────────────── mappings (TASK-702) ─────────────────────────────
+
+export const PLC_LINK_OPERATIONS = ["READ", "WRITE"] as const;
+export type PlcLinkOperation = (typeof PLC_LINK_OPERATIONS)[number];
+
+/** A tag at one end of a mapping, with what the rules need. */
+export type LinkTag = AuthorityTag & {
+  id: string;
+  plcId: string;
+  name: string;
+  dataType: TagDataType;
+  unit: string | null;
+  protocolArea: ModbusArea | null;
+  protocolAddress: number | null;
+  /** A process module's signal is bound to it (TASK-605): its writer is the process bridge. */
+  moduleBound: boolean;
+};
+
+export type PlcLinkMappingRule =
+  | "plc-link-tag-plc"
+  | "plc-link-modbus"
+  | "plc-link-data-type"
+  | "plc-link-unit"
+  | "plc-link-local-read"
+  | "plc-link-local-write"
+  | "plc-link-remote-write";
+
+const mappingRefusal = (code: "INCOMPATIBLE" | "INVARIANT", message: string, rule: PlcLinkMappingRule) =>
+  new DomainError(code, message, { rule });
+
+/**
+ * Whether a tag of the client and a tag of the server may be carried over a link
+ * (ADR-0015). Throws the first rule that is broken.
+ *
+ * - READ: the server's tag is read as it is; the client's tag is filled by the link, so it is
+ *   `%M` memory nobody else writes — not an I/O point, not a command, not a device or module
+ *   signal.
+ * - WRITE: the client sends a value its program computes (program output or program memory,
+ *   never a command a gateway gave it: that would let the gateway reach the peer past the
+ *   program); the server's tag is a writable command or setpoint, which the server's own
+ *   program then decides on.
+ *
+ * Both are Modbus-mapped, on/off meets on/off and a number meets a number (the codec scales
+ * between the two encodings and saturates), and two units that are both given agree.
+ */
+export function checkLinkMapping(
+  operation: PlcLinkOperation,
+  local: LinkTag,
+  remote: LinkTag,
+  link: { clientPlcId: string; serverPlcId: string },
+): void {
+  if (local.plcId !== link.clientPlcId || remote.plcId !== link.serverPlcId) {
+    throw mappingRefusal(
+      "INVARIANT",
+      "The local tag belongs to the link's client PLC, the remote tag to its server PLC.",
+      "plc-link-tag-plc",
+    );
+  }
+  for (const tag of [local, remote]) {
+    if (tag.protocolArea === null || tag.protocolAddress === null) {
+      throw mappingRefusal("INCOMPATIBLE", `Tag ${tag.name} has no Modbus mapping.`, "plc-link-modbus");
+    }
+  }
+  if ((local.dataType === "BOOL") !== (remote.dataType === "BOOL")) {
+    throw mappingRefusal(
+      "INCOMPATIBLE",
+      `${local.name} is ${local.dataType} and ${remote.name} is ${remote.dataType}: on/off meets on/off and a number meets a number.`,
+      "plc-link-data-type",
+    );
+  }
+  if (local.unit && remote.unit && local.unit !== remote.unit) {
+    throw mappingRefusal(
+      "INCOMPATIBLE",
+      `${local.name} is in ${local.unit} and ${remote.name} in ${remote.unit}.`,
+      "plc-link-unit",
+    );
+  }
+  if (operation === "READ") {
+    const memory = /^%M/i.test(local.logicalAddress ?? "");
+    const free = !local.plcIoPointId && !local.sourceSignal && !local.moduleBound && local.accessMode === "READ_ONLY";
+    if (!memory || !free) {
+      throw mappingRefusal(
+        "INCOMPATIBLE",
+        `${local.name} cannot receive a peer's value: the link fills %M memory nothing else writes — not an I/O point, a command, or a device or module signal.`,
+        "plc-link-local-read",
+      );
+    }
+    return;
+  }
+  const source = tagAuthority(local);
+  if (source !== "PROGRAM_OUTPUT" && source !== "PROGRAM_INTERNAL") {
+    throw mappingRefusal(
+      "INCOMPATIBLE",
+      `${local.name} is ${TAG_AUTHORITY_LABELS[source]}; a link sends only what the client's program computes.`,
+      "plc-link-local-write",
+    );
+  }
+  if (tagAuthority(remote) !== "EXTERNAL_COMMAND") {
+    throw mappingRefusal(
+      "INVARIANT",
+      `${remote.name} is ${TAG_AUTHORITY_LABELS[tagAuthority(remote)]} of the server; a link writes only its command and setpoint tags, and the server's program decides.`,
+      "plc-link-remote-write",
+    );
+  }
+}
+
+/** A tag end of a mapping as the screens show it. */
+export type PlcLinkMappingTag = {
+  tagId: string;
+  name: string;
+  logicalAddress: string | null;
+  area: ModbusArea | null;
+  address: number | null;
+  dataType: TagDataType;
+  unit: string | null;
+  scale: number;
+};
+
+export type PlcLinkMappingView = {
+  id: string;
+  linkId: string;
+  operation: PlcLinkOperation;
+  localTag: PlcLinkMappingTag;
+  remoteTag: PlcLinkMappingTag;
+  /** The interval this value is exchanged at: its own, else the link's. */
+  updateIntervalMs: number | null;
+  effectiveIntervalMs: number;
+  enabled: boolean;
+  /** Live quality comes from the link's runtime (TASK-703); null while nothing runs it. */
+  quality: "GOOD" | "STALE" | "DISCONNECTED" | null;
+};

@@ -197,19 +197,24 @@ Rules:
 - port, unit id and poll interval are bounded (CHECK `PlcCommunicationConnection_endpoint_check`: 1–65535, 0–255, 50–60000 ms)
 - unique per ordered pair and protocol; the row goes with the factory or either PLC (cascade); versions stay as history
 
-### PlcCommunicationMapping (planned, TASK-702)
-Maps one local/source PLC communication tag to a remote Modbus endpoint.
+### PlcCommunicationMapping (TASK-702)
+Carries one value over a link: a tag of the client PLC and a tag of the server PLC. Migration `plc_link_mappings`.
 
-`id, plcCommunicationConnectionId, localTagId, operation, remoteArea, remoteAddress, remoteTagId, dataType, wordCount, byteOrder, wordOrder, scale, offset, unit, updateIntervalMs, enabled, metadataJson`
+`id, plcCommunicationConnectionId, operation, localTagId, remoteTagId, updateIntervalMs, enabled, metadataJson, createdAt`
 
-`operation = READ | WRITE`.
+`operation = READ | WRITE` (enum `PlcLinkOperation`), from the client's side: READ fills the local tag from the remote one, WRITE writes the local tag's value to the remote one.
 
-Rules:
-- READ may target feedback/status/process-value areas
-- WRITE may target only explicitly writable COMMAND/SETPOINT endpoints
-- data type, word count and register span must match
-- overlapping/invalid remote mappings are rejected
-- disconnect/stale quality is runtime state and may be snapshotted/events recorded
+Departure from the planned columns: the remote endpoint is always a **tag of the server PLC**, not a free area/address. Both ends of a Phase 07 link are Z-Factory PLCs, so the server's tag carries the Modbus area, address, type, word span, byte/word order, scaling and unit, and the ADR-0015 authority of the endpoint is known; a bare address would bypass that. Remote area/address, type and scaling are therefore read from the tags (and appear in views, exports and snapshots), never stored twice. Values travel in engineering units: decoded with one tag's encoding, encoded with the other's, saturating like the device bridge.
+
+Rules (`checkLinkMapping`, `lib/domain/plc-communication.ts`):
+- the local tag belongs to the link's client PLC, the remote tag to its server PLC (`plc-link-tag-plc`); both are Modbus-mapped (`plc-link-modbus`)
+- on/off meets on/off and a number meets a number (`plc-link-data-type`); two units that are both given agree (`plc-link-unit`); widths and scaling may differ
+- READ: any server tag may be read; the local tag is `%M` memory nothing else writes — not an I/O point, not writable, not a device or module signal (`plc-link-local-read`); it becomes a `LINK_INPUT` tag
+- WRITE: the local tag is a value the client's program computes (program output or program memory — never a command a gateway gave the client, `plc-link-local-write`); the remote tag is external command memory of the server, a writable COMMAND/SETPOINT (`plc-link-remote-write`)
+- one writer per value across all links: a tag is filled by at most one READ and a command tag written by at most one WRITE (partial unique indexes `PlcCommunicationMapping_one_reader_per_local_tag`, `PlcCommunicationMapping_one_writer_per_remote_tag`; service rule `plc-link-one-writer` under a lock on the link)
+- a pair of tags once per link; the two tags differ; `updateIntervalMs` null (the link's) or 50–60000 ms (CHECKs)
+- the row goes with the link or either tag (cascade); every change bumps the link's `configVersion` and is snapshotted by tag names
+- disconnect/stale quality is runtime state (TASK-703)
 
 
 ### ConfigurationVersion
@@ -324,7 +329,7 @@ For high-volume history, partitioning/retention should be introduced first. Time
 Every factual vendor hardware profile keeps source URL plus verification metadata. Never fabricate pinouts, I/O counts, register maps, or electrical limits.
 
 ## Implementation (TASK-102)
-- Schema: `prisma/schema.prisma`; migrations: `prisma/migrations/` (`init`, `device_io_endpoint`, `factory_subnet_no_overlap`, `plc_api_host_port`, `tag_source_signal`, `catalog_capabilities`, `device_io_simulator_signal`, `device_canvas_position`, `catalog_3d_assets`, `catalog_asset_generation`, `process_modules`, `endpoint_wiring`, `device_capabilities`, `process_model_link`, `module_plc_io_mapping`, `io_point_tags_read_only`, `plc_communications`); generated client: `lib/generated/prisma/` (git-ignored).
+- Schema: `prisma/schema.prisma`; migrations: `prisma/migrations/` (`init`, `device_io_endpoint`, `factory_subnet_no_overlap`, `plc_api_host_port`, `tag_source_signal`, `catalog_capabilities`, `device_io_simulator_signal`, `device_canvas_position`, `catalog_3d_assets`, `catalog_asset_generation`, `process_modules`, `endpoint_wiring`, `device_capabilities`, `process_model_link`, `module_plc_io_mapping`, `io_point_tags_read_only`, `plc_communications`, `plc_link_mappings`); generated client: `lib/generated/prisma/` (git-ignored).
 - Primary keys are UUID v7 (`@default(uuid(7))`, PostgreSQL `uuid`), except `TelemetrySample.id` (`bigint` identity) and the one-to-one tables keyed by their owner (`ElectricalProfile`, `PlcInstanceProfile`, `DeviceRuntimeSnapshot`).
 - Catalog rows referenced by factory data are protected with `ON DELETE RESTRICT`; factory-owned rows cascade from `Factory`.
 - `DeviceInstance.dockerContainerId` is server-side only and never sent to the browser.
@@ -342,6 +347,10 @@ Prisma cannot express CHECK or EXCLUDE constraints, so these live as hand-writte
 | `PlcCommunicationConnection_distinct_plcs_check` | a link joins two different PLCs |
 | `PlcCommunicationConnection_roles_check` | the client and the server of a link are its two PLCs, one each |
 | `PlcCommunicationConnection_endpoint_check` | port 1–65535, unit id 0–255, poll interval 50–60000 ms |
+| `PlcCommunicationMapping_distinct_tags_check` | a mapping joins two different tags |
+| `PlcCommunicationMapping_interval_check` | `updateIntervalMs` null or 50–60000 ms |
+| `PlcCommunicationMapping_one_reader_per_local_tag` (partial unique index) | one READ fills a tag |
+| `PlcCommunicationMapping_one_writer_per_remote_tag` (partial unique index) | one WRITE writes a command tag |
 | `Tag_protocol_mapping_check` | protocol, area and address are all set or all null; address is zero-based (>= 0) |
 | `Tag_word_count_check` | `wordCount >= 1` |
 | `DeviceConnection_distinct_devices_check` | a device is never connected to itself |
@@ -370,4 +379,4 @@ Wiring: the service layer enforces the rules of one wire (`lib/validation/wiring
 
 Process modules: the service layer enforces same-factory device assignment, the categories and number of devices a role takes, roles and signals of the selected profile, configuration against the type's declared fields, and interlocks over the module's own signals (`lib/domain/process-module.ts`, `lib/services/process-module-service.ts`). Module-to-PLC mapping rules follow with `ModulePlcIoMapping` in TASK-605.
 
-`PlcCommunicationConnection` exists since TASK-701; `PlcCommunicationMapping` is planned Phase 07 schema owned by TASK-702.
+`PlcCommunicationConnection` exists since TASK-701 and `PlcCommunicationMapping` since TASK-702.

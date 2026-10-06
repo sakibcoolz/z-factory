@@ -150,7 +150,7 @@ Each PLC's Modbus server is published on one host endpoint, stored as a `Runtime
 ### Limits
 - The runtime's own Modbus server does not enforce per-register permissions; see `docs/security.md`. An external gateway therefore connects to a gateway endpoint (below), not to that server.
 - The tag registry is not yet checked against the located variables a program declares.
-- PLC-to-PLC links exist since TASK-701 (`docs/architecture.md` → PLC-to-PLC communication); their mappings (TASK-702) reuse the codecs and rules above.
+- PLC-to-PLC links exist since TASK-701 (`docs/architecture.md` → PLC-to-PLC communication). Their mappings (TASK-702) join a tag of the client and a tag of the server, so they reuse the tag registry's areas, addresses, types, word spans, orders and scaling and the codecs above; a PLC link writes only the server's writable command/setpoint tags, exactly as a gateway does (`docs/database.md` → PlcCommunicationMapping).
 
 ## Implementation (TASK-501, ADR-0013): gateway endpoints
 Code: `lib/domain/gateway.ts` (what a gateway may read and write, pure), `lib/protocols/modbus/server.ts` (Modbus TCP server), `lib/runtimes/gateway-endpoint/` (the endpoints of this server process), `lib/services/gateway-service.ts`, screen `/factories/[factoryId]/gateways`.

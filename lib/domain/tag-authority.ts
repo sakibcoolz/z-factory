@@ -9,6 +9,8 @@
  *                        a %I address; the field, or the simulation bridge, writes it
  *   SIMULATION_FEEDBACK  memory a simulation bridge fills with what a device or process
  *                        produces; the program reads it
+ *   LINK_INPUT           %M memory a PLC link (Phase 07) fills with a peer PLC's value; the
+ *                        program reads it
  *   EXTERNAL_COMMAND     command/setpoint memory a gateway or the UI may write; the program
  *                        decides what to do with it
  *   PROGRAM_INTERNAL     everything else: memory the program keeps for itself and others read
@@ -20,6 +22,7 @@ export const TAG_AUTHORITIES = [
   "PROGRAM_OUTPUT",
   "PROGRAM_INPUT",
   "SIMULATION_FEEDBACK",
+  "LINK_INPUT",
   "EXTERNAL_COMMAND",
   "PROGRAM_INTERNAL",
 ] as const;
@@ -30,6 +33,7 @@ export const TAG_AUTHORITY_LABELS: Record<TagAuthority, string> = {
   PROGRAM_OUTPUT: "program output",
   PROGRAM_INPUT: "field input",
   SIMULATION_FEEDBACK: "simulated feedback",
+  LINK_INPUT: "PLC link input",
   EXTERNAL_COMMAND: "external command",
   PROGRAM_INTERNAL: "program memory",
 };
@@ -44,6 +48,8 @@ export type AuthorityTag = {
   sourceSignal: string | null;
   /** The process-module signal the tag carries, when a module is bound to it. */
   moduleSignalDirection?: "INPUT" | "OUTPUT" | "INTERNAL" | "ALARM" | null;
+  /** The tag is filled by a READ mapping of a PLC link (TASK-702). */
+  linkInput?: boolean;
 };
 
 const region = (logicalAddress: string | null) => /^%([IQM])/i.exec(logicalAddress ?? "")?.[1]?.toUpperCase();
@@ -55,6 +61,7 @@ export function tagAuthority(tag: AuthorityTag): TagAuthority {
   if (tag.accessMode === "READ_WRITE" && isWritableTagRole(tag.role)) return "EXTERNAL_COMMAND";
   if (where === "Q") return "PROGRAM_OUTPUT";
   if (where === "I") return "PROGRAM_INPUT";
+  if (tag.linkInput) return "LINK_INPUT";
   if (tag.sourceSignal || tag.moduleSignalDirection === "INPUT" || tag.moduleSignalDirection === "ALARM") {
     return "SIMULATION_FEEDBACK";
   }

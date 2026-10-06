@@ -15,6 +15,7 @@ import {
 } from "@/lib/domain/live";
 import type { RuntimeState } from "@/lib/domain/runtime-state";
 import type { TagDataType, TagRole } from "@/lib/domain/tag";
+import { plcCommunicationRepository } from "@/lib/db/repositories/plc-communication-repository";
 import { isExternallyWritable, type TagAuthority, tagAuthority } from "@/lib/domain/tag-authority";
 import type { EventBus } from "@/lib/events/bus";
 import type { PrismaClient } from "@/lib/generated/prisma/client";
@@ -338,6 +339,10 @@ export async function getLiveTags(deps: LiveDeps, actor: Actor, factoryId: strin
   await syncFactoryMonitoring(deps, factoryId);
   const plcs = await plcRepository.listFactoryPlcs(deps.db, factoryId);
 
+  const linkInputs = await plcCommunicationRepository.linkInputTagIds(
+    deps.db,
+    plcs.map((plc) => plc.id),
+  );
   const tags = plcs.flatMap((plc) => {
     const live = new Map(deps.monitor.readings(plc.id).map((reading) => [reading.name, reading]));
     return (plc.plcProfile?.tags ?? [])
@@ -352,7 +357,7 @@ export async function getLiveTags(deps: LiveDeps, actor: Actor, factoryId: strin
         unit: tag.unit,
         logicalAddress: tag.logicalAddress,
         writable: isExternallyWritable(tag),
-        authority: tagAuthority(tag),
+        authority: tagAuthority({ ...tag, linkInput: linkInputs.has(tag.id) }),
         deviceName: tag.sourceDevice?.name ?? null,
         reading: live.get(tag.name) ?? {
           plcId: plc.id,

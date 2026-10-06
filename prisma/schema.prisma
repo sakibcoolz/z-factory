@@ -779,13 +779,50 @@ model PlcCommunicationConnection {
   createdAt           DateTime        @default(now())
   updatedAt           DateTime        @updatedAt
 
-  factory   Factory            @relation(fields: [factoryId], references: [id], onDelete: Cascade)
-  sourcePlc PlcInstanceProfile @relation("PlcLinkSource", fields: [sourcePlcInstanceId], references: [deviceInstanceId], onDelete: Cascade)
-  targetPlc PlcInstanceProfile @relation("PlcLinkTarget", fields: [targetPlcInstanceId], references: [deviceInstanceId], onDelete: Cascade)
+  factory   Factory                   @relation(fields: [factoryId], references: [id], onDelete: Cascade)
+  mappings  PlcCommunicationMapping[]
+  sourcePlc PlcInstanceProfile        @relation("PlcLinkSource", fields: [sourcePlcInstanceId], references: [deviceInstanceId], onDelete: Cascade)
+  targetPlc PlcInstanceProfile        @relation("PlcLinkTarget", fields: [targetPlcInstanceId], references: [deviceInstanceId], onDelete: Cascade)
 
   /// One link per ordered pair and protocol.
   @@unique([sourcePlcInstanceId, targetPlcInstanceId, protocol])
   @@index([factoryId])
+}
+
+enum PlcLinkOperation {
+  /// The client copies a server tag into one of its own tags.
+  READ
+  /// The client writes one of its own tags to a writable command/setpoint tag of the server.
+  WRITE
+}
+
+/// One value carried over a PLC link (TASK-702): a tag of the client PLC and a tag of the
+/// server PLC. The remote endpoint is always a tag of the server, so its Modbus area,
+/// address, type, word span, orders and scaling are the server's own and the authority
+/// rules of ADR-0015 apply to it. Values travel in engineering units: decoded with one
+/// tag's encoding, encoded with the other's.
+model PlcCommunicationMapping {
+  id                           String           @id @default(uuid(7)) @db.Uuid
+  plcCommunicationConnectionId String           @db.Uuid
+  operation                    PlcLinkOperation
+  /// A tag of the client PLC: the destination of a READ, the source of a WRITE.
+  localTagId                   String           @db.Uuid
+  /// A tag of the server PLC: the source of a READ, the destination of a WRITE.
+  remoteTagId                  String           @db.Uuid
+  /// Overrides the link's poll interval for this value; null uses the link's.
+  updateIntervalMs             Int?
+  enabled                      Boolean          @default(true)
+  metadataJson                 Json             @default("{}")
+  createdAt                    DateTime         @default(now())
+
+  connection PlcCommunicationConnection @relation(fields: [plcCommunicationConnectionId], references: [id], onDelete: Cascade)
+  localTag   Tag                        @relation("LinkLocalTag", fields: [localTagId], references: [id], onDelete: Cascade)
+  remoteTag  Tag                        @relation("LinkRemoteTag", fields: [remoteTagId], references: [id], onDelete: Cascade)
+
+  /// A pair of tags is carried once per link.
+  @@unique([plcCommunicationConnectionId, localTagId, remoteTagId])
+  @@index([localTagId])
+  @@index([remoteTagId])
 }
 
 /// Rack selected for a modular PLC instance.
@@ -866,15 +903,18 @@ model Tag {
   /// Last persisted quality; live quality comes from the runtime.
   quality                TagQuality?
 
-  plc             PlcInstanceProfile  @relation(fields: [plcInstanceId], references: [deviceInstanceId], onDelete: Cascade)
-  ioPoint         PlcIoPoint?         @relation(fields: [plcIoPointId], references: [id], onDelete: SetNull)
-  sourceDevice    DeviceInstance?     @relation("TagSourceDevice", fields: [sourceDeviceInstanceId], references: [id], onDelete: SetNull)
-  gatewayMappings GatewayTagMapping[]
-  commands        DeviceCommand[]
-  alarms          AlarmEvent[]
-  telemetry       TelemetrySample[]
+  plc                PlcInstanceProfile        @relation(fields: [plcInstanceId], references: [deviceInstanceId], onDelete: Cascade)
+  ioPoint            PlcIoPoint?               @relation(fields: [plcIoPointId], references: [id], onDelete: SetNull)
+  sourceDevice       DeviceInstance?           @relation("TagSourceDevice", fields: [sourceDeviceInstanceId], references: [id], onDelete: SetNull)
+  gatewayMappings    GatewayTagMapping[]
+  commands           DeviceCommand[]
+  alarms             AlarmEvent[]
+  telemetry          TelemetrySample[]
   /// The module signal this tag carries, if a process module is bound to it (TASK-605).
-  moduleMapping   ModulePlcIoMapping?
+  moduleMapping      ModulePlcIoMapping?
+  /// PLC-link mappings (TASK-702): on the client PLC as the local tag, on the server PLC as the remote one.
+  linkLocalMappings  PlcCommunicationMapping[] @relation("LinkLocalTag")
+  linkRemoteMappings PlcCommunicationMapping[] @relation("LinkRemoteTag")
 
   @@unique([plcInstanceId, name])
   @@unique([plcInstanceId, protocol, protocolArea, protocolAddress])

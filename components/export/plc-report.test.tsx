@@ -189,6 +189,7 @@ const compact: PlcExportDocument = {
         pollIntervalMs: 1000,
         enabled: true,
         configVersion: 2,
+        mappings: 3,
       },
     ],
     protocolLinks: [{ device: "VFD-02", protocol: "Modbus TCP" }],
