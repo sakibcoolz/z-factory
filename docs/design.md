@@ -109,6 +109,17 @@ PLC details gains a Communication section with:
 
 The UI must not imply that a supervisory PLC bypasses the target PLC program. Writes are shown as target command/setpoint writes, after which target PLC logic decides the local output behavior.
 
+### Communication as built (TASK-704)
+`/factories/[factoryId]/plcs/[plcId]/communication`, a "Communication" section of every PLC/RTU. No wireframe exists; it follows the PLC screens.
+
+- **One card per link** the PLC takes part in, either role: `PLC-A supervises PLC-B`, a pill saying whether this PLC is the client or the server, disabled and quality pills (good / stale / disconnected while the factory runs), and one line tracing the path: `PLC-A (client) → Modbus TCP plc-b:502 unit 1 → PLC-B (server) · every 500 ms · version 4`. Below, whether the client's runtime runs this version of the link (in the fault colour when a deployment is due) and the monitor's reason.
+- **Values table:** direction (`READ ← PLC-B`, `WRITE → PLC-B command`), the client's tag and located address, the server's tag, address and Modbus register, type and unit, interval, quality per value (paused when disabled); Pause/Resume and Remove on the client side. A line repeats that a WRITE reaches only the server's command and setpoint tags and the server's program decides, and links the link's JSON and the peer's Communication screen.
+- **New value** (client side only): direction, then two tag pickers — the usable tags first, every other tag listed disabled under "not possible" with its reason (`program output: only a command or setpoint is written`, `already written by a link`, `a bit from a peer arrives in %IX`, …), as the wiring editor does; an optional own interval. Pair rules (type, scaling, unit) are checked when the value is added and shown under the form.
+- **Link settings** (client side): relationship, poll interval, unit id, server port; Disable/Enable and Remove link (asks first). Every change says that the client's program has to be deployed to apply it.
+- **New link:** the factory's other controllers (a model that does not serve Modbus TCP is marked), relationship, whether this PLC is the client or the server, poll interval.
+- **Topology and designer:** a link is its own edge from client to server (`supervises · Modbus TCP · 3 values`); its inspector shows the link and opens the Communication screen. The canvas never removes or edits a link.
+- The page refreshes every 3 s while the factory's links are watched.
+
 ## Device simulation UI
 Show command/setpoint and actual feedback separately.
 
@@ -182,6 +193,7 @@ Source: Claude Design project `2fc6a75c-7a5d-4a8c-a17c-17afa2d37f6c`, file `Z-Fa
 | 2q | 3D Factory View | `/factories/[factoryId]/view-3d` (database) |
 | — | External gateways | `/factories/[factoryId]/gateways` (database) |
 | — | Process modules | `/factories/[factoryId]/modules`, per module `/modules/[moduleId]` (database) |
+| — | PLC communication | `/factories/[factoryId]/plcs/[plcId]/communication` (database) |
 
 Every screen reads the database: 2a–2c and the factory overview/edit (TASK-103), 2e the device catalog (TASK-301), 2f, 2g, 2h and 2j (TASK-302) together with the PLC connections screen `/factories/[factoryId]/plcs/[plcId]/connections`, 2d (designer) and 2o (topology) (TASK-303), 2p (export) (TASK-304), 2i, 2k and 2n (program, versions, simulator and runtime) (TASK-305), 2l and 2m (live tags and events) (TASK-401), 2q (3D view) (TASK-402), the device screens (TASK-308), and the process-module screens (TASK-604). The design fixtures of TASK-104 (`factory_001`, `factory_003`, PLC `dev_001`) were retired in TASK-309; an unknown id returns the not-found screen.
 
