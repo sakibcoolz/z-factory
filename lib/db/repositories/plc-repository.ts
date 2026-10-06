@@ -180,7 +180,18 @@ export const plcRepository = {
       where: { factoryId, runtimeType: "OPENPLC", plcProfile: { isNot: null } },
       include: {
         runtimePorts: true,
-        plcProfile: { include: { tags: { include: { sourceDevice: { select: { name: true } } } } } },
+        plcProfile: {
+          include: {
+            tags: {
+              include: {
+                sourceDevice: { select: { name: true } },
+                moduleMapping: {
+                  select: { processModuleInstanceId: true, moduleSignalDefinition: { select: { direction: true } } },
+                },
+              },
+            },
+          },
+        },
       },
       orderBy: { name: "asc" },
     });

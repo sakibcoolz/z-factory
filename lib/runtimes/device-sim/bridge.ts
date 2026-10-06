@@ -233,6 +233,39 @@ export class PlcBridge {
     }
   }
 
+  /** Whether the PLC answered the last exchange; undefined before the first one or for a PLC the bridge does not serve. */
+  linkUp(plcId: string): boolean | undefined {
+    return this.links.find((link) => link.plcId === plcId)?.up;
+  }
+
+  /**
+   * Writes every feedback tag de-energized (false / 0, or the bottom of a range that excludes
+   * 0), as the wiring of a powered-down device reads, when the bridge stops: the PLC must not
+   * keep running on the last values of a simulation that is gone (TASK-803). Best effort: a
+   * PLC that does not answer is left as it is.
+   */
+  async release(): Promise<void> {
+    await Promise.all(
+      this.links.map(async (link) => {
+        link.written.clear();
+        if (link.outputs.length === 0 || link.up === false) return;
+        try {
+          for (const binding of link.outputs.filter((b) => b.area === "COIL")) {
+            await link.io.writeCoil(binding.address, false);
+          }
+          for (const run of link.runs) {
+            await link.io.writeRegisters(
+              run.address,
+              run.bindings.flatMap((binding) => encodeSaturated(deEnergized(binding), binding) as number[]),
+            );
+          }
+        } catch {
+          // The PLC went away as well; it holds nothing worth correcting.
+        }
+      }),
+    );
+  }
+
   /** Writes the simulated feedback into the PLCs: only what changed, plus a periodic refresh. */
   async writeOutputs(outputs: (deviceId: string) => Signals): Promise<LinkChange[]> {
     const changes: LinkChange[] = [];

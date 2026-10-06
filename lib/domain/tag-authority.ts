@@ -3,8 +3,10 @@
  * authority). Every tag of a PLC is owned by exactly one of these; the owner is the only
  * thing that writes it, everything else reads. Pure rules; importable anywhere.
  *
- *   PROGRAM_OUTPUT       a local output of the PLC (%Q): the scan cycle writes it; the device
- *                        simulator, telemetry and gateways only observe it
+ *   PROGRAM_OUTPUT       a local output of the PLC (%Q), or memory through which the program
+ *                        commands simulated equipment (a device's command signal, a process
+ *                        module's OUTPUT): the scan cycle writes it; the simulators, telemetry
+ *                        and gateways only observe it (TASK-803)
  *   PROGRAM_INPUT        a local input: an input point (the %M shadow of a DI/AI channel) or
  *                        a %I address; the field, or the simulation bridge, writes it
  *   SIMULATION_FEEDBACK  memory a simulation bridge fills with what a device or process
@@ -15,6 +17,7 @@
  *                        decides what to do with it
  *   PROGRAM_INTERNAL     everything else: memory the program keeps for itself and others read
  */
+import { deviceSignalDirection } from "@/lib/domain/simulation";
 import type { AccessMode, TagRole } from "@/lib/domain/tag";
 import { isWritableTagRole } from "@/lib/domain/tag";
 
@@ -62,6 +65,13 @@ export function tagAuthority(tag: AuthorityTag): TagAuthority {
   if (where === "Q") return "PROGRAM_OUTPUT";
   if (tag.linkInput) return "LINK_INPUT";
   if (where === "I") return "PROGRAM_INPUT";
+  // A command the program gives simulated equipment is the program's, wherever it sits.
+  if (
+    (tag.sourceSignal && deviceSignalDirection(tag.sourceSignal) === "IN") ||
+    tag.moduleSignalDirection === "OUTPUT"
+  ) {
+    return "PROGRAM_OUTPUT";
+  }
   if (tag.sourceSignal || tag.moduleSignalDirection === "INPUT" || tag.moduleSignalDirection === "ALARM") {
     return "SIMULATION_FEEDBACK";
   }

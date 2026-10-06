@@ -1,7 +1,8 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { DomainError } from "@/lib/domain/errors";
-import type { ModbusArea } from "@/lib/domain/tag";
+import { feedbackQuality } from "@/lib/domain/live";
+import type { ModbusArea, TagQuality } from "@/lib/domain/tag";
 import { type MonitorCycle, type MonitoredTag, planReads, TagMonitorRuntime } from "./monitor";
 import { DEFAULT_SAMPLING_POLICY, sampleValue, shouldStore } from "./sampler";
 
@@ -257,6 +258,66 @@ describe("tag monitor", () => {
     expect(monitor.readings("plc-1")).toEqual([]);
     expect(monitor.readingsOfFactory("factory-1")).toEqual([]);
     expect(await monitor.stop("plc-1")).toEqual([]);
+  });
+});
+
+describe("feedback quality (TASK-803)", () => {
+  it("takes the worse of the read and the writer", () => {
+    expect(feedbackQuality("GOOD", "GOOD")).toBe("GOOD");
+    expect(feedbackQuality("GOOD", "STALE")).toBe("STALE");
+    expect(feedbackQuality("GOOD", "BAD")).toBe("BAD");
+    expect(feedbackQuality("STALE", "DISCONNECTED")).toBe("DISCONNECTED");
+    expect(feedbackQuality("DISCONNECTED", "GOOD")).toBe("DISCONNECTED");
+  });
+
+  it("does not show held feedback as healthy while its simulator is away", async () => {
+    const plc = new FakePlc();
+    const monitor = new TagMonitorRuntime({ now: () => 0, date: () => new Date("2026-10-06T10:00:00.000Z") });
+    const writers: Record<string, TagQuality> = { vfd: "GOOD", tank: "GOOD" };
+    const asked: string[] = [];
+    const cycles: MonitorCycle[] = [];
+    monitor.start({
+      plcId: "plc-1",
+      factoryId: "factory-1",
+      mappingVersion: 1,
+      tags: [
+        tag({ name: "Run", area: "COIL", address: 0 }),
+        tag({ name: "Running", area: "COIL", address: 8192, writer: { kind: "DEVICE", deviceId: "vfd" } }),
+        tag({ name: "Hz", area: "HOLDING_REGISTER", address: 1024, writer: { kind: "DEVICE", deviceId: "vfd" } }),
+        tag({ name: "Level", area: "HOLDING_REGISTER", address: 1030, writer: { kind: "MODULE", moduleId: "tank" } }),
+      ],
+      read: plc.read,
+      autoTick: false,
+      writerQuality: (writer) => {
+        const id = writer.kind === "DEVICE" ? writer.deviceId : writer.moduleId;
+        asked.push(id);
+        return writers[id] ?? "GOOD";
+      },
+      hooks: { onCycle: (_plc, cycle) => void cycles.push(cycle) },
+    });
+    const qualities = () => Object.fromEntries(monitor.readings("plc-1").map((r) => [r.name, r.quality]));
+
+    plc.coils[8192] = true;
+    plc.holding[1024] = 500;
+    await monitor.tick("plc-1");
+    expect(qualities()).toEqual({ Run: "GOOD", Running: "GOOD", Hz: "GOOD", Level: "GOOD" });
+    // Once per writer and cycle, however many tags it fills.
+    expect(asked).toEqual(["vfd", "tank"]);
+
+    // The simulation stopped; the PLC still answers and still holds the values.
+    writers.vfd = "STALE";
+    writers.tank = "DISCONNECTED";
+    await monitor.tick("plc-1");
+    expect(qualities()).toEqual({ Run: "GOOD", Running: "STALE", Hz: "STALE", Level: "DISCONNECTED" });
+    expect(monitor.readings("plc-1").find((r) => r.name === "Hz")?.value).toBe(500);
+    // A change of quality alone is a change: the browser and the history hear of it.
+    expect(cycles[1]?.changed.map((r) => r.name)).toEqual(["Running", "Hz", "Level"]);
+
+    writers.vfd = "GOOD";
+    writers.tank = "GOOD";
+    await monitor.tick("plc-1");
+    expect(qualities()).toEqual({ Run: "GOOD", Running: "GOOD", Hz: "GOOD", Level: "GOOD" });
+    await monitor.stop("plc-1");
   });
 });
 

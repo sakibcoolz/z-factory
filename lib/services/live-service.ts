@@ -8,12 +8,14 @@ import { PLC_LINK_ALARM, TAG_ALARM_PREFIX, TAG_MONITOR_LINK } from "@/lib/domain
 import { DomainError } from "@/lib/domain/errors";
 import {
   DEFAULT_STALE_AFTER_MS,
+  type FeedbackWriter,
   type LiveDeviceState,
   type LiveMessage,
   type LiveSnapshot,
   type LiveTagReading,
 } from "@/lib/domain/live";
 import type { RuntimeState } from "@/lib/domain/runtime-state";
+import { deviceSignalDirection } from "@/lib/domain/simulation";
 import type { TagDataType, TagRole } from "@/lib/domain/tag";
 import { plcCommunicationRepository } from "@/lib/db/repositories/plc-communication-repository";
 import { isExternallyWritable, type TagAuthority, tagAuthority } from "@/lib/domain/tag-authority";
@@ -21,6 +23,7 @@ import type { EventBus } from "@/lib/events/bus";
 import type { PrismaClient } from "@/lib/generated/prisma/client";
 import { readModbus } from "@/lib/protocols/modbus/client";
 import type { DeviceSimulatorRuntime } from "@/lib/runtimes/device-sim/runtime";
+import type { ProcessBridgeRuntime } from "@/lib/runtimes/process-bridge/runtime";
 import { publishedModbusEndpoint } from "@/lib/runtimes/openplc/adapter";
 import type {
   MonitorCycle,
@@ -51,6 +54,8 @@ export type LiveDeps = {
   bus: EventBus;
   monitor: TagMonitorRuntime;
   simulator: DeviceSimulatorRuntime;
+  /** The process bridge, whose modules write feedback too; without it module feedback is read as it stands. */
+  processBridge?: ProcessBridgeRuntime;
   pollMs?: number;
   sampling?: SamplingPolicy;
   retention?: { telemetryMs: number; eventsMs: number };
@@ -76,6 +81,18 @@ const isMapped = (
 ): tag is TagRecord & { protocolArea: NonNullable<TagRecord["protocolArea"]>; protocolAddress: number } =>
   tag.protocolArea !== null && tag.protocolAddress !== null;
 
+/** The simulator that fills a tag with feedback: a device's output signal or a module's INPUT or ALARM. */
+function feedbackWriter(tag: TagRecord): FeedbackWriter | null {
+  if (tag.sourceDeviceInstanceId && tag.sourceSignal && deviceSignalDirection(tag.sourceSignal) === "OUT") {
+    return { kind: "DEVICE", deviceId: tag.sourceDeviceInstanceId };
+  }
+  const direction = tag.moduleMapping?.moduleSignalDefinition.direction;
+  if (tag.moduleMapping && (direction === "INPUT" || direction === "ALARM")) {
+    return { kind: "MODULE", moduleId: tag.moduleMapping.processModuleInstanceId };
+  }
+  return null;
+}
+
 function toMonitoredTag(
   tag: TagRecord & { protocolArea: NonNullable<TagRecord["protocolArea"]>; protocolAddress: number },
 ): MonitoredTag {
@@ -94,6 +111,7 @@ function toMonitoredTag(
       offset: tag.offset,
     },
     deviceId: tag.sourceDeviceInstanceId,
+    writer: feedbackWriter(tag),
   };
 }
 
@@ -197,6 +215,10 @@ function startMonitor(deps: LiveDeps, plc: PlcRecord): void {
     read,
     pollMs: deps.pollMs,
     autoTick: deps.autoTick,
+    writerQuality: (writer) =>
+      writer.kind === "DEVICE"
+        ? deps.simulator.feedbackQuality(plc.factoryId, writer.deviceId, plc.id)
+        : (deps.processBridge?.feedbackQuality(plc.factoryId, writer.moduleId) ?? "GOOD"),
     hooks: {
       onCycle,
       onLink: async (monitored, up) => {
@@ -357,7 +379,11 @@ export async function getLiveTags(deps: LiveDeps, actor: Actor, factoryId: strin
         unit: tag.unit,
         logicalAddress: tag.logicalAddress,
         writable: isExternallyWritable(tag),
-        authority: tagAuthority({ ...tag, linkInput: linkInputs.has(tag.id) }),
+        authority: tagAuthority({
+          ...tag,
+          linkInput: linkInputs.has(tag.id),
+          moduleSignalDirection: tag.moduleMapping?.moduleSignalDefinition.direction ?? null,
+        }),
         deviceName: tag.sourceDevice?.name ?? null,
         reading: live.get(tag.name) ?? {
           plcId: plc.id,

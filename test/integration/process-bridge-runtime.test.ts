@@ -350,6 +350,9 @@ describeLoop("process simulation in a closed loop with a real OpenPLC runtime", 
 
     await write("Speed_SP", 70);
     expect(await until("PH_Low_Pressure", (value) => value === false)).toBe(false);
+    // The bridge writes the PLC before it records the cycle's events: the clearing follows within the cycle.
+    const deadline = Date.now() + 5000;
+    while ((await activeAlarms()).length > 0 && Date.now() < deadline) await sleep(100);
     expect(await activeAlarms()).toEqual([]);
     expect(await eventTypes()).toEqual(expect.arrayContaining(["PROCESS_ALARM_CLEARED", "ALARM_CLEARED"]));
   }, 60_000);

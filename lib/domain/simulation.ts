@@ -111,6 +111,18 @@ export function findSignal(type: SimulatedType, key: string): SignalDefinition |
   return DEVICE_SIGNALS[type].find((signal) => signal.key === key);
 }
 
+/**
+ * Which way a device signal flows, from its key alone: a key means the same in every type
+ * (`run` is always a command, `running` always feedback). Undefined for an unknown key.
+ */
+export function deviceSignalDirection(key: string): SignalDirection | undefined {
+  for (const signals of Object.values(DEVICE_SIGNALS)) {
+    const signal = signals.find((candidate) => candidate.key === key);
+    if (signal) return signal.direction;
+  }
+  return undefined;
+}
+
 export type FaultDefinition = {
   code: string;
   name: string;
