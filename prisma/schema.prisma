@@ -736,6 +736,7 @@ model PlcInstanceProfile {
   racks              FactoryRack[]
   ioPoints           PlcIoPoint[]
   tags               Tag[]
+  moduleMappings     ModulePlcIoMapping[]
   gatewayConnections GatewayPlcConnection[]
   commands           DeviceCommand[]
 }
@@ -825,6 +826,8 @@ model Tag {
   commands        DeviceCommand[]
   alarms          AlarmEvent[]
   telemetry       TelemetrySample[]
+  /// The module signal this tag carries, if a process module is bound to it (TASK-605).
+  moduleMapping   ModulePlcIoMapping?
 
   @@unique([plcInstanceId, name])
   @@unique([plcInstanceId, protocol, protocolArea, protocolAddress])
@@ -1063,7 +1066,7 @@ model TelemetrySample {
 // ───────────────────────────── process modules ─────────────────────────────
 // A process module composes existing factory devices into a process-specific unit
 // (docs/process-modules.md). Types are reusable templates; instances belong to a factory.
-// Binding module signals to PLC endpoints is TASK-605.
+// Binding module signals to PLC endpoints is ModulePlcIoMapping (TASK-605).
 
 /// A reusable process template: the roles devices play in it and its logical I/O contract.
 /// A version is written once; a changed template is a new version.
@@ -1145,6 +1148,7 @@ model ModuleSignalDefinition {
 
   processModuleType ProcessModuleType     @relation(fields: [processModuleTypeId], references: [id], onDelete: Cascade)
   moduleRole        ModuleRoleDefinition? @relation(fields: [moduleRoleDefinitionId], references: [id], onDelete: SetNull)
+  mappings          ModulePlcIoMapping[]
 
   @@unique([processModuleTypeId, key])
 }
@@ -1164,10 +1168,11 @@ model ProcessModuleInstance {
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
 
-  factory           Factory           @relation(fields: [factoryId], references: [id], onDelete: Cascade)
-  processModuleType ProcessModuleType @relation(fields: [processModuleTypeId], references: [id], onDelete: Restrict)
+  factory           Factory              @relation(fields: [factoryId], references: [id], onDelete: Cascade)
+  processModuleType ProcessModuleType    @relation(fields: [processModuleTypeId], references: [id], onDelete: Restrict)
   devices           ModuleDevice[]
   interlocks        ModuleInterlock[]
+  mappings          ModulePlcIoMapping[]
 
   @@unique([factoryId, name])
   @@index([processModuleTypeId])
@@ -1189,6 +1194,28 @@ model ModuleDevice {
 
   @@unique([processModuleInstanceId, moduleRoleDefinitionId, deviceInstanceId])
   @@index([deviceInstanceId])
+}
+
+/// One logical module signal bound to one PLC tag (docs/process-modules.md → Module PLC I/O
+/// Registry). The tag is the PLC endpoint: its located address, Modbus mapping and access mode
+/// are the normal ones; the mapping adds no address space. A tag carries at most one module
+/// signal, and a signal has at most one tag. Tag and module belong to the same factory (service rule).
+model ModulePlcIoMapping {
+  id                       String   @id @default(uuid(7)) @db.Uuid
+  processModuleInstanceId  String   @db.Uuid
+  moduleSignalDefinitionId String   @db.Uuid
+  plcInstanceId            String   @db.Uuid
+  tagId                    String   @unique @db.Uuid
+  metadataJson             Json     @default("{}")
+  createdAt                DateTime @default(now())
+
+  processModuleInstance  ProcessModuleInstance  @relation(fields: [processModuleInstanceId], references: [id], onDelete: Cascade)
+  moduleSignalDefinition ModuleSignalDefinition @relation(fields: [moduleSignalDefinitionId], references: [id], onDelete: Restrict)
+  plc                    PlcInstanceProfile     @relation(fields: [plcInstanceId], references: [deviceInstanceId], onDelete: Cascade)
+  tag                    Tag                    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([processModuleInstanceId, moduleSignalDefinitionId])
+  @@index([plcInstanceId])
 }
 
 /// Interlock metadata of a module: for validation, simulation, documentation and tests.

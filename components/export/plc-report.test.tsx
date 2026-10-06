@@ -138,6 +138,16 @@ const compact: PlcExportDocument = {
       sourceSignal: null,
     },
   ],
+  moduleSignals: [
+    {
+      module: "PH-01",
+      moduleType: "PUMP_HOUSE",
+      signal: "DISCHARGE_PRESSURE",
+      direction: "INPUT",
+      tag: "PH_Pressure",
+      programAddress: "%MD10",
+    },
+  ],
   connectedDevices: [
     {
       plcPoint: "DO Qa.0",
@@ -210,6 +220,9 @@ describe("PLC engineering report", () => {
     ).toBeInTheDocument();
     expect(within(section(6)).getByText("XV-101 · ZSO")).toBeInTheDocument();
     expect(within(section(7)).getByText("Pump01_StartCommand")).toBeInTheDocument();
+    // The process-module signals a tag carries are listed with the tags (TASK-605).
+    expect(within(section(7)).getByText("PH-01 (PUMP_HOUSE)")).toBeInTheDocument();
+    expect(within(section(7)).getByText("DISCHARGE_PRESSURE")).toBeInTheDocument();
     expect(within(section(8)).getByText("read/write")).toBeInTheDocument();
     expect(within(section(8)).getByText("00017")).toBeInTheDocument();
 
@@ -275,6 +288,7 @@ describe("PLC engineering report", () => {
           },
           ioPoints: [],
           tags: [],
+          moduleSignals: [],
           connectedDevices: [],
           relationships: [],
           revision: { ...compact.revision, program: null, deployedSnapshot: null },

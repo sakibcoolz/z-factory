@@ -41,10 +41,10 @@ import { toModuleDetail } from "./process-module-service";
  * factory's process modules in the simulation service and keeps them in a closed loop
  * with the PLCs through the tags their signals are mapped to.
  *
- * Mappings are given to the service as `{ moduleId, signalKey, tagId }`; storing them
- * is the module I/O registry (TASK-605). Whatever supplies them, the rules of
- * `lib/domain/process-bridge.ts` decide whether the bridge accepts them, and a module
- * with a refused or missing required mapping does not start.
+ * The bindings come from the module I/O registry (TASK-605, `module-io-service.ts`);
+ * callers may pass mappings `{ moduleId, signalKey, tagId }` instead. Whatever supplies
+ * them, the rules of `lib/domain/process-bridge.ts` decide whether the bridge accepts
+ * them, and a module with a refused or missing required mapping does not start.
  */
 
 export type ProcessBridgeDeps = {
@@ -147,27 +147,39 @@ function modelParameters(record: ModuleRecord): Record<string, number> {
 }
 
 /**
- * What the bridge would run for this factory with these mappings, from persisted
- * configuration only. A module whose type has no process model is skipped; a module that
- * is incomplete (a required role without a device), has a mapping the rules refuse, or a
+ * What the bridge would run for this factory, from persisted configuration only: the
+ * modules' stored bindings (the module I/O registry, TASK-605), or the mappings given
+ * instead of them. A module whose type has no process model is skipped; a module that is
+ * incomplete (a required role without a device), has a mapping the rules refuse, or a
  * required signal without one, is blocked.
  */
 export async function planProcessBridge(
   db: PrismaClient,
   actor: Actor,
   factoryId: string,
-  mappingInput: unknown,
+  mappingInput?: unknown,
   options: { tickMs?: number } = {},
 ): Promise<ProcessBridgePlan> {
   const factory = await getFactory(db, actor, factoryId);
-  const parsed = mappingSchema.safeParse(mappingInput);
-  if (!parsed.success) {
-    throw new DomainError("VALIDATION", "Each mapping names a module, one of its signals and a tag.", {
-      rule: "process-mapping-input",
-    });
-  }
-  const mappings = parsed.data;
   const records = await processModuleRepository.listModules(db, factory.id);
+  let mappings: ProcessMappingInput[];
+  if (mappingInput === undefined) {
+    mappings = records.flatMap((record) =>
+      record.mappings.map((mapping) => ({
+        moduleId: record.id,
+        signalKey: mapping.moduleSignalDefinition.key,
+        tagId: mapping.tagId,
+      })),
+    );
+  } else {
+    const parsed = mappingSchema.safeParse(mappingInput);
+    if (!parsed.success) {
+      throw new DomainError("VALIDATION", "Each mapping names a module, one of its signals and a tag.", {
+        rule: "process-mapping-input",
+      });
+    }
+    mappings = parsed.data;
+  }
   const tags = new Map(
     (
       await processBridgeRepository.findTags(db, factory.id, [...new Set(mappings.map((mapping) => mapping.tagId))])
@@ -307,7 +319,7 @@ export async function startProcessBridge(
   deps: ProcessBridgeDeps,
   actor: Actor,
   factoryId: string,
-  mappings: unknown,
+  mappings?: unknown,
   options: { autoTick?: boolean } = {},
 ): Promise<ProcessBridgeState & { skipped: ProcessBridgePlan["skipped"] }> {
   if (!deps.client) {

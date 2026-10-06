@@ -6,7 +6,13 @@ import { getFactory } from "./factory-service";
 import { type GatewayDeps, syncGatewayEndpoints } from "./gateway-service";
 import { type LiveDeps, stopPlcMonitoring, syncFactoryMonitoring } from "./live-service";
 import { type RuntimeDeps, startPlc, stopPlc } from "./plc-runtime-service";
-import { type ProcessBridgeDeps, stopProcessBridge } from "./process-bridge-service";
+import {
+  getProcessBridgeState,
+  planProcessBridge,
+  type ProcessBridgeDeps,
+  startProcessBridge,
+  stopProcessBridge,
+} from "./process-bridge-service";
 import {
   getSimulationState,
   type SimulationDeps,
@@ -26,10 +32,7 @@ export type FactoryRuntimeDeps = {
   simulation: SimulationDeps;
   live: LiveDeps;
   gateway: GatewayDeps;
-  /**
-   * The process bridge (TASK-603). Stopping the factory stops it; starting it needs the
-   * module I/O mappings of the registry (TASK-605), so a factory start does not start it yet.
-   */
+  /** The process bridge (TASK-603): started after the simulation, from the module I/O registry (TASK-605). */
   process?: ProcessBridgeDeps;
 };
 
@@ -39,6 +42,10 @@ export type FactoryRuntimeResult = {
   simulatedDevices: number;
   /** Why the simulation did not start, when it did not. */
   simulationNote: string | null;
+  /** Process modules running in the bridge; 0 when it is not. */
+  processModules: number;
+  /** Why the process bridge did not start, when the factory has modules it should run. */
+  processNote: string | null;
 };
 
 async function listPlcs(deps: FactoryRuntimeDeps, factoryId: string) {
@@ -47,6 +54,36 @@ async function listPlcs(deps: FactoryRuntimeDeps, factoryId: string) {
     orderBy: { name: "asc" },
     select: { id: true, name: true, runtimeStatus: true, dockerContainerId: true },
   });
+}
+
+/**
+ * Starts the process bridge when the factory has modules it should run: a factory without
+ * modules bound to its PLCs, or without the simulation service, has nothing to start and
+ * nothing to report. A module the plan blocks is reported, not skipped silently.
+ */
+async function startProcess(
+  deps: FactoryRuntimeDeps,
+  actor: Actor,
+  factoryId: string,
+): Promise<Pick<FactoryRuntimeResult, "processModules" | "processNote">> {
+  const process = deps.process;
+  if (!process) return { processModules: 0, processNote: null };
+  try {
+    if (process.bridge.isRunning(factoryId)) {
+      const state = await getProcessBridgeState(process, actor, factoryId);
+      return { processModules: state.running ? state.modules.length : 0, processNote: null };
+    }
+    const plan = await planProcessBridge(process.db, actor, factoryId, undefined, { tickMs: process.tickMs });
+    if (plan.modules.length === 0 && plan.blocked.length === 0) return { processModules: 0, processNote: null };
+    if (!process.client) {
+      return { processModules: 0, processNote: "The process simulation service is not configured (PROCESS_SIM_URL)." };
+    }
+    const state = await startProcessBridge(process, actor, factoryId);
+    return { processModules: state.running ? state.modules.length : 0, processNote: null };
+  } catch (error) {
+    if (!isDomainError(error)) throw error;
+    return { processModules: 0, processNote: error.message };
+  }
 }
 
 /**
@@ -87,8 +124,9 @@ export async function startFactory(
     if (!isDomainError(error)) throw error;
     simulationNote = error.message;
   }
+  const process = await startProcess(deps, actor, factory.id);
   await syncGatewayEndpoints(deps.gateway, factory.id);
-  return { plcs: started, simulatedDevices, simulationNote };
+  return { plcs: started, simulatedDevices, simulationNote, ...process };
 }
 
 /**
@@ -117,5 +155,5 @@ export async function stopFactory(
   } finally {
     await syncFactoryMonitoring(deps.live, factory.id);
   }
-  return { plcs: stopped, simulatedDevices: 0, simulationNote: null };
+  return { plcs: stopped, simulatedDevices: 0, simulationNote: null, processModules: 0, processNote: null };
 }

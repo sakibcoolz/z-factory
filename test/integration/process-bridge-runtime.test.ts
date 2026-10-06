@@ -14,14 +14,19 @@ import { loadModuleTypes } from "@/lib/process-modules";
 import { ingestModuleTypes } from "@/lib/process-modules/ingest";
 import { ProcessBridgeRuntime } from "@/lib/runtimes/process-bridge/runtime";
 import { createProcessSimClient, type ProcessSimClient } from "@/lib/runtimes/process-sim/client";
+import { DeviceSimulatorRuntime } from "@/lib/runtimes/device-sim/runtime";
+import { GatewayEndpointRuntime } from "@/lib/runtimes/gateway-endpoint/runtime";
+import { TagMonitorRuntime } from "@/lib/runtimes/tag-monitor/monitor";
+import { EventBus } from "@/lib/events/bus";
+import { type FactoryRuntimeDeps, startFactory, stopFactory } from "@/lib/services/factory-runtime-service";
 import { createDeviceInstance } from "@/lib/services/device-service";
 import { listAlarms, listEvents } from "@/lib/services/event-service";
 import { createFactory } from "@/lib/services/factory-service";
 import { createProgramVersion, type RuntimeDeps, startPlc, stopPlc } from "@/lib/services/plc-runtime-service";
+import { bindModuleSignal, getModuleIoRegistry } from "@/lib/services/module-io-service";
 import {
   getProcessBridgeState,
   type ProcessBridgeDeps,
-  type ProcessMappingInput,
   startProcessBridge,
   stopProcessBridge,
 } from "@/lib/services/process-bridge-service";
@@ -136,7 +141,6 @@ describeLoop("process simulation in a closed loop with a real OpenPLC runtime", 
   let factoryId: string;
   let plcId: string;
   let moduleId: string;
-  let mappings: ProcessMappingInput[];
 
   const read = async (name: string) => (await readTag(runtime, alice, plcId, name)).value;
   const write = (name: string, value: number | boolean) => writeTag(runtime, alice, plcId, name, value);
@@ -248,15 +252,17 @@ describeLoop("process simulation in a closed loop with a real OpenPLC runtime", 
     ).id;
     await assignModuleDevice(db, alice, moduleId, { roleKey: "DUTY_PUMP", deviceId: pumpId });
     await assignModuleDevice(db, alice, moduleId, { roleKey: "DISCHARGE_PRESSURE", deviceId: transmitterId });
-    mappings = (
-      [
-        ["DUTY_RUN_CMD", "PH_Run_Cmd"],
-        ["DUTY_SPEED_SETPOINT", "PH_Speed_SP"],
-        ["DUTY_RUNNING", "PH_Running"],
-        ["DISCHARGE_PRESSURE", "PH_Pressure"],
-        ["LOW_PRESSURE", "PH_Low_Pressure"],
-      ] as const
-    ).map(([signalKey, tag]) => ({ moduleId, signalKey, tagId: tagIds.get(tag) ?? "" }));
+    // The module's signals are bound through the registry (TASK-605); the bridge reads the stored bindings.
+    for (const [signalKey, tag] of [
+      ["DUTY_RUN_CMD", "PH_Run_Cmd"],
+      ["DUTY_SPEED_SETPOINT", "PH_Speed_SP"],
+      ["DUTY_RUNNING", "PH_Running"],
+      ["DISCHARGE_PRESSURE", "PH_Pressure"],
+      ["LOW_PRESSURE", "PH_Low_Pressure"],
+    ] as const) {
+      await bindModuleSignal(db, alice, moduleId, { signalKey, tagId: tagIds.get(tag) ?? "" });
+    }
+    expect((await getModuleIoRegistry(db, alice, moduleId)).readyToRun).toBe(true);
   }, 120_000);
 
   afterAll(async () => {
@@ -278,14 +284,14 @@ describeLoop("process simulation in a closed loop with a real OpenPLC runtime", 
   }, 120_000);
 
   it("starts once the PLC has an endpoint, loads the model and reaches the PLC", async () => {
-    const before = await startProcessBridge(deps, alice, factoryId, mappings).then(
+    const before = await startProcessBridge(deps, alice, factoryId).then(
       () => undefined,
       (error: unknown) => error as DomainError,
     );
     expect(before?.details.rule).toBe("plc-endpoint-required");
 
     expect(await startPlc(runtime, alice, plcId)).toEqual({ state: "RUNNING" });
-    const started = await startProcessBridge(deps, alice, factoryId, mappings);
+    const started = await startProcessBridge(deps, alice, factoryId);
     expect(started).toMatchObject({ running: true, skipped: [] });
     expect((await client.list()).map((instance) => [instance.instanceId, instance.clock, instance.status])).toEqual([
       [moduleId, "manual", "RUNNING"],
@@ -396,4 +402,40 @@ describeLoop("process simulation in a closed loop with a real OpenPLC runtime", 
     expect(await activeAlarms()).toEqual([]);
     expect((await eventTypes())[0]).toBe("PROCESS_BRIDGE_STOPPED");
   }, 120_000);
+
+  it("is started and stopped with the factory, from the stored bindings", async () => {
+    const bus = new EventBus();
+    const simulator = new DeviceSimulatorRuntime();
+    const factory: FactoryRuntimeDeps = {
+      runtime: { ...runtime, bus },
+      simulation: { db, bus, simulator, tickMs: 50, snapshotIntervalMs: 2000 },
+      live: {
+        db,
+        bus,
+        simulator,
+        monitor: new TagMonitorRuntime(),
+        pollMs: 200,
+        sampling: { minIntervalMs: 200, maxIntervalMs: 60_000, deadbandRatio: 0.01 },
+      },
+      gateway: { ...runtime, bus, endpoints: new GatewayEndpointRuntime() },
+      process: deps,
+    };
+    try {
+      const started = await startFactory(factory, alice, factoryId);
+      // The pump and the transmitter are simulated as devices too (unwired); the module runs in the bridge.
+      expect(started).toMatchObject({ plcs: [{ id: plcId, state: "RUNNING" }], processModules: 1, processNote: null });
+      expect(deps.bridge.isRunning(factoryId)).toBe(true);
+      // Starting again leaves the running bridge alone.
+      expect((await startFactory(factory, alice, factoryId)).processModules).toBe(1);
+
+      const stopped = await stopFactory(factory, alice, factoryId);
+      expect(stopped).toMatchObject({ processModules: 0, processNote: null });
+      expect(deps.bridge.isRunning(factoryId)).toBe(false);
+      expect(await client.list()).toEqual([]);
+    } finally {
+      await factory.gateway.endpoints.stopAll();
+      await factory.live.monitor.stopAll();
+      await simulator.stopAll();
+    }
+  }, 400_000);
 });
