@@ -6,11 +6,14 @@ import { getServerEnv } from "@/lib/env";
 import { getEventBus } from "@/lib/events/bus";
 import { getDeviceSimulator } from "@/lib/runtimes/device-sim/runtime";
 import { getGatewayEndpoints } from "@/lib/runtimes/gateway-endpoint/runtime";
+import { getProcessBridge } from "@/lib/runtimes/process-bridge/runtime";
+import { createProcessSimClient } from "@/lib/runtimes/process-sim/client";
 import { getTagMonitor } from "@/lib/runtimes/tag-monitor/monitor";
 import { resolveRuntimeSecret } from "@/lib/runtimes/openplc/credentials";
 import type { FactoryRuntimeDeps } from "./factory-runtime-service";
 import type { GatewayDeps } from "./gateway-service";
 import type { LiveDeps } from "./live-service";
+import type { ProcessBridgeDeps } from "./process-bridge-service";
 import type { RuntimeDeps } from "./plc-runtime-service";
 import type { SimulationDeps } from "./simulation-service";
 
@@ -33,6 +36,23 @@ export function getSimulationDeps(): SimulationDeps {
     db: getDb(),
     simulator: getDeviceSimulator(),
     tickMs: env.SIMULATION_TICK_MS,
+    snapshotIntervalMs: env.SIMULATION_SNAPSHOT_MS,
+    bus: getEventBus(),
+  };
+}
+
+/** Database, the shared process bridge and the simulation service client, when the service is configured. */
+export function getProcessBridgeDeps(): ProcessBridgeDeps {
+  const env = getServerEnv();
+  return {
+    db: getDb(),
+    bridge: getProcessBridge(),
+    client:
+      env.PROCESS_SIM_URL && env.PROCESS_SIM_TOKEN
+        ? createProcessSimClient({ url: env.PROCESS_SIM_URL, token: env.PROCESS_SIM_TOKEN })
+        : null,
+    cycleMs: env.PROCESS_BRIDGE_CYCLE_MS,
+    tickMs: env.PROCESS_SIM_TICK_MS,
     snapshotIntervalMs: env.SIMULATION_SNAPSHOT_MS,
     bus: getEventBus(),
   };
@@ -71,5 +91,6 @@ export function getFactoryRuntimeDeps(): FactoryRuntimeDeps {
     simulation: getSimulationDeps(),
     live: getLiveDeps(),
     gateway: getGatewayDeps(),
+    process: getProcessBridgeDeps(),
   };
 }

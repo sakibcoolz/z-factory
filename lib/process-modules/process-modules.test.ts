@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { GENERIC_CATEGORIES } from "@/lib/catalog/generic-categories";
 import { DomainError } from "@/lib/domain/errors";
 import { countSignals, effectiveRoles, effectiveSignals } from "@/lib/domain/process-module";
+import { PROCESS_SIM_MODELS } from "@/lib/domain/process-sim";
 import { loadModuleTypes } from "@/lib/process-modules";
 import { type ModuleTypeInput, parseModuleType } from "@/lib/process-modules/schema";
 
@@ -96,8 +97,11 @@ describe("the shipped module types", () => {
     expect(effectiveRoles(pumpHouse.roles, "DUTY_STANDBY").map((role) => role.key)).toContain("STANDBY_PUMP");
   });
 
-  it("have no process model yet", () => {
-    // A model type is named once the process runtime exists (TASK-602).
-    for (const type of types) expect(type.simulatorModelType).toBeNull();
+  it("are simulated by the process models of the same name", () => {
+    // The service ships a model per shipped type (TASK-602); the bridge loads it (TASK-603).
+    for (const type of types) {
+      expect(type.simulatorModelType).toBe(type.code);
+      expect(PROCESS_SIM_MODELS[type.simulatorModelType ?? ""]).toBeDefined();
+    }
   });
 });

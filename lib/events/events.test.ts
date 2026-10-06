@@ -138,7 +138,14 @@ describe("event vocabulary", () => {
   it("puts every type the simulator emits into a family, and unknown types into OTHER", () => {
     for (const type of SIMULATION_EVENT_TYPES) expect(eventFamily(type), type).not.toBe("OTHER");
     expect(eventFamily("SOMETHING_NEW")).toBe("OTHER");
-    expect(eventTypesOf("ALARM").sort()).toEqual(["ALARM_ACKNOWLEDGED", "ALARM_CLEARED", "ALARM_RAISED"]);
+    expect(eventTypesOf("ALARM").sort()).toEqual([
+      "ALARM_ACKNOWLEDGED",
+      "ALARM_CLEARED",
+      "ALARM_RAISED",
+      "PROCESS_ALARM_CLEARED",
+      "PROCESS_ALARM_RAISED",
+    ]);
+    expect(eventTypesOf("PROCESS").sort()).toEqual(["PROCESS_QUALITY_CHANGED", "PROCESS_STATE_CHANGED"]);
     expect(new Set(KNOWN_EVENT_TYPES).size).toBe(KNOWN_EVENT_TYPES.length);
   });
 

@@ -9,6 +9,8 @@ import type { EventSeverity, RuntimeEventEnvelope } from "@/lib/domain/events";
 export const FAULT_ALARM_PREFIX = "FAULT:";
 /** An ALARM tag the PLC program set, e.g. `TAG:Pump01_HighPressureTrip`. */
 export const TAG_ALARM_PREFIX = "TAG:";
+/** An alarm of a process module, raised by its process model: `PROCESS:Tank 1/LEVEL_HIGH`. */
+export const PROCESS_ALARM_PREFIX = "PROCESS:";
 /** The PLC's runtime failed: its container died or an operation on it failed. */
 export const RUNTIME_FAULT_ALARM = "RUNTIME_FAULT";
 /** A PLC with a started runtime does not answer on Modbus. */
@@ -22,7 +24,9 @@ export type AlarmEffect =
   /** The device left its faulted state: its fault alarms end, except faults still present. */
   | { kind: "CLEAR_DEVICE_FAULTS"; deviceId: string; stillActive: string[] }
   /** The simulation stopped: its devices and links no longer exist in any state. */
-  | { kind: "CLEAR_SIMULATION" };
+  | { kind: "CLEAR_SIMULATION" }
+  /** The process bridge stopped: its models no longer assert anything. */
+  | { kind: "CLEAR_PROCESS" };
 
 const text = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
 const codes = (value: unknown): string[] =>
@@ -83,6 +87,25 @@ export function alarmEffects(event: RuntimeEventEnvelope): AlarmEffect[] {
       return payload.link === TAG_MONITOR_LINK ? [{ kind: "CLEAR", deviceId, code: PLC_LINK_ALARM }] : [];
     case "SIMULATION_STOPPED":
       return [{ kind: "CLEAR_SIMULATION" }];
+    case "PROCESS_ALARM_RAISED": {
+      const code = processAlarmCode(payload);
+      if (!code) return [];
+      return [
+        {
+          kind: "RAISE",
+          deviceId: null,
+          code,
+          severity: event.severity,
+          message: `${text(payload.module)}: ${text(payload.name) ?? text(payload.code)}`,
+        },
+      ];
+    }
+    case "PROCESS_ALARM_CLEARED": {
+      const code = processAlarmCode(payload);
+      return code ? [{ kind: "CLEAR", deviceId: null, code }] : [];
+    }
+    case "PROCESS_BRIDGE_STOPPED":
+      return [{ kind: "CLEAR_PROCESS" }];
     default:
       break;
   }
@@ -99,9 +122,16 @@ export function alarmEffects(event: RuntimeEventEnvelope): AlarmEffect[] {
   return [];
 }
 
-/** `FAULT:OVERCURRENT` → `OVERCURRENT`, `TAG:HighPressure` → `HighPressure`. */
+/** `PROCESS:<module>/<signal>`: one alarm per module and alarm signal. */
+function processAlarmCode(payload: Record<string, unknown>): string | undefined {
+  const moduleName = text(payload.module);
+  const code = text(payload.code);
+  return moduleName && code ? `${PROCESS_ALARM_PREFIX}${moduleName}/${code}` : undefined;
+}
+
+/** `FAULT:OVERCURRENT` → `OVERCURRENT`, `TAG:HighPressure` → `HighPressure`, `PROCESS:Tank 1/LEVEL_HIGH` → `Tank 1/LEVEL_HIGH`. */
 export function alarmCodeLabel(code: string): string {
-  for (const prefix of [FAULT_ALARM_PREFIX, TAG_ALARM_PREFIX]) {
+  for (const prefix of [FAULT_ALARM_PREFIX, TAG_ALARM_PREFIX, PROCESS_ALARM_PREFIX]) {
     if (code.startsWith(prefix)) return code.slice(prefix.length);
   }
   return code;

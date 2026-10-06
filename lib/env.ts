@@ -66,6 +66,10 @@ const serverEnvSchema = z.object({
     .regex(/^https?:\/\//, "use an http(s) address")
     .optional(),
   PROCESS_SIM_TOKEN: z.string().min(16, "use at least 16 characters").optional(),
+  /** Simulated time per process-model tick, in milliseconds (the service accepts 10 to 10000). */
+  PROCESS_SIM_TICK_MS: z.coerce.number().int().min(10).max(10_000).default(100),
+  /** Real time between two exchanges of the process bridge with the PLCs, in milliseconds. */
+  PROCESS_BRIDGE_CYCLE_MS: z.coerce.number().int().min(50).max(5000).default(200),
   /** How often the tags of a running PLC are read for live values, in milliseconds. */
   TAG_POLL_MS: z.coerce.number().int().min(100).max(60_000).default(500),
   /** Telemetry: a tag is stored at most this often, in milliseconds. */

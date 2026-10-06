@@ -15,6 +15,7 @@ const pumpHouse: ModuleTypeInput = {
   code: "PUMP_HOUSE",
   name: "Pump house",
   description: "One pump, or a duty and a standby pump, delivering into a common discharge line.",
+  simulatorModelType: "PUMP_HOUSE",
   profiles: ["SINGLE_PUMP", "DUTY_STANDBY"],
   configFields: [
     { key: "ratedFlow", label: "Rated flow per pump", type: "number", unit: "m3/h", min: 0.1, defaultValue: 50 },
@@ -187,6 +188,7 @@ const tank: ModuleTypeInput = {
   code: "TANK",
   name: "Tank",
   description: "A vessel with a level measurement and an inlet valve; outlet, agitator and temperature as needed.",
+  simulatorModelType: "TANK",
   profiles: ["LEVEL", "LEVEL_TEMPERATURE"],
   configFields: [{ key: "volume", label: "Volume", type: "number", unit: "m3", min: 0.01, defaultValue: 10 }],
   roles: [

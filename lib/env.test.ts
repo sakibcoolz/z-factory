@@ -13,6 +13,8 @@ describe("server environment contract", () => {
       SIMULATION_TICK_MS: 100,
       SIMULATION_SNAPSHOT_MS: 10_000,
       ASSET_STORAGE_DIR: "./data/assets",
+      PROCESS_SIM_TICK_MS: 100,
+      PROCESS_BRIDGE_CYCLE_MS: 200,
       TAG_POLL_MS: 500,
       TELEMETRY_MIN_INTERVAL_MS: 1000,
       TELEMETRY_MAX_INTERVAL_MS: 60_000,
