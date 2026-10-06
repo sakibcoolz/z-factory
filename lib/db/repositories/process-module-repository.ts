@@ -224,6 +224,18 @@ export const processModuleRepository = {
     });
   },
 
+  /** The modules whose signals tags of one PLC carry, once per module (edge deployment, TASK-503). */
+  listPlcModules(db: Db, plcId: string) {
+    return db.modulePlcIoMapping.findMany({
+      where: { plcInstanceId: plcId },
+      distinct: ["processModuleInstanceId"],
+      select: {
+        processModuleInstanceId: true,
+        processModuleInstance: { select: { name: true, processModuleType: { select: { code: true } } } },
+      },
+    });
+  },
+
   /** The module signals carried by tags of one PLC, for its engineering export. */
   listPlcMappings(db: Db, plcId: string) {
     return db.modulePlcIoMapping.findMany({

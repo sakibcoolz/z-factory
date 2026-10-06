@@ -80,6 +80,8 @@ export const routes = {
   /** The report alone, for printing. `runtime` adds the stored runtime state. */
   plcExportReport: (factoryId: string, plcId: string, runtime = false) =>
     `${plc(factoryId, plcId)}/export/report${runtime ? "?runtime=1" : ""}`,
+  /** The PLC's edge deployment for the Thin Client Agent, as a download (TASK-503). */
+  plcEdgeDeployment: (factoryId: string, plcId: string) => `${plc(factoryId, plcId)}/edge.json`,
   /** A download: `plc.json`, `io.csv`, `tags.csv` or `devices.csv`. */
   plcExportFile: (factoryId: string, plcId: string, file: PlcExportFile) =>
     `${plc(factoryId, plcId)}/export/files/${file}`,
