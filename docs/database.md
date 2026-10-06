@@ -322,7 +322,7 @@ For high-volume history, partitioning/retention should be introduced first. Time
 Every factual vendor hardware profile keeps source URL plus verification metadata. Never fabricate pinouts, I/O counts, register maps, or electrical limits.
 
 ## Implementation (TASK-102)
-- Schema: `prisma/schema.prisma`; migrations: `prisma/migrations/` (`init`, `device_io_endpoint`, `factory_subnet_no_overlap`, `plc_api_host_port`, `tag_source_signal`, `catalog_capabilities`, `device_io_simulator_signal`, `device_canvas_position`, `catalog_3d_assets`, `catalog_asset_generation`, `process_modules`, `endpoint_wiring`, `device_capabilities`, `process_model_link`, `module_plc_io_mapping`); generated client: `lib/generated/prisma/` (git-ignored).
+- Schema: `prisma/schema.prisma`; migrations: `prisma/migrations/` (`init`, `device_io_endpoint`, `factory_subnet_no_overlap`, `plc_api_host_port`, `tag_source_signal`, `catalog_capabilities`, `device_io_simulator_signal`, `device_canvas_position`, `catalog_3d_assets`, `catalog_asset_generation`, `process_modules`, `endpoint_wiring`, `device_capabilities`, `process_model_link`, `module_plc_io_mapping`, `io_point_tags_read_only`); generated client: `lib/generated/prisma/` (git-ignored).
 - Primary keys are UUID v7 (`@default(uuid(7))`, PostgreSQL `uuid`), except `TelemetrySample.id` (`bigint` identity) and the one-to-one tables keyed by their owner (`ElectricalProfile`, `PlcInstanceProfile`, `DeviceRuntimeSnapshot`).
 - Catalog rows referenced by factory data are protected with `ON DELETE RESTRICT`; factory-owned rows cascade from `Factory`.
 - `DeviceInstance.dockerContainerId` is server-side only and never sent to the browser.
@@ -336,6 +336,7 @@ Prisma cannot express CHECK or EXCLUDE constraints, so these live as hand-writte
 | `PlcIoPoint_source_check` | `BUILT_IN` points reference a built-in channel only; `MODULE` points reference a factory module and a module channel only |
 | `Tag_writable_role_check` | `READ_WRITE` only when `role` is `COMMAND` or `SETPOINT` |
 | `Tag_writable_area_check` | `READ_WRITE` only in `COIL` / `HOLDING_REGISTER` areas |
+| `Tag_io_point_read_only_check` | a tag bound to a PLC I/O point (`plcIoPointId`) is `READ_ONLY`: local I/O is the program's, never external command memory (ADR-0015, migration `io_point_tags_read_only`) |
 | `Tag_protocol_mapping_check` | protocol, area and address are all set or all null; address is zero-based (>= 0) |
 | `Tag_word_count_check` | `wordCount >= 1` |
 | `DeviceConnection_distinct_devices_check` | a device is never connected to itself |

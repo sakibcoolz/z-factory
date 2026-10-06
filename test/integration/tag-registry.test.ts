@@ -248,6 +248,7 @@ describeDb("tag registry and Modbus map against PostgreSQL", () => {
       unit: "Hz",
       sourceDeviceInstanceId: null,
       sourceSignal: null,
+      authority: "EXTERNAL_COMMAND",
     });
   });
 

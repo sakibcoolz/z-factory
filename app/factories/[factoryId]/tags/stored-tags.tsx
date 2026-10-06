@@ -96,6 +96,7 @@ export async function StoredTags({ factoryId, plcId }: { factoryId: string; plcI
             plcName: tag.plcName,
             name: tag.name,
             role: tag.role,
+            authority: tag.authority,
             dataType: tag.dataType,
             unit: tag.unit,
             logicalAddress: tag.logicalAddress,

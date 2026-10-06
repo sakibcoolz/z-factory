@@ -101,11 +101,12 @@ Services in `lib/services/tag-service.ts`; every function takes the `Actor` and 
 
 | Operation | Entry point | Rules |
 |---|---|---|
-| create tag | `createTag(db, actor, plcId, input)` | strict input; mapping and access mode derived; overlap rejected; bumps the mapping version |
+| create tag | `createTag(db, actor, plcId, input)` | strict input; mapping and access mode derived; overlap rejected; a command/setpoint never on an I/O point (`io-point-address`, `io-point-read-only`); bumps the mapping version |
 | delete tag | `deleteTag(db, actor, plcId, name)` | bumps the mapping version |
-| register map | `getModbusMap(db, actor, plcId)` | the inspector/export contract described in `docs/gateway-modbus.md` |
+| register map | `getModbusMap(db, actor, plcId)` | the inspector/export contract described in `docs/gateway-modbus.md`; every row says who drives the tag (`authority`, ADR-0015) |
 | live snapshot | `readTags(deps, actor, plcId)`, `readTag(…, name)` | engineering values with quality and timestamp |
-| write command/setpoint | `writeTag(deps, actor, plcId, name, value, source)` | only `COMMAND` / `SETPOINT`; recorded as a `DeviceCommand` |
+| write command/setpoint | `writeTag(deps, actor, plcId, name, value, source)` | external command memory only (a writable `COMMAND` / `SETPOINT`); anything the program, the field or a bridge drives is refused with `tag-read-only` and recorded as `COMMAND_REJECTED`; accepted writes are recorded as a `DeviceCommand` |
+| raw register access | `readPlcRegisters(deps, actor, plcId, { area, address, count })`, `writePlcRegister(…, { area, address, value })` | reading is unrestricted; a raw write reaches external command memory only, anything else (a program output, an input, feedback, program memory, an address without a tag) is refused with `program-authority` (ADR-0015, TASK-205) |
 | Modbus endpoint | `configureModbusEndpoint(deps, actor, plcId, { bindAddress, hostPort })` | validated against policy and reservations; requires the runtime to be removed |
 
 ### `simulation` (TASK-204)

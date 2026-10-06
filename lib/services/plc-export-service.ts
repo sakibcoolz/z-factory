@@ -115,6 +115,7 @@ export async function buildPlcExport(
     unit: row.unit,
     sourceDevice: row.sourceDeviceInstanceId ? (deviceName.get(row.sourceDeviceInstanceId) ?? null) : null,
     sourceSignal: row.sourceSignal,
+    authority: row.authority,
   }));
   const unitOf = new Map(tags.map((tag) => [tag.name, tag.unit]));
 

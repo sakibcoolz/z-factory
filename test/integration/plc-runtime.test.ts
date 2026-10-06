@@ -23,6 +23,7 @@ import {
   writePlcRegister,
 } from "@/lib/services/plc-runtime-service";
 import { cidrsOverlap } from "@/lib/validation/network";
+import { createTag } from "@/lib/services/tag-service";
 import { createGenericModel, openTestDb, resetDb } from "./harness";
 
 /**
@@ -206,6 +207,28 @@ describeRuntime("PLC runtime service with PostgreSQL and a real Docker Engine", 
     await sleep(1000);
     expect((await counter()) - before).toBeGreaterThanOrEqual(10);
 
+    // A raw write reaches the program only through external command memory (ADR-0015): %QX0.0
+    // without a tag is nobody's to write, with a STATUS tag it is the program's output.
+    await expectDomainError(
+      writePlcRegister(deps, alice, plcId, { area: "COIL", address: 0, value: true }),
+      "INVARIANT",
+    );
+    await createTag(db, alice, plcId, {
+      name: "Scan_Counter",
+      dataType: "INT16",
+      role: "STATUS",
+      logicalAddress: "%QW1",
+    });
+    await expectDomainError(
+      writePlcRegister(deps, alice, plcId, { area: "HOLDING_REGISTER", address: 1, value: 0 }),
+      "INVARIANT",
+    );
+    await createTag(db, alice, plcId, {
+      name: "Start_Command",
+      dataType: "BOOL",
+      role: "COMMAND",
+      logicalAddress: "%QX0.0",
+    });
     await writePlcRegister(deps, alice, plcId, { area: "COIL", address: 0, value: true });
     await sleep(300);
     expect(await readPlcRegisters(deps, alice, plcId, { area: "HOLDING_REGISTER", address: 0 })).toEqual([45]);

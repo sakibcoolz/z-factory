@@ -206,7 +206,11 @@ describeDb("PLC engineering export against PostgreSQL", () => {
       unit: null,
       sourceDevice: "PT-101",
       sourceSignal: "value",
+      // A wired AI channel: the field (here the simulator) drives it, the program reads it.
+      authority: "PROGRAM_INPUT",
     });
+    expect(tags.XV_101_Y1?.authority).toBe("PROGRAM_OUTPUT");
+    expect(tags.Pump01_StartCommand?.authority).toBe("EXTERNAL_COMMAND");
     // The one tag a gateway may write.
     expect(tags.Pump01_StartCommand).toMatchObject({
       role: "COMMAND",
@@ -365,7 +369,7 @@ describeDb("PLC engineering export against PostgreSQL", () => {
     const tags = lines(tagScheduleCsv(document));
     expect(tags).toHaveLength(document.tags.length + 1);
     expect(tags).toContain(
-      "PT_101_OUT,PROCESS_VALUE,INT16,INTERNAL,%MW0,HOLDING_REGISTER,1024,41025,1,READ_ONLY,BIG_ENDIAN,HIGH_WORD_FIRST,0.1,0,,PT-101,value",
+      "PT_101_OUT,PROCESS_VALUE,INT16,INTERNAL,%MW0,HOLDING_REGISTER,1024,41025,1,READ_ONLY,BIG_ENDIAN,HIGH_WORD_FIRST,0.1,0,,PT-101,value,PROGRAM_INPUT",
     );
 
     const devices = lines(deviceScheduleCsv(document));

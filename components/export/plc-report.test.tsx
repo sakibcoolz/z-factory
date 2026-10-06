@@ -117,6 +117,7 @@ const compact: PlcExportDocument = {
       unit: null,
       sourceDevice: "XV-101",
       sourceSignal: "open",
+      authority: "PROGRAM_OUTPUT",
     },
     {
       name: "Pump01_StartCommand",
@@ -136,6 +137,7 @@ const compact: PlcExportDocument = {
       unit: null,
       sourceDevice: null,
       sourceSignal: null,
+      authority: "PROGRAM_OUTPUT",
     },
   ],
   moduleSignals: [

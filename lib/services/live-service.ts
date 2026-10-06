@@ -14,7 +14,8 @@ import {
   type LiveTagReading,
 } from "@/lib/domain/live";
 import type { RuntimeState } from "@/lib/domain/runtime-state";
-import { isWritableTagRole, type TagDataType, type TagRole } from "@/lib/domain/tag";
+import type { TagDataType, TagRole } from "@/lib/domain/tag";
+import { isExternallyWritable, type TagAuthority, tagAuthority } from "@/lib/domain/tag-authority";
 import type { EventBus } from "@/lib/events/bus";
 import type { PrismaClient } from "@/lib/generated/prisma/client";
 import { readModbus } from "@/lib/protocols/modbus/client";
@@ -312,8 +313,9 @@ export type LiveTagRow = {
   dataType: TagDataType;
   unit: string | null;
   logicalAddress: string | null;
-  /** Only command and setpoint tags can be written; PLC logic produces the others. */
+  /** Only external command memory can be written; PLC logic, the field or a bridge produces the others. */
   writable: boolean;
+  authority: TagAuthority;
   deviceName: string | null;
   reading: LiveTagReading;
 };
@@ -349,7 +351,8 @@ export async function getLiveTags(deps: LiveDeps, actor: Actor, factoryId: strin
         dataType: tag.dataType,
         unit: tag.unit,
         logicalAddress: tag.logicalAddress,
-        writable: tag.accessMode === "READ_WRITE" && isWritableTagRole(tag.role),
+        writable: isExternallyWritable(tag),
+        authority: tagAuthority(tag),
         deviceName: tag.sourceDevice?.name ?? null,
         reading: live.get(tag.name) ?? {
           plcId: plc.id,
