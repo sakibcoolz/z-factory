@@ -342,3 +342,41 @@ UI -> Z-Factory server -> Go simulation override API
 ```
 
 The UI changes simulator runtime state, never PLC local outputs. The Go service exposes AUTO, MANUAL_OVERRIDE and SCENARIO semantics for supported simulated inputs. Program-generated PLC outputs are delivered to simulated devices through the bridge. Actual device/process feedback returns to PLC inputs. This is the canonical closed-loop testing model.
+
+
+## Z-Factory Thin Client Agent — Phase 05 follow-up (TASK-503)
+
+The production external edge component is a standalone Go thin client, separate from the Next.js server and separate from the Phase 06 process simulator.
+
+```text
+Z-Factory export
+ -> versioned per-PLC JSON
+ -> edge staging/active directories
+ -> Z-Factory Thin Client Agent (Go)
+      -> config validator + reconciler
+      -> Device Supervisor
+           -> dynamic PLC worker 1 -- Modbus TCP --> PLC
+           -> dynamic PLC worker 2 -- Modbus TCP --> PLC
+           -> ... N = active PLC configs
+      -> bounded telemetry queue
+      -> durable local spool
+      -> bounded MQTT publisher pool -> cloud
+      <- MQTT command subscriber <- cloud
+           -> command router -> target PLC worker
+           -> validated command/setpoint mapping only
+```
+
+Rules:
+- no central SQL/PostgreSQL dependency
+- edge desired state comes from versioned exported PLC JSON
+- invalid candidates never replace last-known-good active config
+- PLC workers are dynamic, supervised and fault-isolated; count derives from active configs
+- one slow/offline PLC cannot block others
+- queues/publishers are bounded with explicit backpressure/reconnect/spool limits
+- MQTT/cloud failure does not stop local PLC polling
+- telemetry can be spooled and replayed at a controlled rate
+- MQTT commands route by stable PLC/mapping identity, validate against exported writable allow-list, and use command ids/idempotency
+- remote writes target command/setpoint communication tags only; PLC scan-cycle logic/interlocks remain authoritative for local physical outputs (ADR-0015)
+- hot add/update/remove reconciles only affected workers
+- production secrets are not exported as plaintext JSON
+- `scripts/edge-client.mjs` remains a test/reference client; TASK-503 provides the deployable Go agent
