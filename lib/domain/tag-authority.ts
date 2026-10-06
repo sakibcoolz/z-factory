@@ -9,7 +9,7 @@
  *                        a %I address; the field, or the simulation bridge, writes it
  *   SIMULATION_FEEDBACK  memory a simulation bridge fills with what a device or process
  *                        produces; the program reads it
- *   LINK_INPUT           %M memory a PLC link (Phase 07) fills with a peer PLC's value; the
+ *   LINK_INPUT           %I or %M a PLC link (Phase 07) fills with a peer PLC's value; the
  *                        program reads it
  *   EXTERNAL_COMMAND     command/setpoint memory a gateway or the UI may write; the program
  *                        decides what to do with it
@@ -60,8 +60,8 @@ export function tagAuthority(tag: AuthorityTag): TagAuthority {
   if (tag.plcIoPointId) return where === "Q" ? "PROGRAM_OUTPUT" : "PROGRAM_INPUT";
   if (tag.accessMode === "READ_WRITE" && isWritableTagRole(tag.role)) return "EXTERNAL_COMMAND";
   if (where === "Q") return "PROGRAM_OUTPUT";
-  if (where === "I") return "PROGRAM_INPUT";
   if (tag.linkInput) return "LINK_INPUT";
+  if (where === "I") return "PROGRAM_INPUT";
   if (tag.sourceSignal || tag.moduleSignalDirection === "INPUT" || tag.moduleSignalDirection === "ALARM") {
     return "SIMULATION_FEEDBACK";
   }

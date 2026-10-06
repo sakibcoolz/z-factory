@@ -14,7 +14,13 @@ import { DomainError } from "@/lib/domain/errors";
 import type { RuntimeState } from "@/lib/domain/runtime-state";
 import type { ModbusArea } from "@/lib/domain/tag";
 import { type ModbusEndpoint, readModbus, writeModbus } from "@/lib/protocols/modbus/client";
-import { API_CONTAINER_PORT, composeProgramBundle, MODBUS_CONTAINER_PORT, zipBundle } from "./bundle";
+import {
+  API_CONTAINER_PORT,
+  composeProgramBundle,
+  MODBUS_CONTAINER_PORT,
+  type ModbusMasterDevice,
+  zipBundle,
+} from "./bundle";
 import { OpenPlcClient, type PlcStatus } from "./client";
 import { type CompileDiagnostic, compileStructuredText } from "./compiler";
 import { runtimeCredentials } from "./credentials";
@@ -134,6 +140,8 @@ export async function deployProgram(
   client: OpenPlcClient,
   source: string,
   buildTimeoutMs = 240_000,
+  /** The PLC's links as a Modbus master (TASK-703). */
+  modbusMaster: readonly ModbusMasterDevice[] = [],
 ): Promise<DeployResult> {
   const compiled = await compileStructuredText(source);
   if (!compiled.success) {
@@ -143,7 +151,7 @@ export async function deployProgram(
     });
   }
 
-  const bundle = composeProgramBundle({ source, md5: compiled.md5, compiledFiles: compiled.files });
+  const bundle = composeProgramBundle({ source, md5: compiled.md5, compiledFiles: compiled.files, modbusMaster });
   await client.uploadProgram(zipBundle(bundle));
 
   const build = await poll(

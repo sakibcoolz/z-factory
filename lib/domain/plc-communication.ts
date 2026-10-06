@@ -210,6 +210,8 @@ export type LinkTag = AuthorityTag & {
   name: string;
   dataType: TagDataType;
   unit: string | null;
+  scale: number;
+  offset: number;
   protocolArea: ModbusArea | null;
   protocolAddress: number | null;
   /** A process module's signal is bound to it (TASK-605): its writer is the process bridge. */
@@ -223,7 +225,8 @@ export type PlcLinkMappingRule =
   | "plc-link-unit"
   | "plc-link-local-read"
   | "plc-link-local-write"
-  | "plc-link-remote-write";
+  | "plc-link-remote-write"
+  | "plc-link-adapter";
 
 const mappingRefusal = (code: "INCOMPATIBLE" | "INVARIANT", message: string, rule: PlcLinkMappingRule) =>
   new DomainError(code, message, { rule });
@@ -276,15 +279,17 @@ export function checkLinkMapping(
     );
   }
   if (operation === "READ") {
-    const memory = /^%M/i.test(local.logicalAddress ?? "");
+    // %I is the client's input image, %M its memory; %Q is its program's outputs.
+    const fillable = /^%[IM]/i.test(local.logicalAddress ?? "");
     const free = !local.plcIoPointId && !local.sourceSignal && !local.moduleBound && local.accessMode === "READ_ONLY";
-    if (!memory || !free) {
+    if (!fillable || !free) {
       throw mappingRefusal(
         "INCOMPATIBLE",
-        `${local.name} cannot receive a peer's value: the link fills %M memory nothing else writes — not an I/O point, a command, or a device or module signal.`,
+        `${local.name} cannot receive a peer's value: the link fills input (%I) or memory (%M) addresses nothing else writes — not an output, an I/O point, a command, or a device or module signal.`,
         "plc-link-local-read",
       );
     }
+    checkOpenPlcLinkMapping(operation, local, remote);
     return;
   }
   const source = tagAuthority(local);
@@ -301,6 +306,40 @@ export function checkLinkMapping(
       `${remote.name} is ${TAG_AUTHORITY_LABELS[tagAuthority(remote)]} of the server; a link writes only its command and setpoint tags, and the server's program decides.`,
       "plc-link-remote-write",
     );
+  }
+  checkOpenPlcLinkMapping(operation, local, remote);
+}
+
+/** The types the OpenPLC runtime's Modbus master carries word for word (TASK-703). */
+const OPENPLC_LINK_TYPES: readonly TagDataType[] = ["BOOL", "INT16", "UINT16"];
+
+/**
+ * What the OpenPLC adapter can carry (TASK-703, docs/openplc-runtime.md → PLC-to-PLC links):
+ * the client's runtime is the Modbus master and copies raw bits and words between the peer's
+ * registers and its own image, without scaling. So both tags have the same type, scale and
+ * offset; only one-bit and one-word values travel (the master's 32-bit order differs from
+ * the server's, and %MD is not the same memory as %MW); and a bit sits in the client's
+ * %IX (a READ) or %QX (a WRITE), because the master does not address %MX.
+ */
+export function checkOpenPlcLinkMapping(operation: PlcLinkOperation, local: LinkTag, remote: LinkTag): void {
+  const refuseAdapter = (message: string) => mappingRefusal("INCOMPATIBLE", message, "plc-link-adapter");
+  if (!OPENPLC_LINK_TYPES.includes(remote.dataType)) {
+    throw refuseAdapter(`${remote.name} is ${remote.dataType}; a PLC link carries BOOL, INT16 and UINT16 values.`);
+  }
+  if (local.dataType !== remote.dataType || local.scale !== remote.scale || local.offset !== remote.offset) {
+    throw refuseAdapter(
+      `${local.name} and ${remote.name} differ in type or scaling; the runtime copies raw values, so both carry the same encoding.`,
+    );
+  }
+  if (local.dataType === "BOOL") {
+    const expected = operation === "READ" ? /^%IX/i : /^%QX/i;
+    if (!expected.test(local.logicalAddress ?? "")) {
+      throw refuseAdapter(
+        operation === "READ"
+          ? `${local.name} receives an on/off value from a peer: give it an input bit (%IX); the runtime does not deliver bits to %MX.`
+          : `${local.name} is sent to a peer as an on/off value: it has to be an output bit (%QX) of the program.`,
+      );
+    }
   }
 }
 

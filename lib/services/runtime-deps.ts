@@ -6,6 +6,7 @@ import { getServerEnv } from "@/lib/env";
 import { getEventBus } from "@/lib/events/bus";
 import { getDeviceSimulator } from "@/lib/runtimes/device-sim/runtime";
 import { getGatewayEndpoints } from "@/lib/runtimes/gateway-endpoint/runtime";
+import { getPlcLinkMonitor } from "@/lib/runtimes/plc-link/monitor";
 import { getProcessBridge } from "@/lib/runtimes/process-bridge/runtime";
 import { createProcessSimClient } from "@/lib/runtimes/process-sim/client";
 import { getTagMonitor } from "@/lib/runtimes/tag-monitor/monitor";
@@ -13,6 +14,7 @@ import { resolveRuntimeSecret } from "@/lib/runtimes/openplc/credentials";
 import type { FactoryRuntimeDeps } from "./factory-runtime-service";
 import type { GatewayDeps } from "./gateway-service";
 import type { LiveDeps } from "./live-service";
+import type { PlcLinkDeps } from "./plc-communication-service";
 import type { ProcessBridgeDeps } from "./process-bridge-service";
 import type { RuntimeDeps } from "./plc-runtime-service";
 import type { SimulationDeps } from "./simulation-service";
@@ -58,6 +60,12 @@ export function getProcessBridgeDeps(): ProcessBridgeDeps {
   };
 }
 
+/** Database, bus and the shared PLC link monitor, polling like the tag monitor (TASK-703). */
+export function getPlcLinkDeps(): PlcLinkDeps {
+  const env = getServerEnv();
+  return { db: getDb(), bus: getEventBus(), monitor: getPlcLinkMonitor(), pollMs: Math.max(env.TAG_POLL_MS, 1000) };
+}
+
 /** Database, bus, tag monitor and simulator for the live service, with its timing from the environment. */
 export function getLiveDeps(): LiveDeps {
   const env = getServerEnv();
@@ -92,5 +100,6 @@ export function getFactoryRuntimeDeps(): FactoryRuntimeDeps {
     live: getLiveDeps(),
     gateway: getGatewayDeps(),
     process: getProcessBridgeDeps(),
+    links: getPlcLinkDeps(),
   };
 }

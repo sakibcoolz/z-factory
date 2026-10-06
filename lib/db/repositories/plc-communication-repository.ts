@@ -218,6 +218,25 @@ export const plcCommunicationRepository = {
     return db.$queryRaw`SELECT "id" FROM "PlcCommunicationConnection" WHERE "id" = ${linkId}::uuid FOR UPDATE`;
   },
 
+  /** The published Modbus endpoint of a PLC's runtime, when it has one (TASK-703 health probe). */
+  findModbusPort(db: Db, plcId: string) {
+    return db.runtimePort.findFirst({
+      where: { deviceInstanceId: plcId, protocol: "MODBUS_TCP", hostPort: { not: null } },
+    });
+  },
+
+  /** The link versions a PLC's runtime was last deployed with (its newest PLC snapshot). */
+  async deployedLinkVersions(db: Db, factoryId: string, plcId: string): Promise<Map<string, number>> {
+    const snapshot = await db.configurationVersion.findFirst({
+      where: { factoryId, scopeType: "PLC", scopeId: plcId },
+      orderBy: { version: "desc" },
+      select: { snapshotJson: true },
+    });
+    const links = (snapshot?.snapshotJson as { plcLinks?: Array<{ linkId: string; configVersion: number }> } | null)
+      ?.plcLinks;
+    return new Map((links ?? []).map((link) => [link.linkId, link.configVersion]));
+  },
+
   listVersions(db: Db, factoryId: string, linkId: string, take = 20) {
     return db.configurationVersion.findMany({
       where: { factoryId, scopeType: "PLC_COMMUNICATION", scopeId: linkId },

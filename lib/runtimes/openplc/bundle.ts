@@ -35,6 +35,62 @@ export function modbusSlaveConfig(): string {
   );
 }
 
+/** Modbus function codes the runtime's master uses per Modbus area (reads) and per kind of write. */
+const READ_FUNCTION = { COIL: 1, DISCRETE_INPUT: 2, HOLDING_REGISTER: 3, INPUT_REGISTER: 4 } as const;
+
+/** One value the PLC exchanges as a Modbus master with a peer (TASK-703). */
+export type ModbusMasterPoint = {
+  operation: "READ" | "WRITE";
+  /** The peer's area and zero-based address. */
+  remoteArea: keyof typeof READ_FUNCTION;
+  remoteAddress: number;
+  /** Where the value sits in this PLC: `%IX10.0`, `%MW20`, `%QX101.0`… */
+  localAddress: string;
+  cycleTimeMs: number;
+};
+
+/** One peer server the PLC talks to: its name on the factory network, port and unit id. */
+export type ModbusMasterDevice = {
+  name: string;
+  host: string;
+  port: number;
+  unitId: number;
+  timeoutMs: number;
+  points: ModbusMasterPoint[];
+};
+
+/**
+ * Modbus master plugin configuration (TASK-703): the PLC's own runtime is the client of a
+ * PLC-to-PLC link. Each point copies raw bits or words between the peer's registers and this
+ * PLC's image every `cycle_time_ms`; a READ that fails leaves the last value in place.
+ */
+export function modbusMasterConfig(devices: readonly ModbusMasterDevice[]): string {
+  return JSON.stringify(
+    devices.map((device) => ({
+      name: device.name,
+      protocol: "MODBUS",
+      config: {
+        type: "SLAVE",
+        transport: "tcp",
+        host: device.host,
+        port: device.port,
+        slave_id: device.unitId,
+        timeout_ms: device.timeoutMs,
+        io_points: device.points.map((point) => ({
+          fc: point.operation === "READ" ? READ_FUNCTION[point.remoteArea] : point.remoteArea === "COIL" ? 5 : 6,
+          offset: String(point.remoteAddress),
+          iec_location: point.localAddress,
+          len: 1,
+          cycle_time_ms: point.cycleTimeMs,
+          error_handling: "keep-last-value",
+        })),
+      },
+    })),
+    null,
+    2,
+  );
+}
+
 const REQUIRED_FILES = ["generated.hpp", "generated_debug.cpp"];
 
 export function composeProgramBundle(input: {
@@ -42,6 +98,8 @@ export function composeProgramBundle(input: {
   md5: string;
   /** Output of the STruC++ compile: generated sources plus `strucpp_runtime/include/*`. */
   compiledFiles: Record<string, string>;
+  /** The PLC's links as a Modbus master (TASK-703); the plugin is enabled only when there is one. */
+  modbusMaster?: readonly ModbusMasterDevice[];
 }): Record<string, string> {
   for (const required of REQUIRED_FILES) {
     if (!(required in input.compiledFiles)) {
@@ -62,6 +120,9 @@ export function composeProgramBundle(input: {
     // No C/C++ function blocks: the editor ships this stub in that case.
     "c_blocks.h": "// Empty file\n",
     "conf/modbus_slave.json": modbusSlaveConfig(),
+    ...(input.modbusMaster && input.modbusMaster.length > 0
+      ? { "conf/modbus_master.json": modbusMasterConfig(input.modbusMaster) }
+      : {}),
   };
 }
 

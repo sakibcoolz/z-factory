@@ -23,6 +23,11 @@ import {
   toPlcLinkSnapshot,
 } from "@/lib/domain/plc-communication";
 import type { Prisma, PrismaClient } from "@/lib/generated/prisma/client";
+import type { EventBus } from "@/lib/events/bus";
+import { readModbus } from "@/lib/protocols/modbus/client";
+import type { ModbusMasterDevice } from "@/lib/runtimes/openplc/bundle";
+import { publishedModbusEndpoint } from "@/lib/runtimes/openplc/adapter";
+import type { LinkCheck, LinkHealth, PlcLinkMonitorRuntime } from "@/lib/runtimes/plc-link/monitor";
 import { parseInput } from "@/lib/validation/parse";
 import {
   type PlcLinkInput,
@@ -291,6 +296,8 @@ const toLinkTag = (tag: TagRow, linkInputs: ReadonlySet<string>): LinkTag => ({
   name: tag.name,
   dataType: tag.dataType,
   unit: tag.unit,
+  scale: tag.scale,
+  offset: tag.offset,
   role: tag.role,
   accessMode: tag.accessMode,
   logicalAddress: tag.logicalAddress,
@@ -307,11 +314,15 @@ export async function listPlcLinkMappings(
   db: PrismaClient,
   actor: Actor,
   linkId: string,
+  /** When given, each mapping carries its link's live quality (TASK-703). */
+  monitor?: PlcLinkMonitorRuntime,
 ): Promise<PlcLinkMappingView[]> {
   const record = await loadLink(db, actor, linkId);
-  return (await plcCommunicationRepository.listMappings(db, record.id)).map((mapping) =>
-    toMappingView(mapping, record.pollIntervalMs),
-  );
+  const quality = monitor?.health(record.factoryId).find((health) => health.linkId === record.id)?.quality ?? null;
+  return (await plcCommunicationRepository.listMappings(db, record.id)).map((mapping) => ({
+    ...toMappingView(mapping, record.pollIntervalMs),
+    quality: mapping.enabled ? quality : null,
+  }));
 }
 
 /**
@@ -403,4 +414,160 @@ export async function removePlcLinkMapping(
     return plcCommunicationRepository.bumpVersion(transaction, record.id);
   });
   await version(db, actor, link, "mapping removed");
+}
+
+// ───────────────────────────── runtime (TASK-703) ─────────────────────────────
+
+/** What a client PLC's runtime is deployed with for its links, and which link versions that is. */
+export type ModbusMasterPlan = {
+  devices: ModbusMasterDevice[];
+  links: Array<{ linkId: string; configVersion: number }>;
+};
+
+/**
+ * The Modbus master configuration of a PLC that is the client of links (TASK-703): one
+ * device per enabled link — the server by its service name on the factory network — with a
+ * point per enabled mapping. Deployed with the PLC's program; the PLC's own runtime then
+ * exchanges the values, inside the factory network, without Z-Factory in the path.
+ */
+export async function modbusMasterPlan(db: PrismaClient, clientPlcId: string): Promise<ModbusMasterPlan> {
+  const links = (await plcCommunicationRepository.listPlcLinks(db, clientPlcId)).filter(
+    (link) => link.clientPlcInstanceId === clientPlcId && link.enabled,
+  );
+  const devices: ModbusMasterDevice[] = [];
+  for (const link of links) {
+    const points = (await plcCommunicationRepository.listMappings(db, link.id))
+      .filter((mapping) => mapping.enabled && mapping.remoteTag.protocolArea !== null)
+      .flatMap((mapping) =>
+        mapping.remoteTag.protocolArea !== null &&
+        mapping.remoteTag.protocolAddress !== null &&
+        mapping.localTag.logicalAddress
+          ? [
+              {
+                operation: mapping.operation,
+                remoteArea: mapping.remoteTag.protocolArea,
+                remoteAddress: mapping.remoteTag.protocolAddress,
+                localAddress: mapping.localTag.logicalAddress,
+                cycleTimeMs: mapping.updateIntervalMs ?? link.pollIntervalMs,
+              },
+            ]
+          : [],
+      );
+    if (points.length === 0) continue;
+    devices.push({
+      name: `link-${link.id.slice(-12)}`,
+      host: link.serverHost,
+      port: link.serverPort,
+      unitId: link.unitId,
+      timeoutMs: Math.min(1000, link.pollIntervalMs),
+      points,
+    });
+  }
+  return { devices, links: links.map((link) => ({ linkId: link.id, configVersion: link.configVersion })) };
+}
+
+export type PlcLinkDeps = {
+  db: PrismaClient;
+  bus?: EventBus;
+  monitor: PlcLinkMonitorRuntime;
+  /** How often the links are checked, in milliseconds. */
+  pollMs?: number;
+};
+
+/** `payload.link` of the connection events the link monitor records. */
+export const PLC_LINK_EVENT_LINK = "plc-link";
+
+/**
+ * How each enabled link of the factory is doing, as far as Z-Factory can see without being in
+ * the path: STALE when the client's runtime does not run the link's current version (it is not
+ * running, or was deployed before the last change), DISCONNECTED when the server does not
+ * answer on Modbus, GOOD otherwise. The probe reads the server's first mapped register from the
+ * host; the exchange itself runs between the two containers on the factory network.
+ */
+async function checkLinks(db: PrismaClient, factoryId: string): Promise<LinkCheck[]> {
+  const links = (await plcCommunicationRepository.listLinks(db, factoryId)).filter((link) => link.enabled);
+  const checks: LinkCheck[] = [];
+  for (const link of links) {
+    const view = toView(link);
+    const client = view.client === "SOURCE" ? view.source : view.target;
+    const server = view.client === "SOURCE" ? view.target : view.source;
+    const base = { linkId: link.id, clientPlcId: client.plcId, clientName: client.name, serverName: server.name };
+    const deployed = (await plcCommunicationRepository.deployedLinkVersions(db, factoryId, client.plcId)).get(link.id);
+    if (client.runtimeStatus !== "RUNNING") {
+      checks.push({ ...base, quality: "STALE", reason: `${client.name} is not running.` });
+      continue;
+    }
+    if (deployed !== link.configVersion) {
+      checks.push({
+        ...base,
+        quality: "STALE",
+        reason: `${client.name} runs ${deployed ? `version ${deployed}` : "no version"} of the link; deploy its program to apply version ${link.configVersion}.`,
+      });
+      continue;
+    }
+    const port = await plcCommunicationRepository.findModbusPort(db, server.plcId);
+    const [probe] = await plcCommunicationRepository.listMappings(db, link.id);
+    const answered =
+      port?.hostPort && server.runtimeStatus === "RUNNING"
+        ? await readModbus(
+            publishedModbusEndpoint(port.bindAddress, port.hostPort),
+            probe?.remoteTag.protocolArea ?? "HOLDING_REGISTER",
+            probe?.remoteTag.protocolAddress ?? 0,
+            1,
+          ).then(
+            () => true,
+            () => false,
+          )
+        : false;
+    checks.push(
+      answered
+        ? { ...base, quality: "GOOD", reason: null }
+        : { ...base, quality: "DISCONNECTED", reason: `${server.name} does not answer on Modbus.` },
+    );
+  }
+  return checks;
+}
+
+/** Starts watching the factory's links; a change of quality is recorded once as CONNECTION_DOWN/UP. */
+export function startPlcLinkMonitor(deps: PlcLinkDeps, factoryId: string, options: { autoTick?: boolean } = {}): void {
+  deps.monitor.start(factoryId, {
+    evaluate: () => checkLinks(deps.db, factoryId),
+    pollMs: deps.pollMs,
+    autoTick: options.autoTick,
+    onChanges: async (changes) => {
+      const events = changes
+        // The first look at a link that is fine is not news.
+        .filter((change) => change.previous !== null || change.current.quality !== "GOOD")
+        .map((change) => ({
+          type: change.current.quality === "GOOD" ? "CONNECTION_UP" : "CONNECTION_DOWN",
+          factoryId,
+          deviceId: change.current.clientPlcId,
+          severity: change.current.quality === "DISCONNECTED" ? ("WARNING" as const) : ("INFO" as const),
+          payload: {
+            link: PLC_LINK_EVENT_LINK,
+            linkId: change.current.linkId,
+            to: change.current.serverName,
+            state: change.current.quality,
+            ...(change.current.reason ? { message: change.current.reason } : {}),
+          },
+        }));
+      if (events.length > 0) await recordEvents(deps, events);
+    },
+  });
+}
+
+export function stopPlcLinkMonitor(deps: PlcLinkDeps, factoryId: string): void {
+  deps.monitor.stop(factoryId);
+}
+
+export type PlcLinkHealthView = LinkHealth;
+
+/** The last known health of the factory's links; empty while they are not watched. */
+export async function getPlcLinkHealth(
+  deps: PlcLinkDeps,
+  actor: Actor,
+  factoryId: string,
+): Promise<PlcLinkHealthView[]> {
+  const factory = await getFactory(deps.db, actor, factoryId);
+  return deps.monitor.health(factory.id);
 }

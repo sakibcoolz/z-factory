@@ -171,6 +171,11 @@ Inputs are in memory, not in `%I`: the runtime accepts simulated field values on
 
 A compact PLC's points are numbered by channel. A module's points start after everything already in use, digital blocks on a byte boundary, so existing addresses never move when modules are added or removed. Tags the user placed by hand are skipped, and a hand-made tag cannot take the address of an I/O point. A PLC has room for 1024 DI, 1024 DO, 256 AI and 256 AO.
 
+### PLC-to-PLC links (TASK-703)
+The client of a link is a Modbus master in its own runtime. The OpenPLC Runtime v4 ships a Modbus master plugin; it is enabled by a `conf/modbus_master.json` in the upload bundle, which `deployProgramVersion` adds when the PLC is the client of an enabled link with enabled mappings (`modbusMasterPlan`). One device per link (the server's service name, port, unit id, a timeout of at most 1 s), one point per mapping: a READ uses function code 1, 2, 3 or 4 by the server tag's area and lands at the client tag's located address, a WRITE takes the value at the client tag's address and writes it with function code 5 (coil) or 6 (register), each at the mapping's interval. A READ that fails keeps the last value.
+
+What the plugin carries shapes the rules (`plc-link-adapter`): it copies raw bits and words, so both tags share data type, scale and offset; it carries BOOL, INT16 and UINT16 (its 32-bit word order is the reverse of the server's, and `%MD` is a different buffer from `%MW`); and it addresses bits only in `%IX` and `%QX`, so a READ bit arrives in the client's input image and a WRITE bit leaves from its output image. A link change takes effect at the client's next deployment; the deployment's configuration snapshot lists the link versions it carries (`plcLinks`), and the link monitor reports a link as STALE until then.
+
 ### Screens (TASK-305)
 The Program, Versions and Runtime screens of a stored PLC call these services through the server actions in `app/factories/[factoryId]/plcs/runtime-actions.ts`. Their read models are in `lib/services/plc-runtime-view-service.ts`:
 
