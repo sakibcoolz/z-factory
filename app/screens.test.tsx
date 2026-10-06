@@ -11,6 +11,7 @@ import GatewaysPage from "@/app/factories/[factoryId]/gateways/page";
 import ModulePage from "@/app/factories/[factoryId]/modules/[moduleId]/page";
 import ModulesPage from "@/app/factories/[factoryId]/modules/page";
 import FactoryPage from "@/app/factories/[factoryId]/page";
+import CommunicationPage from "@/app/factories/[factoryId]/plcs/[plcId]/communication/page";
 import ConnectionsPage from "@/app/factories/[factoryId]/plcs/[plcId]/connections/page";
 import ExportPage from "@/app/factories/[factoryId]/plcs/[plcId]/export/page";
 import HardwarePage from "@/app/factories/[factoryId]/plcs/[plcId]/hardware/page";
@@ -65,6 +66,7 @@ const SCREENS: Array<[name: string, render: (id: string) => Promise<unknown>]> =
       }),
   ],
   ["PLC connections", (id) => (ConnectionsPage as Page)({ params: params(id, { plcId: id }) as never })],
+  ["PLC communication", (id) => (CommunicationPage as Page)({ params: params(id, { plcId: id }) as never })],
   ["PLC program", (id) => (ProgramPage as Page)({ params: params(id, { plcId: id }) as never })],
   ["PLC I/O mapping", (id) => (IoMappingPage as Page)({ params: params(id, { plcId: id }) as never })],
   ["PLC versions", (id) => (VersionsPage as Page)({ params: params(id, { plcId: id }) as never })],

@@ -1,4 +1,6 @@
 import "server-only";
+import { plcCommunicationRepository } from "@/lib/db/repositories/plc-communication-repository";
+import { routes } from "@/lib/navigation/routes";
 import type { Actor } from "@/lib/auth/actor";
 import { deviceRepository } from "@/lib/db/repositories/device-repository";
 import { factoryRepository } from "@/lib/db/repositories/factory-repository";
@@ -103,6 +105,26 @@ export async function getTopology(db: PrismaClient, actor: Actor, factoryId: str
         protocol: connection.protocol,
       });
     }
+  }
+
+  // PLC-to-PLC links (Phase 07): one edge per link, from client to server.
+  for (const link of await plcCommunicationRepository.listLinks(db, factoryId)) {
+    const id = `plc-link|${link.id}`;
+    edges.set(id, {
+      id,
+      relationship: "COMMUNICATES_WITH",
+      sourceId: link.clientPlcInstanceId,
+      targetId: link.serverPlcInstanceId,
+      wires: [],
+      protocol: link.protocol,
+      plcLink: {
+        linkId: link.id,
+        relationship: link.relationship,
+        values: link._count.mappings,
+        enabled: link.enabled,
+        href: routes.plcCommunication(factoryId, link.clientPlcInstanceId),
+      },
+    });
   }
 
   const palette = new Map<string, PaletteGroupView>();

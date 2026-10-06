@@ -1,6 +1,6 @@
 # Phase 07 — PLC-to-PLC Communication
 
-Status: **IN PROGRESS**
+Status: **DONE**
 
 ## Purpose
 Add first-class PLC-to-PLC communication while keeping every PLC as an independent OpenPLC runtime with its own program, tags, I/O mappings, lifecycle and Docker container.
@@ -15,7 +15,7 @@ Phase 02 OpenPLC runtime and Modbus mapping are stable enough to run multiple PL
 | TASK-701 PLC relationship & communication domain | DONE |
 | TASK-702 Modbus TCP client/server mapping | DONE |
 | TASK-703 PLC-to-PLC runtime adapter & Docker networking | DONE |
-| TASK-704 PLC-to-PLC UI, validation & E2E tests | PLANNED |
+| TASK-704 PLC-to-PLC UI, validation & E2E tests | DONE |
 
 ## Canonical logic
 ```text

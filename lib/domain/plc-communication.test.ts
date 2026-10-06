@@ -4,6 +4,7 @@ import {
   checkLinkMapping,
   checkPlcLink,
   type LinkTag,
+  linkEndRefusal,
   type LinkEndpointPlc,
   plcLinkServerHost,
   type PlcLinkView,
@@ -197,5 +198,47 @@ describe("PLC link mappings", () => {
     expect(check("READ", bit("a", "X", "%MX5.0"), bit("b", "Y", "%QX0.0"))).toBe("plc-link-adapter");
     const memoryBit = bit("a", "X", "%MX5.0");
     expect(check("WRITE", memoryBit, command("START"))).toBe("plc-link-adapter");
+  });
+});
+
+describe("PLC link picker", () => {
+  const tag = (overrides: Partial<LinkTag>): LinkTag => ({
+    id: "t",
+    plcId: "a",
+    name: "T",
+    dataType: "INT16",
+    unit: null,
+    scale: 1,
+    offset: 0,
+    role: "STATUS",
+    accessMode: "READ_ONLY",
+    logicalAddress: "%MW10",
+    plcIoPointId: null,
+    sourceSignal: null,
+    protocolArea: "HOLDING_REGISTER",
+    protocolAddress: 1034,
+    moduleBound: false,
+    ...overrides,
+  });
+
+  it("says why a tag cannot be one end, or nothing when it can", () => {
+    expect(linkEndRefusal("READ", "local", tag({}))).toBeNull();
+    expect(linkEndRefusal("READ", "local", tag({ logicalAddress: "%QW1" }))).toMatch(/free %I or %M/);
+    expect(linkEndRefusal("READ", "local", tag({ dataType: "BOOL", logicalAddress: "%MX1.0" }))).toBe(
+      "a bit from a peer arrives in %IX",
+    );
+    expect(linkEndRefusal("READ", "remote", tag({ logicalAddress: "%QW1" }))).toBeNull();
+    expect(linkEndRefusal("READ", "remote", tag({ dataType: "FLOAT32" }))).toMatch(/not carried/);
+    expect(linkEndRefusal("WRITE", "local", tag({ dataType: "BOOL", logicalAddress: "%QX1.0" }))).toBeNull();
+    expect(
+      linkEndRefusal("WRITE", "local", tag({ role: "COMMAND", accessMode: "READ_WRITE", logicalAddress: "%QW1" })),
+    ).toMatch(/only what the program computes/);
+    expect(linkEndRefusal("WRITE", "remote", tag({ logicalAddress: "%QW1" }))).toMatch(/only a command or setpoint/);
+    expect(
+      linkEndRefusal("WRITE", "remote", tag({ role: "SETPOINT", accessMode: "READ_WRITE", logicalAddress: "%QW1" })),
+    ).toBeNull();
+    expect(linkEndRefusal("READ", "remote", tag({ protocolArea: null, protocolAddress: null }))).toBe(
+      "no Modbus mapping",
+    );
   });
 });

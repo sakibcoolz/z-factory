@@ -361,6 +361,23 @@ export function PlcReport({ document }: PlcReportProps) {
             empty="No PLC-to-PLC link."
           />
         ) : null}
+        {network.plcLinks.some((link) => link.values.length > 0) ? (
+          <Table
+            columns={["Peer PLC", "Direction", "Client tag", "Server tag · register", "Type", "Interval", "State"]}
+            rows={network.plcLinks.flatMap((link) =>
+              link.values.map((value) => [
+                link.peer,
+                value.operation === "READ" ? "read from server" : "write to server command",
+                value.clientTag,
+                `${value.serverTag} · ${value.serverRegister}`,
+                value.dataType,
+                `${value.intervalMs} ms`,
+                value.enabled ? "carried" : "paused",
+              ]),
+            )}
+            empty="No values."
+          />
+        ) : null}
       </Section>
 
       <Section index={12}>

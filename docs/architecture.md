@@ -199,6 +199,8 @@ As built (TASK-702): a mapping joins a tag of the client and a tag of the server
 
 As built (TASK-703, ADR-0016): the client PLC's own runtime is the Modbus TCP client. Deploying the client's program also deploys its enabled links as the configuration of the OpenPLC runtime's Modbus master plugin (`conf/modbus_master.json`): one device per link, addressed by the server's service name on the factory network, one point per enabled mapping with its interval. The exchange runs container to container; no host port and no Z-Factory process sit in the path, and a link that fails stops nothing else (the master keeps the last value of a READ). Z-Factory watches the links (`PlcLinkMonitorRuntime`, started and stopped with the factory): STALE while the client does not run the link's current version, DISCONNECTED while the server does not answer, GOOD otherwise; each change is a `CONNECTION_DOWN`/`CONNECTION_UP` event with `link: plc-link`. A changed link takes effect at the client's next deployment; the deployment snapshot records which link versions it carries.
 
+As built (TASK-704): links and values are configured on the PLC's Communication screen, drawn as their own client-to-server edge in the topology, and exported with their values in each PLC's engineering report and as `link.json`. An end-to-end test runs the seven scenarios of the task against two real OpenPLC runtimes.
+
 ## Device simulation architecture
 MVP uses a shared device-simulator runtime capable of hosting many factory-specific state machines. Avoid one container per simple peripheral unless isolation or protocol fidelity requires it.
 

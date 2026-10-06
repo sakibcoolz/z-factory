@@ -258,7 +258,14 @@ Services in `lib/services/plc-communication-service.ts`. Every function takes th
 | remove mapping | `removePlcLinkMapping(db, actor, linkId, mappingId)` | the tags stay; a new link version |
 
 | link health | `startPlcLinkMonitor(deps, factoryId)`, `stopPlcLinkMonitor(deps, factoryId)`, `getPlcLinkHealth(deps, actor, factoryId)` | TASK-703: per enabled link `GOOD` / `STALE` / `DISCONNECTED` with the reason, since when and when last checked; `startFactory` / `stopFactory` start and stop watching; `listPlcLinkMappings(…, monitor)` gives each enabled mapping its link's quality |
+| Communication screen | `getPlcCommunicationView(db, actor, plcId, monitor?)` | TASK-704: the factory's other controllers (whether each serves Modbus TCP), every link of the PLC in either role with health, the deployed link version, the mappings with quality and, on the client side, every tag of both ends per direction as a picker option with the reason it cannot be used (`linkEndRefusal`, taken by another link) |
 | runtime configuration | `modbusMasterPlan(db, clientPlcId)` | TASK-703: the Modbus master devices and points a client PLC is deployed with, and the link versions they are; used by `deployProgramVersion` |
+
+| Route | Returns |
+|---|---|
+| `GET /factories/[factoryId]/plcs/[plcId]/communication/[linkId]/link.json` | the `exportPlcLink` document as a download; 404 for an unknown link or one the PLC is not part of |
+
+Server actions (TASK-704) in `app/factories/[factoryId]/plcs/[plcId]/communication/actions.ts`: `createLinkAction`, `linkAction` (update, enable, disable, remove), `addMappingAction`, `mappingAction` (enable, disable, remove).
 
 Every change records `PLC_LINK_CHANGED` (family LINK) on the source PLC with `action` created / updated / enabled / disabled / removed / mapping added / mapping changed / mapping removed and the version. The export (`z-factory.plc-link`) lists the mappings by tag names with the remote area and address.
 

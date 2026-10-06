@@ -33,7 +33,15 @@ export function edgeTone(source: RuntimeState | undefined, target: RuntimeState 
 }
 
 /** `controls · 3 wires`, `communicates with · Modbus TCP`, `drives` */
-export function edgeLabel(edge: Pick<TopologyEdgeView, "relationship" | "wires" | "protocol">): string {
+export function edgeLabel(edge: Pick<TopologyEdgeView, "relationship" | "wires" | "protocol" | "plcLink">): string {
+  if (edge.plcLink) {
+    const values = `${edge.plcLink.values} value${edge.plcLink.values === 1 ? "" : "s"}`;
+    return [
+      edge.plcLink.relationship === "SUPERVISES" ? "supervises" : "communicates with",
+      "Modbus TCP",
+      edge.plcLink.enabled ? values : "disabled",
+    ].join(" · ");
+  }
   const parts = [RELATIONSHIP_LABELS[edge.relationship]];
   if (edge.wires.length > 0) parts.push(`${edge.wires.length} wire${edge.wires.length === 1 ? "" : "s"}`);
   else if (edge.protocol) parts.push(edge.protocol.replace("MODBUS_TCP", "Modbus TCP"));

@@ -98,6 +98,29 @@ export function TopologyInspector(props: TopologyInspectorProps) {
   if (selection?.kind === "edge") {
     const edge = edges.find((candidate) => candidate.id === selection.id);
     if (!edge) return <p className="zf-sub p-2.5">This connection no longer exists.</p>;
+    if (edge.plcLink) {
+      return (
+        <div className="flex flex-col gap-2 p-2.5">
+          <span className="zf-k">PLC link</span>
+          <KeyValue
+            rows={[
+              ["Client", mono(name(edge.sourceId))],
+              ["Relationship", edge.plcLink.relationship === "SUPERVISES" ? "supervises" : "communicates with"],
+              ["Server", mono(name(edge.targetId))],
+              ["Protocol", "Modbus TCP"],
+              ["Values", edge.plcLink.enabled ? String(edge.plcLink.values) : "disabled"],
+            ]}
+          />
+          <a className="zf-btn" data-size="sm" href={edge.plcLink.href}>
+            Open on the Communication screen
+          </a>
+          <p className="zf-sub">
+            The client reads and writes the server through its own runtime. Writes reach the server&apos;s command and
+            setpoint tags; the server&apos;s program decides.
+          </p>
+        </div>
+      );
+    }
     const wired = edge.relationship === "WIRED_TO";
     return (
       <div className="flex flex-col gap-2 p-2.5">
@@ -219,7 +242,7 @@ export function TopologyInspector(props: TopologyInspectorProps) {
               key={edge.id}
               edge={edge}
               name={name}
-              onRemove={readOnly || busy ? undefined : () => props.onRemoveEdge(edge)}
+              onRemove={readOnly || busy || edge.plcLink ? undefined : () => props.onRemoveEdge(edge)}
             />
           ))}
         </ul>

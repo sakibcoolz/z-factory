@@ -8,8 +8,12 @@ import {
   type PlcLinkRecord,
 } from "@/lib/db/repositories/plc-communication-repository";
 import { DomainError } from "@/lib/domain/errors";
+import { hasCapability, isProgrammableController } from "@/lib/domain/device-capabilities";
+import type { CommunicationLinkView, LinkTagOption, PlcCommunicationView } from "@/lib/domain/plc-communication-view";
 import {
   checkLinkMapping,
+  linkEndRefusal,
+  type PlcLinkOperation,
   checkPlcLink,
   type LinkTag,
   type PlcLinkMappingView,
@@ -254,6 +258,17 @@ export async function exportPlcLink(db: PrismaClient, actor: Actor, linkId: stri
     toMappingView(mapping, record.pollIntervalMs),
   );
   return toPlcLinkSnapshot(toView(record), mappings);
+}
+
+/** A link's mappings without an owner check, for the engineering export of a PLC already loaded. */
+export async function listPlcLinkMappingsOf(db: PrismaClient, linkId: string): Promise<PlcLinkMappingView[]> {
+  const record = await db.plcCommunicationConnection.findUnique({
+    where: { id: linkId },
+    select: { pollIntervalMs: true },
+  });
+  return (await plcCommunicationRepository.listMappings(db, linkId)).map((mapping) =>
+    toMappingView(mapping, record?.pollIntervalMs ?? 1000),
+  );
 }
 
 /** The links a PLC takes part in, for its engineering export. */
@@ -570,4 +585,111 @@ export async function getPlcLinkHealth(
 ): Promise<PlcLinkHealthView[]> {
   const factory = await getFactory(deps.db, actor, factoryId);
   return deps.monitor.health(factory.id);
+}
+
+// ───────────────────────────── the Communication screen (TASK-704) ─────────────────────────────
+
+/**
+ * Everything the PLC's Communication screen shows: the PLCs it can link to, its links in
+ * either role with their health, deployed version and mappings, and — where it is the
+ * client — every tag of both ends as a picker option with the reason it cannot be used.
+ */
+export async function getPlcCommunicationView(
+  db: PrismaClient,
+  actor: Actor,
+  plcId: string,
+  monitor?: PlcLinkMonitorRuntime,
+): Promise<PlcCommunicationView> {
+  const plc = await loadPlc(db, actor, plcId, "this");
+  const peers = (await plcCommunicationRepository.listFactoryControllers(db, plc.factoryId))
+    .filter((candidate) => candidate.id !== plc.id && isProgrammableController(candidate.deviceModel))
+    .map((candidate) => ({
+      plcId: candidate.id,
+      name: candidate.name,
+      runtimeStatus: candidate.runtimeStatus,
+      servesModbus: hasCapability(candidate.deviceModel, "MODBUS_SERVER"),
+    }));
+  const health = new Map((monitor?.health(plc.factoryId) ?? []).map((entry) => [entry.linkId, entry]));
+  const deployed = await plcCommunicationRepository.deployedLinkVersions(db, plc.factoryId, plc.id);
+  const records = await plcCommunicationRepository.listPlcLinks(db, plc.id);
+
+  // Tags a link already fills or writes, across every link: the picker marks them taken.
+  const linkInputs = await plcCommunicationRepository.linkInputTagIds(db, [
+    plc.id,
+    ...records.map((record) => record.serverPlcInstanceId),
+  ]);
+  const writtenRemote = new Set(
+    (
+      await plcCommunicationRepository.listWrittenTagIds(
+        db,
+        records.map((record) => record.serverPlcInstanceId),
+      )
+    ).map((row) => row.remoteTagId),
+  );
+
+  const links: CommunicationLinkView[] = [];
+  for (const record of records) {
+    const view = toView(record);
+    const role = record.clientPlcInstanceId === plc.id ? ("client" as const) : ("server" as const);
+    const peer = view.source.plcId === plc.id ? view.target : view.source;
+    const entry = health.get(record.id);
+    const clientDeployed =
+      role === "client"
+        ? deployed.get(record.id)
+        : (await plcCommunicationRepository.deployedLinkVersions(db, plc.factoryId, record.clientPlcInstanceId)).get(
+            record.id,
+          );
+    const mappings = (await plcCommunicationRepository.listMappings(db, record.id)).map((mapping) => ({
+      ...toMappingView(mapping, record.pollIntervalMs),
+      quality: mapping.enabled && entry ? entry.quality : null,
+    }));
+
+    let options: CommunicationLinkView["options"] = null;
+    if (role === "client") {
+      const [localTags, remoteTags] = await Promise.all([
+        plcCommunicationRepository.listPlcTags(db, record.clientPlcInstanceId),
+        plcCommunicationRepository.listPlcTags(db, record.serverPlcInstanceId),
+      ]);
+      const option = (tag: TagRow, refusal: string | null): LinkTagOption => ({
+        tagId: tag.id,
+        name: tag.name,
+        logicalAddress: tag.logicalAddress,
+        dataType: tag.dataType,
+        unit: tag.unit,
+        scale: tag.scale,
+        refusal,
+      });
+      const build = (operation: PlcLinkOperation) => ({
+        local: localTags.map((tag) => {
+          const linkTag = toLinkTag(tag, linkInputs);
+          const taken = operation === "READ" && linkInputs.has(tag.id) ? "already filled by a link" : null;
+          return option(tag, taken ?? linkEndRefusal(operation, "local", linkTag));
+        }),
+        remote: remoteTags.map((tag) => {
+          const taken = operation === "WRITE" && writtenRemote.has(tag.id) ? "already written by a link" : null;
+          return option(tag, taken ?? linkEndRefusal(operation, "remote", toLinkTag(tag, new Set())));
+        }),
+      });
+      options = { READ: build("READ"), WRITE: build("WRITE") };
+    }
+
+    links.push({
+      link: view,
+      role,
+      peer: { plcId: peer.plcId, name: peer.name },
+      health: entry
+        ? { quality: entry.quality, reason: entry.reason, since: entry.since, checkedAt: entry.checkedAt }
+        : null,
+      deployedVersion: clientDeployed ?? null,
+      mappings,
+      options,
+    });
+  }
+  return {
+    plcId: plc.id,
+    factoryId: plc.factoryId,
+    peers,
+    links,
+    watched: monitor?.isRunning(plc.factoryId) ?? false,
+  };
 }

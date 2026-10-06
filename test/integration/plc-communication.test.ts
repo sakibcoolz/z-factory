@@ -214,6 +214,7 @@ describeDb("PLC-to-PLC links", () => {
         enabled: true,
         configVersion: 4,
         mappings: 0,
+        values: [],
       },
     ]);
     const b = await buildPlcExport(db, alice, plcB);
