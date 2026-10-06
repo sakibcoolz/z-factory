@@ -274,7 +274,7 @@ Services in `lib/services/asset-service.ts` and `lib/services/scene-service.ts`.
 | register an asset | `registerCatalogAsset({ db, storage }, { deviceModelId, provider, providerJobId?, scale?, rotationYDeg? }, glb)` | server-side authoring only, not reachable from a request; validates the GLB, stores it as the model's next version and makes it active; a refused file changes nothing |
 | asset versions | `listCatalogAssets(db, deviceModelId)` | newest first, with which one is active |
 | asset file | `readCatalogAsset({ db, storage }, assetId)` | only a `READY` version; a record without its file is not found |
-| factory scene | `getFactoryScene(db, actor, factoryId)` | devices, connections and states of `getTopology`, plus position on the floor, the model's asset, the instance's rotation and scale, and the category's placeholder |
+| factory scene | `getFactoryScene(db, actor, factoryId)` | devices, connections and states of `getTopology`, plus position on the floor, the model's asset, the instance's rotation and scale, the category's placeholder, and per connection its stored conductors (the wires of a wiring edge; none for a relationship) (TASK-405) |
 | place in scene | `setDeviceSceneTransform(db, actor, deviceId, { rotationDeg, scale })`, `changeDeviceSceneTransform(…, change)` | appearance only; scale 0.25 to 4 |
 
 | Route | Returns |

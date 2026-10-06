@@ -73,7 +73,7 @@ The designer is the only screen that writes wiring.
 
 No wireframe exists for the wiring editor; it follows the inspector's conventions.
 
-TASK-405 keeps 2D simple but expands each logical edge in 3D to the persisted physical conductor set. For example, a modeled three-phase VFD-to-motor connection renders three thin conductors; all catalog device combinations use the same rule.
+TASK-405 (built) keeps 2D simple but expands each wiring edge in 3D to its persisted conductors: one thin line per stored wire, side by side between the two devices, drawn as its kind (power heavier, 0 V and earth dashed, a bus as the network dash) and coloured like the connection. A modeled three-phase VFD-to-motor cable (U/V/W, in the generic catalog since this task) renders three conductors; a relationship that is not wiring (drives, measures, …) stays one logical line and gets no conductor. The panel of a selected device lists its connections with their conductors. All catalog device combinations use the same renderer; nothing is drawn that is not stored.
 
 ## Process module UX (Phase 06+)
 Process modules are created from a module type and existing factory device instances. They do not add process-specific items to the generic hardware catalog.

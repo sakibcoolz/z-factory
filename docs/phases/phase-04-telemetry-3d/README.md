@@ -8,7 +8,7 @@ Status: **IN PROGRESS**
 | TASK-402 Three.js factory view | DONE |
 | TASK-403 Meshy MCP catalog 3D asset generation | DONE |
 | TASK-404 Live 3D runtime-state visualization | DONE |
-| TASK-405 3D physical conductor rendering | PLANNED |
+| TASK-405 3D physical conductor rendering | DONE |
 
 ## Scope
 Phase 04 provides live events/telemetry plus a reusable 3D representation for the generic hardware catalog.
