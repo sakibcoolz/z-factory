@@ -32,6 +32,26 @@ Z-Factory maps:
 
 Every virtual PLC has a generated tag registry. Tag metadata includes data type, direction, role, logical I/O address, Modbus address, access, scale/unit, source device/channel, quality and timestamp metadata.
 
+## PLC scan-cycle and physical I/O authority
+The PLC program is authoritative for local outputs (ADR-0015).
+
+In simulation, Modbus may be used internally as a bridge to inject simulated input/process values and to observe program-generated outputs. This does **not** mean Modbus owns the PLC's output pins.
+
+```text
+simulation/process input
+ -> simulation bridge
+ -> PLC input image / simulation input memory
+ -> PLC scan-cycle program
+ -> PLC output image
+ -> simulated actuator/device
+```
+
+For a physical target, the target adapter maps logical I/O to the real CPU/rack/module/channel. The PLC scan cycle then reads real inputs and writes real outputs locally. Modbus is only involved when the real topology intentionally uses Modbus remote I/O, a Modbus field device, PLC-to-PLC communication, or an external gateway.
+
+REST runtime API is management-plane only: program upload/deploy, start/stop, status and logs. It is not the field-I/O control plane.
+
+Normal UI/gateway control must target command/setpoint tags and let PLC logic decide the final local output. Direct output forcing is a separate diagnostic concept and is not part of the normal control path.
+
 ## Command vs feedback
 External clients write command/setpoint tags. PLC logic produces/consumes device commands and feedback.
 
