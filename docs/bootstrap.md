@@ -20,6 +20,7 @@ Deliverable of TASK-003. It fixes the toolchain so that a coding agent can boots
 | dockerode | 5 | Docker Engine API client; server-only (`lib/docker/`) |
 | STruC++ | 0.7.0 | Structured Text → C++ compiler (GPL-3.0-or-later); installed from its GitHub release, run only as a separate process (ADR-0009) |
 | fflate | 0.8 | builds the program upload zip |
+| Go | 1.26 | the process simulation service only (`services/process-sim`, ADR-0008); no dependencies beyond the standard library; CI uses `actions/setup-go` |
 | OpenPLC Runtime image | v4.2.4 | `ghcr.io/autonomy-logic/openplc-runtime`, pinned by digest in the image allow-list |
 
 Planned, added by their owning tasks: React Flow (TASK-303), Three.js + React Three Fiber (TASK-402).
@@ -77,6 +78,8 @@ All variables are read through `lib/env.ts`, which validates them with Zod and f
 | `SIMULATION_SNAPSHOT_MS` | no | `lib/services/runtime-deps.ts` | How often the simulator stores a state snapshot per device, 1000–3600000 ms (default `10000`) |
 | `ASSET_STORAGE_DIR` | no | `lib/assets/storage.ts` | Directory the catalog's 3D asset files are stored in (default `./data/assets`, relative to the server's working directory; ignored by Git). Back it up with the database (ADR-0012) |
 | `MESHY_API_KEY` | no | `scripts/catalog-assets.ts` | Key of the Meshy account that generates catalog 3D assets (`npm run assets -- generate`, `resume`). Spends credits. The application itself never reads or sends it; it must never be prefixed `NEXT_PUBLIC_` |
+| `PROCESS_SIM_URL` | no | — | address of the process simulation service (ADR-0008, `docs/process-simulation.md`); without it there is no process simulation |
+| `PROCESS_SIM_TOKEN` | no | — | the service's bearer token (at least 16 characters); sent by the server only, never by a browser |
 | `TAG_POLL_MS` | no | `lib/services/runtime-deps.ts` | How often the tags of a running PLC are read for live values, 100–60000 ms (default `500`) |
 | `TELEMETRY_MIN_INTERVAL_MS` | no | `lib/services/runtime-deps.ts` | A tag is stored as telemetry at most this often, 100–3600000 ms (default `1000`) |
 | `TELEMETRY_MAX_INTERVAL_MS` | no | `lib/services/runtime-deps.ts` | A tag is stored at least this often even when unchanged, 1000–86400000 ms (default `60000`) |
@@ -102,6 +105,7 @@ A task that introduces a variable adds it to this table, to `.env.example` and t
 | `npm run db:migrate` | create/apply migrations in development |
 | `npm run db:deploy` | apply committed migrations (CI, production) |
 | `npm run db:seed` | load the device categories and the shipped catalog (verified vendor records, generic simulated models); safe to repeat |
+| `go test -race ./...` in `services/process-sim` | tests of the process simulation service; `go build ./cmd/process-sim` builds the binary the harness starts (`PROCESS_SIM_BIN`) |
 | `npm run assets -- <command>` | author catalog 3D assets: `list`, `prompt`, `generate`, `resume`, `import`, `share`, `activate`, `retire` (`docs/device-catalog.md` → Authoring assets). `generate` spends Meshy credits and asks for `--yes` |
 
 ## Docker development prerequisites
@@ -113,13 +117,14 @@ A task that introduces a variable adds it to this table, to `.env.example` and t
 
 ## CI baseline
 GitHub Actions workflow `.github/workflows/ci.yml`, on pushes and pull requests to `develop`:
-1. `npm ci`
+1. `npm ci`, and Go 1.26 through `actions/setup-go`
 2. `npm run format:check`
 3. `npm run lint`
 4. `npm run typecheck`
 5. `npm run db:deploy` against a PostgreSQL 17 service container
 6. `npm test` with `TEST_DATABASE_URL` and `TEST_DOCKER=1` set (the runner's Docker Engine)
 7. `npm run build`
+8. In `services/process-sim`, before the tests: `gofmt -l`, `go vet`, `go test -race`, and `go build` of the binary that `npm test` starts for the process simulation harness (`PROCESS_SIM_BIN`)
 
 The OpenPLC integration tests run in the same step: they pull the pinned runtime image and exercise compile, deploy, execution and Modbus access.
 

@@ -41,6 +41,9 @@ Do not create one container per sensor, valve, motor, pump or VFD by default. A 
 
 As implemented (TASK-204, ADR-0010) the shared simulator is part of the server process, not a container on the factory network: the `device-simulator` entry in the example above is not created. It reaches each PLC through the PLC's published Modbus port.
 
+## Process simulation service (TASK-602)
+The ADR-0008 service is one container for the whole installation, started from `compose.yaml` (`--profile sim`), not a factory runtime container: it is not on any factory network and is not created through the Docker Engine API by the application. It runs a distroless static binary as a non-root user with a read-only filesystem, all capabilities dropped, `no-new-privileges`, 1 CPU, 256 MB and 128 processes, and listens on `127.0.0.1:7700`. The server reaches it over HTTP with a bearer token (`PROCESS_SIM_URL`, `PROCESS_SIM_TOKEN`). See `docs/process-simulation.md`.
+
 ## Port example
 `host:15021 -> s7-1200-1214c-01:502`
 

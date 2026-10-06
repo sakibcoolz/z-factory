@@ -176,7 +176,9 @@ Implemented in TASK-204 (ADR-0010): the simulator runs inside the server process
 Generic device simulation and process simulation are separate concerns. A process module composes existing factory device instances and allocates its logical PLC I/O.
 
 ### Post-MVP process simulation
-Phase 06 may add the ADR-0008 Go process-simulation service behind explicit adapters. This is additive and must not rewrite the Phase 02–05 runtime contracts.
+Phase 06 adds the ADR-0008 Go process-simulation service behind explicit adapters. This is additive and must not rewrite the Phase 02–05 runtime contracts.
+
+As built (TASK-602, `docs/process-simulation.md`): `services/process-sim` is a Go service with a deterministic tick loop that hosts many process-module instances in one process, behind a token-protected JSON API. Models (`PUMP_HOUSE`, `TANK`) are pure functions of parameters, state, inputs and a fixed time step; state lives in memory and a restart starts empty. Z-Factory speaks to it through `lib/runtimes/process-sim/client.ts` (server-only; contract types in `lib/domain/process-sim.ts`). Nothing binds its values to PLC tags yet: that is the bridge of TASK-603.
 
 ```text
 Next.js / Z-Factory configuration
