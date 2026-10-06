@@ -238,6 +238,22 @@ Services in `lib/services/module-io-service.ts` (docs/process-modules.md → The
 
 Refusals carry a rule in `details.rule`: the mapping rules of docs/process-simulation.md → Bridge (`module-signal-direction`, `module-signal-profile`, `signal-plc-driven`, `signal-address`, `signal-data-type`, `signal-range`, `signal-unit`, `modbus-mapping`, `tag-in-use`), plus `tag-mapped` (`OCCUPIED_ENDPOINT`), `signal-bound`, `signal-unbound`, `module-io-type`, `module-io-profile`, `module-io-tag`, `duplicate-signal`.
 
+### `plc-communications` (TASK-701)
+Services in `lib/services/plc-communication-service.ts`. Every function takes the `Actor`; a factory, PLC or link of another owner is not found. No screen yet (TASK-704); mappings over a link are TASK-702.
+
+| Operation | Entry point | Rules |
+|---|---|---|
+| list links | `listPlcLinks(db, actor, factoryId)` | oldest first; both ends with name and runtime state, roles, endpoint, `enabled`, `configVersion`, mapping count |
+| link | `getPlcLink(db, actor, linkId)` | |
+| create link | `createPlcLink(db, actor, { factoryId, sourcePlcId, targetPlcId, relationship, protocol?, client?, serverPort?, unitId?, pollIntervalMs?, enabled? })` | different PLCs of the same factory (`plc-link-self`, `plc-link-factory`); both programmable controllers (`plc-link-controller`); the server end serves the protocol (`plc-link-server-protocol`); one link per ordered pair and protocol; `serverHost` is the server PLC's service name; version 1 recorded |
+| update link | `updatePlcLink(db, actor, linkId, { relationship?, client?, serverPort?, unitId?, pollIntervalMs?, enabled? })` | same rules; `serverHost` recomputed; a new version either way |
+| enable / disable | `setPlcLinkEnabled(db, actor, linkId, enabled)` | a new version |
+| remove link | `deletePlcLink(db, actor, linkId)` | the versions stay as history; the PLCs are not changed |
+| versions | `listPlcLinkVersions(db, actor, linkId)` | newest first, each with its snapshot |
+| export | `exportPlcLink(db, actor, linkId)` | `z-factory.plc-link` v1: PLCs by name, roles, endpoint, state, mappings (empty until TASK-702) |
+
+Every change records `PLC_LINK_CHANGED` (family LINK) on the source PLC with `action` created / updated / enabled / disabled / removed and the version.
+
 ### `plc export` (TASK-304)
 Service: `buildPlcExport(db, actor, plcId, { includeRuntime })` in `lib/services/plc-export-service.ts`, returning the document described in `docs/plc-export.md`.
 

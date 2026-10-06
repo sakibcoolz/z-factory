@@ -180,22 +180,24 @@ One tag the gateway is given. `externalName` is its name in the gateway's regist
 ### ProgramVersion
 `id, plcInstanceId, version, language, sourceText, compiledArtifactRef, checksum, status, createdAt`
 
-## PLC-to-PLC communication (planned Phase 07)
+## PLC-to-PLC communication (Phase 07)
 
-### PlcCommunicationConnection
-Defines an explicit communication relationship between two PLC instances.
+### PlcCommunicationConnection (TASK-701)
+Defines an explicit communication link between two PLC instances. Migration `plc_communications`.
 
-`id, factoryId, sourcePlcInstanceId, targetPlcInstanceId, relationship, protocol, clientPlcInstanceId, serverPlcInstanceId, serverHost, serverPort, unitId, pollIntervalMs, enabled, createdAt, updatedAt`
+`id, factoryId, sourcePlcInstanceId, targetPlcInstanceId, relationship, protocol, clientPlcInstanceId, serverPlcInstanceId, serverHost, serverPort, unitId, pollIntervalMs, enabled, configVersion, createdAt, updatedAt`
 
-`relationship = COMMUNICATES_WITH | SUPERVISES`. Initial `protocol = MODBUS_TCP`.
+`relationship = COMMUNICATES_WITH | SUPERVISES` (enum `PlcRelationship`). `protocol` is the shared `Protocol` enum; the first and only value a link takes is `MODBUS_TCP`. `configVersion` is bumped by every change to the link (and, from TASK-702, to its mappings); each value has a `ConfigurationVersion` of scope `PLC_COMMUNICATION` (`scopeId` = the link id) with the link's snapshot by PLC names.
 
 Rules:
-- source and target PLCs are different
-- both PLCs belong to the same factory in Phase 07
-- client/server roles are explicit
-- serverHost uses deterministic Docker DNS/service naming, never a hard-coded container IP
+- source and target PLCs are different (CHECK `PlcCommunicationConnection_distinct_plcs_check`)
+- both PLCs belong to the same factory in Phase 07 (service rule `plc-link-factory`); both are programmable controllers; the server's model declares the protocol's server capability (`MODBUS_SERVER`)
+- client and server are the two PLCs, one each (CHECK `PlcCommunicationConnection_roles_check`); which end is the client is chosen per link
+- `serverHost` is the server PLC's deterministic service name on the factory Docker network (`serviceNameFor`), recomputed on every change; never an address
+- port, unit id and poll interval are bounded (CHECK `PlcCommunicationConnection_endpoint_check`: 1–65535, 0–255, 50–60000 ms)
+- unique per ordered pair and protocol; the row goes with the factory or either PLC (cascade); versions stay as history
 
-### PlcCommunicationMapping
+### PlcCommunicationMapping (planned, TASK-702)
 Maps one local/source PLC communication tag to a remote Modbus endpoint.
 
 `id, plcCommunicationConnectionId, localTagId, operation, remoteArea, remoteAddress, remoteTagId, dataType, wordCount, byteOrder, wordOrder, scale, offset, unit, updateIntervalMs, enabled, metadataJson`
@@ -213,7 +215,7 @@ Rules:
 ### ConfigurationVersion
 `id, factoryId, scopeType, scopeId, version, snapshotJson, createdAt, createdBy`
 
-`scopeType = FACTORY | PLC | IO_MAPPING | MODBUS_MAPPING | DEVICE_PARAMETERS`. `PLC` snapshots are written when a program is deployed; `DEVICE_PARAMETERS` versions (TASK-308) are the parameter sets saved for one device instance (`scopeId` = device id), numbered per device, immutable.
+`scopeType = FACTORY | PLC | IO_MAPPING | MODBUS_MAPPING | DEVICE_PARAMETERS | PLC_COMMUNICATION`. `PLC` snapshots are written when a program is deployed; `DEVICE_PARAMETERS` versions (TASK-308) are the parameter sets saved for one device instance (`scopeId` = device id), numbered per device, immutable; `PLC_COMMUNICATION` versions (TASK-701) are the snapshots of one PLC link (`scopeId` = link id), one per `configVersion`.
 
 ## Process modules
 
@@ -322,7 +324,7 @@ For high-volume history, partitioning/retention should be introduced first. Time
 Every factual vendor hardware profile keeps source URL plus verification metadata. Never fabricate pinouts, I/O counts, register maps, or electrical limits.
 
 ## Implementation (TASK-102)
-- Schema: `prisma/schema.prisma`; migrations: `prisma/migrations/` (`init`, `device_io_endpoint`, `factory_subnet_no_overlap`, `plc_api_host_port`, `tag_source_signal`, `catalog_capabilities`, `device_io_simulator_signal`, `device_canvas_position`, `catalog_3d_assets`, `catalog_asset_generation`, `process_modules`, `endpoint_wiring`, `device_capabilities`, `process_model_link`, `module_plc_io_mapping`, `io_point_tags_read_only`); generated client: `lib/generated/prisma/` (git-ignored).
+- Schema: `prisma/schema.prisma`; migrations: `prisma/migrations/` (`init`, `device_io_endpoint`, `factory_subnet_no_overlap`, `plc_api_host_port`, `tag_source_signal`, `catalog_capabilities`, `device_io_simulator_signal`, `device_canvas_position`, `catalog_3d_assets`, `catalog_asset_generation`, `process_modules`, `endpoint_wiring`, `device_capabilities`, `process_model_link`, `module_plc_io_mapping`, `io_point_tags_read_only`, `plc_communications`); generated client: `lib/generated/prisma/` (git-ignored).
 - Primary keys are UUID v7 (`@default(uuid(7))`, PostgreSQL `uuid`), except `TelemetrySample.id` (`bigint` identity) and the one-to-one tables keyed by their owner (`ElectricalProfile`, `PlcInstanceProfile`, `DeviceRuntimeSnapshot`).
 - Catalog rows referenced by factory data are protected with `ON DELETE RESTRICT`; factory-owned rows cascade from `Factory`.
 - `DeviceInstance.dockerContainerId` is server-side only and never sent to the browser.
@@ -337,6 +339,9 @@ Prisma cannot express CHECK or EXCLUDE constraints, so these live as hand-writte
 | `Tag_writable_role_check` | `READ_WRITE` only when `role` is `COMMAND` or `SETPOINT` |
 | `Tag_writable_area_check` | `READ_WRITE` only in `COIL` / `HOLDING_REGISTER` areas |
 | `Tag_io_point_read_only_check` | a tag bound to a PLC I/O point (`plcIoPointId`) is `READ_ONLY`: local I/O is the program's, never external command memory (ADR-0015, migration `io_point_tags_read_only`) |
+| `PlcCommunicationConnection_distinct_plcs_check` | a link joins two different PLCs |
+| `PlcCommunicationConnection_roles_check` | the client and the server of a link are its two PLCs, one each |
+| `PlcCommunicationConnection_endpoint_check` | port 1–65535, unit id 0–255, poll interval 50–60000 ms |
 | `Tag_protocol_mapping_check` | protocol, area and address are all set or all null; address is zero-based (>= 0) |
 | `Tag_word_count_check` | `wordCount >= 1` |
 | `DeviceConnection_distinct_devices_check` | a device is never connected to itself |
@@ -365,4 +370,4 @@ Wiring: the service layer enforces the rules of one wire (`lib/validation/wiring
 
 Process modules: the service layer enforces same-factory device assignment, the categories and number of devices a role takes, roles and signals of the selected profile, configuration against the type's declared fields, and interlocks over the module's own signals (`lib/domain/process-module.ts`, `lib/services/process-module-service.ts`). Module-to-PLC mapping rules follow with `ModulePlcIoMapping` in TASK-605.
 
-The PLC communication tables above are **planned Phase 07 schema**, not yet present in the current Prisma migration. TASK-701/TASK-702 own their implementation and constraints.
+`PlcCommunicationConnection` exists since TASK-701; `PlcCommunicationMapping` is planned Phase 07 schema owned by TASK-702.

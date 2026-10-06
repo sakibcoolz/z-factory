@@ -344,6 +344,22 @@ export function PlcReport({ document }: PlcReportProps) {
             ["Gateways", "none configured"],
           ]}
         />
+        {network.plcLinks.length > 0 ? (
+          <Table
+            columns={["Relationship", "Peer PLC", "Role", "Server", "Unit", "Poll", "State", "Version"]}
+            rows={network.plcLinks.map((link) => [
+              link.relationship.toLowerCase().replace("_", " "),
+              link.peer,
+              link.role,
+              `${link.serverHost}:${link.serverPort} (${link.protocol})`,
+              String(link.unitId),
+              `${link.pollIntervalMs} ms`,
+              link.enabled ? "enabled" : "disabled",
+              `v${link.configVersion}`,
+            ])}
+            empty="No PLC-to-PLC link."
+          />
+        ) : null}
       </Section>
 
       <Section index={12}>

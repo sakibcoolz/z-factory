@@ -193,6 +193,8 @@ Rules:
 - Cross-factory direct PLC links are rejected in Phase 07.
 - Disconnected/stale quality and reconnect behavior are observable.
 
+As built (TASK-701): a link is a `PlcCommunicationConnection` between two programmable controllers of one factory, with the relationship (`COMMUNICATES_WITH`, `SUPERVISES`), the protocol (`MODBUS_TCP`), which end is the client, the server's deterministic service name on the factory network, port, unit id, poll interval and an enabled flag. The rules are pure (`lib/domain/plc-communication.ts`: self, factory, controller, server capability) and the database repeats the structural ones. Every change is a `ConfigurationVersion` of scope `PLC_COMMUNICATION` and a `PLC_LINK_CHANGED` event; the link is exported by PLC names (`z-factory.plc-link`) and listed in both PLCs' engineering exports. A link grants no write: mappings (TASK-702) do, and only on explicitly writable endpoints. The runtime that drives a link is TASK-703, the screens TASK-704.
+
 ## Device simulation architecture
 MVP uses a shared device-simulator runtime capable of hosting many factory-specific state machines. Avoid one container per simple peripheral unless isolation or protocol fidelity requires it.
 

@@ -73,6 +73,21 @@ export type ExportModuleSignal = {
   programAddress: string;
 };
 
+/** A PLC-to-PLC link this PLC takes part in (Phase 07, TASK-701). */
+export type ExportPlcLink = {
+  relationship: string;
+  /** This PLC's protocol role on the link. */
+  role: "client" | "server";
+  peer: string;
+  protocol: string;
+  serverHost: string;
+  serverPort: number;
+  unitId: number;
+  pollIntervalMs: number;
+  enabled: boolean;
+  configVersion: number;
+};
+
 export type PlcExportDocument = {
   schema: typeof PLC_EXPORT_SCHEMA;
   schemaVersion: typeof PLC_EXPORT_SCHEMA_VERSION;
@@ -142,6 +157,8 @@ export type PlcExportDocument = {
     modbusEndpoint: null | { bindAddress: string; hostPort: number; containerPort: number };
     modbusConventions: { addressBase: string; byteOrder: string; wordOrder: string };
     protocolLinks: Array<{ device: string; protocol: string }>;
+    /** Links to other PLCs of the factory (TASK-701). */
+    plcLinks: ExportPlcLink[];
   };
   topology: {
     nodes: Array<{ id: string; name: string; kind: string; x: number; y: number }>;
