@@ -14,7 +14,7 @@ Phase 06 starts only after the Phase 02–05 runtime, device-modeling, telemetry
 |---|---|
 | TASK-601 Process module domain & persistence | DONE |
 | TASK-602 Go simulation service foundation | DONE |
-| TASK-603 Simulator/Modbus closed-loop bridge | PLANNED |
+| TASK-603 Simulator/Modbus closed-loop bridge | DONE |
 | TASK-604 Process module designer & validation | PLANNED |
 | TASK-605 Module PLC I/O registry & allocation | PLANNED |
 
