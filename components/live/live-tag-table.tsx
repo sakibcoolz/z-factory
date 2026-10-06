@@ -4,6 +4,7 @@ import { useActionState, useEffect, useMemo, useState } from "react";
 import { StatePill, tagQualityTone } from "@/components/ui/state-pill";
 import { applyTagMessage, type LiveTagReading, mergeReadings, qualityAt, tagKey } from "@/lib/domain/live";
 import { TAG_QUALITIES, type TagDataType, type TagQuality, type TagRole } from "@/lib/domain/tag";
+import { TAG_AUTHORITY_LABELS, type TagAuthority } from "@/lib/domain/tag-authority";
 import { EMPTY_OPERATION_STATE, type OperationState } from "@/lib/plc/operation-state";
 import { STREAM_STATUS_LABEL, type StreamStatus, useFactoryStream } from "./use-factory-stream";
 
@@ -12,12 +13,14 @@ export type LiveTagTableRow = {
   plcName: string;
   name: string;
   role: TagRole;
+  /** Who drives the tag (ADR-0015); only external command memory has a write action. */
+  authority: TagAuthority;
   dataType: TagDataType;
   unit: string | null;
   logicalAddress: string | null;
   deviceName: string | null;
   reading: LiveTagReading;
-  /** Server action writing this tag; null for a tag only PLC logic and the devices produce. */
+  /** Server action writing this tag; null for a tag only PLC logic, the field or a bridge produces. */
   write: WriteAction | null;
 };
 
@@ -169,6 +172,7 @@ export function LiveTagTable({ rows, streamUrl, staleAfterMs, showPlc }: LiveTag
               <th>Tag</th>
               {showPlc ? <th>PLC</th> : null}
               <th>Role</th>
+              <th>Driven by</th>
               <th>Type · address</th>
               <th>Value</th>
               <th>Quality</th>
@@ -187,6 +191,7 @@ export function LiveTagTable({ rows, streamUrl, staleAfterMs, showPlc }: LiveTag
                   </td>
                   {showPlc ? <td className="mono">{row.plcName}</td> : null}
                   <td>{row.role.toLowerCase().replace("_", " ")}</td>
+                  <td>{TAG_AUTHORITY_LABELS[row.authority]}</td>
                   <td className="mono">
                     <span className="syn-type">{row.dataType}</span>
                     <span className="text-fg-dim">{` · ${row.logicalAddress ?? "—"}`}</span>
@@ -202,7 +207,12 @@ export function LiveTagTable({ rows, streamUrl, staleAfterMs, showPlc }: LiveTag
                     {row.write ? (
                       <WriteCell row={row} value={reading.value} action={row.write} />
                     ) : (
-                      <span className="zf-k">read-only</span>
+                      <span
+                        className="zf-k"
+                        title="PLC logic, the field or a simulation bridge drives this tag; nothing outside writes it."
+                      >
+                        read-only
+                      </span>
                     )}
                   </td>
                 </tr>

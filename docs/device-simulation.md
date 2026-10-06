@@ -171,3 +171,5 @@ ADR-0015 applies to the simulator.
 - The simulator never becomes the authority for PLC outputs.
 - Modbus is an implementation transport between the simulator and OpenPLC memory/registers; it is not the industrial meaning of the local I/O connection.
 - When targeting a real PLC, simulator injection is replaced by physical inputs or the selected real remote-I/O/device protocol, while the program still owns local outputs.
+
+As built (TASK-205): the bridge reads `PROGRAM_OUTPUT` tags (`%Q`, and `%M` the program writes) and delivers feedback to `%M` memory only — the `PROGRAM_INPUT` shadow of a wired DI/AI channel or `SIMULATION_FEEDBACK` memory — never to a `%Q` address, an input point or a command tag (`signal-address`). The owner model and its enforcement are in `docs/openplc-runtime.md` → As built (TASK-205); the process bridge of `docs/process-simulation.md` follows the same rule.

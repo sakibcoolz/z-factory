@@ -83,6 +83,7 @@ function tagRows(write?: (state: OperationState, formData: FormData) => Promise<
     plcName: "PLC-01",
     name,
     role: "STATUS",
+    authority: "PROGRAM_OUTPUT",
     dataType: "BOOL",
     unit: null,
     logicalAddress: "%QX0.0",

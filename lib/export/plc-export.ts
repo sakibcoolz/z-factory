@@ -47,6 +47,8 @@ export type ExportTag = {
   unit: string | null;
   sourceDevice: string | null;
   sourceSignal: string | null;
+  /** Who drives the tag (ADR-0015): PROGRAM_OUTPUT, PROGRAM_INPUT, SIMULATION_FEEDBACK, EXTERNAL_COMMAND or PROGRAM_INTERNAL. */
+  authority: string;
 };
 
 /** One row of the connected-device schedule. */

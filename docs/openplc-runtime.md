@@ -52,6 +52,41 @@ REST runtime API is management-plane only: program upload/deploy, start/stop, st
 
 Normal UI/gateway control must target command/setpoint tags and let PLC logic decide the final local output. Direct output forcing is a separate diagnostic concept and is not part of the normal control path.
 
+### As built (TASK-205)
+Every tag has one owner, computed by `tagAuthority` in `lib/domain/tag-authority.ts` and shown as "driven by" on the Live Tags screen, in the Modbus map (`authority`) and in the engineering export:
+
+| Authority | What it is | Who writes it |
+|---|---|---|
+| `PROGRAM_OUTPUT` | a tag on a DO/AO point (`%QX`/`%QW` channel), or any other `%Q` address that is not external command memory | the scan cycle only |
+| `PROGRAM_INPUT` | a tag on a DI/AI point (the `%MX`/`%MW` shadow of the channel), or a `%I` address | the field; in simulation the device simulator, through the bridge |
+| `SIMULATION_FEEDBACK` | `%M` memory a device signal or a process-module signal is delivered to | the device-simulator or process bridge |
+| `EXTERNAL_COMMAND` | a writable `COMMAND` or `SETPOINT` tag (`%Q` or `%M` memory that is not a channel) | a gateway or the UI; the program decides what follows |
+| `PROGRAM_INTERNAL` | everything else | the program |
+
+Enforced at every door:
+- **Tag service.** `writeTag` (UI, gateway, system) accepts external command memory only; anything else is refused with `tag-read-only` and recorded as `COMMAND_REJECTED`. A `COMMAND`/`SETPOINT` tag cannot be created at an I/O point's address (`io-point-address`) and a tag bound to an I/O point cannot be writable (`io-point-read-only`); the database repeats the latter as `Tag_io_point_read_only_check` (migration `io_point_tags_read_only`).
+- **Gateway.** A mapping may grant writing only on external command memory (`gateway-write-command-only`); "Map all tags" maps everything else for reading.
+- **Raw register access.** `writePlcRegister` writes only an address that belongs to external command memory; a program output, an input, simulated feedback, program memory or an address without a tag is refused with `program-authority`, naming the owner. Reading stays unrestricted: outputs are observed, never driven.
+- **Simulation bridges.** The device simulator reads what the program drives from `%Q`/`%M` and delivers feedback to `%M` only (`signal-address`); the process bridge follows the same rule (`docs/process-simulation.md` → Bridge). Neither writes a `%Q` address.
+- **Runtime REST API.** Used for program upload, start, stop, status and logs only (`lib/runtimes/openplc/adapter.ts`); no field value travels over it.
+
+Direct output forcing (writing a `PROGRAM_OUTPUT` for a test) has no entry point; Phase 08 defines simulation-side overrides instead.
+
+### Physical target adapter (contract)
+The same logical program, tags and canonical wiring are meant to run on a physical controller. What changes is an adapter, not the model:
+
+| Concern | Z-Factory (logical, kept) | Target adapter (physical, per target) |
+|---|---|---|
+| Program | the Structured Text program version and its located variables | compiled and deployed with the vendor toolchain or an OpenPLC runtime on the hardware |
+| I/O points | `PlcIoPoint` with its logical address (`%QX0.0`, `%MX0.0`, …) and the device terminal wired to it (ADR-0014) | the real module/channel the point maps to (`vendorAddress` from the catalog channel, slot and terminal); the runtime's own I/O driver reads inputs and writes outputs locally |
+| Local outputs | `PROGRAM_OUTPUT` tags: never written from outside | driven by the scan cycle through the output module; nothing on the network writes them |
+| Inputs | `PROGRAM_INPUT` tags: fed by the field or the simulation bridge | fed by the input module; the simulation bridge does not exist on the target |
+| External commands | `EXTERNAL_COMMAND` tags on a Modbus TCP server endpoint | the same tags on the controller's Modbus TCP server (or the protocol the plant uses) |
+| Feedback to the outside | `SIMULATION_FEEDBACK` and program memory read over Modbus | the controller's own values read over Modbus; no simulator fills them |
+| Remote I/O and field buses | modeled as devices with ports and protocol links | Modbus (or another field bus) exactly where the plant topology has it |
+
+An adapter therefore needs: the program version, the I/O point → physical channel map, the Modbus map (areas, addresses, access modes, scaling) and the device schedule — all of which the engineering export already carries. The adapter itself (vendor project generation, download, commissioning) is a later task; nothing in the current model has to change for it, and `Z-Factory never requires Modbus for a controller's local I/O`.
+
 ## Command vs feedback
 External clients write command/setpoint tags. PLC logic produces/consumes device commands and feedback.
 

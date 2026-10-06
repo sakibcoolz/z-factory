@@ -4,6 +4,7 @@ import type { Db } from "@/lib/db/client";
 import { plcRepository } from "@/lib/db/repositories/plc-repository";
 import { tagRepository } from "@/lib/db/repositories/tag-repository";
 import { DomainError, isDomainError } from "@/lib/domain/errors";
+import { type TagAuthority, tagAuthority } from "@/lib/domain/tag-authority";
 import {
   isWritableModbusArea,
   isWritableTagRole,
@@ -61,6 +62,8 @@ export type ModbusMapRow = {
   sourceDeviceInstanceId: string | null;
   /** Device signal the tag carries to or from the device simulator. */
   sourceSignal: string | null;
+  /** Who drives the tag (ADR-0015): the program, the field, a simulation bridge or an external writer. */
+  authority: TagAuthority;
 };
 
 export type ModbusMap = {
@@ -105,6 +108,7 @@ function toRow(tag: Tag & { protocolArea: ModbusArea; protocolAddress: number; l
     unit: tag.unit,
     sourceDeviceInstanceId: tag.sourceDeviceInstanceId,
     sourceSignal: tag.sourceSignal,
+    authority: tagAuthority(tag),
   };
 }
 
@@ -140,6 +144,14 @@ export async function createTagInTransaction(
   }
   const accessMode = isWritableTagRole(data.role) ? "READ_WRITE" : "READ_ONLY";
   assertTagAccess({ role: data.role, accessMode, protocolArea: location.area });
+  // A tag on an I/O point is the program's local I/O (ADR-0015): never external command memory.
+  if (binding.plcIoPointId && accessMode !== "READ_ONLY") {
+    throw new DomainError(
+      "INVARIANT",
+      `A ${data.role} tag cannot sit on a PLC I/O point; the scan cycle owns local I/O. Put command memory on an address that is not a channel.`,
+      { rule: "io-point-read-only", field: "role" },
+    );
+  }
 
   const sourceDeviceId = data.sourceDeviceInstanceId;
   if (data.sourceSignal && !sourceDeviceId) {

@@ -54,6 +54,10 @@ const CONSTRAINTS: Record<string, ConstraintRule> = {
     message: "Only COMMAND and SETPOINT tags may be writable.",
   },
   Tag_writable_area_check: { code: "INCOMPATIBLE", message: "This Modbus area is read-only." },
+  Tag_io_point_read_only_check: {
+    code: "INVARIANT",
+    message: "A tag on a PLC I/O point is the program's local I/O and is never externally writable.",
+  },
   FactoryModule_factoryRackId_slotIndex_key: {
     code: "OCCUPIED_ENDPOINT",
     message: "This slot already holds a module.",

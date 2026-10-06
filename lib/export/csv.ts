@@ -75,6 +75,7 @@ export function tagScheduleCsv(document: PlcExportDocument): string {
       "Unit",
       "Device",
       "Device signal",
+      "Driven by",
     ],
     document.tags.map((tag) => [
       tag.name,
@@ -94,6 +95,7 @@ export function tagScheduleCsv(document: PlcExportDocument): string {
       tag.unit,
       tag.sourceDevice,
       tag.sourceSignal,
+      tag.authority,
     ]),
   );
 }

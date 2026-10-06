@@ -11,7 +11,7 @@ The PDF-oriented report should contain:
 4. Power/electrical and communication summary from verified catalog data
 5. Built-in I/O or rack/module/slot structure
 6. Pin/channel occupancy and terminal assignments
-7. Full tag list (with the process-module signals its tags carry, TASK-605)
+7. Full tag list (with the process-module signals its tags carry, TASK-605; each tag in the JSON and CSV says who drives it, `authority`, TASK-205)
 8. Modbus/register map including type/scaling/access/role
 9. Connected device schedule
 10. Device-to-device/control relationships

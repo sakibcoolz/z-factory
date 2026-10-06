@@ -15,6 +15,7 @@ import { DomainError, isDomainError } from "@/lib/domain/errors";
 import type { EventSeverity } from "@/lib/domain/events";
 import type { RuntimeState } from "@/lib/domain/runtime-state";
 import type { ModbusArea } from "@/lib/domain/tag";
+import { isExternallyWritable, tagAuthority, TAG_AUTHORITY_LABELS } from "@/lib/domain/tag-authority";
 import type { EventBus } from "@/lib/events/bus";
 import type { PrismaClient, ProgramLanguage } from "@/lib/generated/prisma/client";
 import {
@@ -561,7 +562,12 @@ export async function readPlcRegisters(
   return readPlcValues(requireTarget(device), request.area, request.address, request.count);
 }
 
-/** Raw Modbus write to a coil or holding register of the running program. */
+/**
+ * Raw Modbus write to a coil or holding register of the running program. Only an address
+ * that belongs to external command memory (a writable COMMAND or SETPOINT tag) may be
+ * written: the scan cycle owns outputs, the field and the simulation bridges own inputs
+ * and feedback, and an address without a tag is nobody's to write (ADR-0015).
+ */
 export async function writePlcRegister(
   deps: RuntimeDeps,
   actor: Actor,
@@ -569,5 +575,30 @@ export async function writePlcRegister(
   request: { area: ModbusArea; address: number; value: number | boolean },
 ) {
   const { device } = await loadPlc(deps.db, actor, plcId);
+  const tag = (await tagRepository.listByPlc(deps.db, device.id)).find(
+    (candidate) =>
+      candidate.protocolArea === request.area &&
+      candidate.protocolAddress !== null &&
+      request.address >= candidate.protocolAddress &&
+      request.address < candidate.protocolAddress + candidate.wordCount,
+  );
+  if (!tag) {
+    throw new DomainError(
+      "INVARIANT",
+      "This address carries no tag. Writes reach the program through its command and setpoint tags only.",
+      {
+        rule: "program-authority",
+        area: request.area,
+        address: request.address,
+      },
+    );
+  }
+  if (!isExternallyWritable(tag)) {
+    throw new DomainError(
+      "INVARIANT",
+      `${tag.name} is ${TAG_AUTHORITY_LABELS[tagAuthority(tag)]}; PLC logic owns it. Write a command or setpoint tag and let the program decide.`,
+      { rule: "program-authority", tag: tag.name, authority: tagAuthority(tag) },
+    );
+  }
   await writePlcValue(requireTarget(device), request.area, request.address, request.value);
 }

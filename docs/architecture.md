@@ -150,6 +150,8 @@ Rules:
 - Physical I/O mapping is target-adapter-specific and separate from logical program/wiring.
 - Modbus remains valid where the actual industrial topology uses Modbus remote I/O or Modbus-capable devices.
 
+As built (TASK-205): every tag has one owner (`tagAuthority`: program output, field input, simulated feedback, external command, program memory), only external command memory can be written from outside — by the tag service, the gateway and the raw register write alike — and a tag on an I/O point is never writable, in the service and as a database constraint. The physical target adapter contract is in `docs/openplc-runtime.md`.
+
 ## Control authority
 PLC runtime is the control authority.
 
