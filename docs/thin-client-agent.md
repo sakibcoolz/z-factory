@@ -10,6 +10,8 @@ Delivery is in three steps:
 - **503b**: the MQTT uplink, plus the command downlink with allow-list, idempotency and acks.
 - **503c**: the offline spool, restart recovery and the full E2E.
 
+All three are done.
+
 ## The deployment file
 Z-Factory exports one file per PLC.
 - **Where:** `GET /factories/{factoryId}/plcs/{plcId}/edge.json`, also *Edge deployment (JSON)* on the PLC's Export screen. Service: `exportEdgeDeployment` in `lib/services/edge-deployment-service.ts`; types in `lib/domain/edge-deployment.ts`.
@@ -143,7 +145,7 @@ Topics are under `zfactory/{siteId}/{agentId}/`:
 - The session is persistent (`cleanSession=false`), so the command subscription survives reconnects.
 - Paho calls the command handler on one goroutine; the handler never blocks, and no goroutine is created per message.
 
-**Telemetry.** A fixed pool of publishers takes batches off the shared queue. While the broker is away they wait: PLC polling goes on, and the queue drops its oldest batches. The spool of 503c keeps them instead.
+**Telemetry.** A fixed pool of publishers takes batches off the shared queue. While the broker is away, or when a publish fails, the batches go to the spool below. PLC polling never waits for the cloud.
 
 **Commands.** A command is:
 ```json
@@ -170,15 +172,34 @@ It answers `FAILED` with `plc-not-connected`, `plc-refused` (a Modbus exception)
 
 Every command id is remembered per PLC (10 000, for 24 h): a command delivered again is answered again with its last acknowledgement (`duplicate: true`) and never written twice. Acknowledgements are not retained, and nothing that actuates is ever retained. Each outcome is logged with the command id, mapping, value and `requestedBy`.
 
+## Offline spool (TASK-503c)
+`spool/telemetry.db` is an embedded bbolt file. It is opened when MQTT is configured, and it is the only local storage; there is still no database.
+
+**Storing.**
+- Undelivered batches are stored oldest-first under a growing sequence.
+- The spool is bounded by `-spool-max-bytes` (`ZFACTORY_AGENT_SPOOL_MAX_BYTES`, default 256 MiB): the oldest batches go first when it is full.
+- It is also bounded by `-spool-max-age` (`ZFACTORY_AGENT_SPOOL_MAX_AGE`, default 7 days): older batches are pruned every minute.
+- Dropped batches are counted.
+
+**Restart.** The file survives an agent restart, so the backlog is still there when the agent comes back.
+
+**Replay.** Once the broker is back, one replayer:
+- sends the backlog oldest first, at `-replay-rate` (`ZFACTORY_AGENT_REPLAY_RATE`, default 50 batches/s), on the same telemetry topic with `"replayed": true` and the original `at`;
+- deletes a batch only after the broker took it.
+
+The live publishers run beside the replayer, so live telemetry is never held behind the backlog.
+
+**Failure.** A spool that cannot be opened (e.g. a damaged file) is reported in health, and the agent runs without it. A failing write costs that batch only, and is counted. No worker ever stops because of the spool.
+
 ## Health
 The health endpoint (`-health`, default `127.0.0.1:9180`) is read-only:
 
 | Path | Body |
 |---|---|
 | `GET /healthz` | `status` (`ok`, or `degraded` when a PLC is not online or an active file has a problem), version, uptime, workers |
-| `GET /v1/status` | agent (version, uptime, workers by state, started/stopped), files (active, promoted, recent rejections, problems), queue (depth, capacity, pushed, dropped), uplink (configured, connected, broker without credentials, client id, topic root, published, errors, connects, connections lost, last error, command counts), every PLC (state, endpoint, version, checksum, mappings, writable, polls, failures, reconnects, last poll, last error, panics) |
+| `GET /v1/status` | agent (version, uptime, workers by state, started/stopped), files (active, promoted, recent rejections, problems), queue (depth, capacity, pushed, dropped), uplink (configured, connected, broker without credentials, client id, topic root, published, errors, connects, connections lost, last error, command counts, spooled, lost, replayed, and the spool: entries, bytes, max bytes, oldest, written, replayed, dropped, error, replay rate), every PLC (state, endpoint, version, checksum, mappings, writable, polls, failures, reconnects, last poll, last error, panics) |
 | `GET /v1/plcs/{plcId}` | one PLC with its values (`id`, `name`, `value`, `quality`, `at`) |
-| `GET /metrics` | Prometheus text: uptime, active configs, rejections, workers by state, queue depth and drops, and per PLC: up, polls, reconnects |
+| `GET /metrics` | Prometheus text: uptime, active configs, rejections, workers by state, queue depth and drops, MQTT connected, spool entries, bytes, oldest age and drops, and per PLC: up, polls, reconnects |
 
 ## Running it
 `services/zfactory-thin-client-agent/README.md` lists the flags and their environment variables. `packaging/zfactory-agent.service` is a hardened systemd unit (own user, `ProtectSystem=strict`, write access to its directory only).
@@ -215,3 +236,19 @@ The health endpoint (`-health`, default `127.0.0.1:9180`) is read-only:
     - settings that would put a password in the URL or a wildcard in a topic refused.
   - The load test with commands: 1000 PLCs, 3010 goroutines (two per worker plus the fake PLCs'), 29 MiB heap.
 - **Not yet:** the spool and its replay, restart recovery of telemetry, and the end-to-end test with a real OpenPLC runtime over MQTT (503c).
+
+## As built (TASK-503c)
+- The spool and replay above (package `spool`, bbolt v1.5.0), wired into the uplink and the agent. Spool and MQTT figures are added to `/metrics`.
+- **Tests:**
+  - `internal/spool`: order across a restart, the size and age limits, and a damaged file refused.
+  - `internal/uplink` (Mosquitto):
+    - the broker is stopped and the spool fills;
+    - the agent is stopped and started again while the broker is still away, and the backlog is kept;
+    - when the broker returns, the backlog is replayed in order, completely, at the replay rate, with live telemetry arriving during the replay; the metrics show the spool empty and MQTT connected.
+  - `test/integration/edge-agent.test.ts`, the end-to-end test of the task: a real OpenPLC runtime, an `eclipse-mosquitto:2` container, and the built agent. `mosquitto_sub` and `mosquitto_pub` inside the broker play the cloud. The test runs:
+    1. an exported file;
+    2. telemetry over MQTT equal to Z-Factory's reads;
+    3. a `Speed_SP` command ACCEPTED and APPLIED, after which the program's `Speed_Ref` follows in telemetry;
+    4. a `Start_Cmd` stop that turns `Running` off;
+    5. a command to `Running` REJECTED `not-writable`, with the PLC unchanged;
+    6. a broker outage spooled across an agent restart, then replayed until the spool is empty.

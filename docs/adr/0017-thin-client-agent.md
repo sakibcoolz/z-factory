@@ -36,7 +36,7 @@ has no Z-Factory database.
 5. **Dependencies.** The Modbus TCP client is in-house, like the TypeScript one. MQTT
    (TASK-503b) uses `github.com/eclipse/paho.mqtt.golang` (v1.5.1, which brings
    `gorilla/websocket`, `golang.org/x/net` and `golang.org/x/sync`). The offline spool
-   (TASK-503c) uses `go.etcd.io/bbolt`. Both were approved by the owner. Nothing else is
+   (TASK-503c) uses `go.etcd.io/bbolt` (v1.5.0, with `golang.org/x/sys`). Both were approved by the owner. Nothing else is
    added without asking.
 
 ## Consequences

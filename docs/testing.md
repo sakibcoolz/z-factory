@@ -94,6 +94,15 @@ As built (TASK-503b):
   - a removed PLC's retained state cleared;
   - unsafe settings refused.
 
+As built (TASK-503c):
+- `internal/spool` covers order across a restart, the size and age limits, and a damaged file.
+- `internal/uplink` covers a broker outage: the spool fills, the agent restarts with the backlog kept, then an ordered and complete replay at its rate, with live telemetry flowing during it, and the spool and MQTT metrics.
+- The end-to-end test `test/integration/edge-agent.test.ts` runs a real OpenPLC runtime, a Mosquitto container (`mosquitto_sub` and `mosquitto_pub` play the cloud) and the built agent:
+  - telemetry equal to Z-Factory's reads;
+  - a setpoint and a stop command applied, with the program's outputs following in telemetry;
+  - a command to a program output refused;
+  - an outage spooled across an agent restart, and replayed.
+
 ## PLC-to-PLC communication (Phase 07)
 As built (TASK-701): `lib/domain/plc-communication.test.ts` covers the link rules (self, factory, controller, server capability by client end), the service name and the snapshot. `test/integration/plc-communication.test.ts` (PostgreSQL) creates links between catalog PLCs and an RTU, refuses self, cross-factory, non-controller, duplicate and out-of-range inputs, versions every change with the server's name following the roles, exports the link by names and in both PLCs' engineering exports, hides another owner's links, keeps the history after removal and removes the link with its PLC.
 

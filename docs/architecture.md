@@ -401,7 +401,7 @@ As built (TASK-503b): the MQTT uplink and command downlink:
 - telemetry, retained PLC state, heartbeat, and an online/offline will;
 - commands checked against the exported allow-list, configuration version and expiry, written once by command id, and answered ACCEPTED/REJECTED/APPLIED/FAILED.
 
-The spool (503c) follows. Details: `docs/thin-client-agent.md`.
+As built (TASK-503c): a bounded bbolt spool that keeps telemetry while the cloud is away, survives a restart, and is replayed at a fixed rate beside live telemetry. TASK-503 is complete. Details: `docs/thin-client-agent.md`.
 
 
 ## Web Factory cloud application — Phase 09 / MVP 2
