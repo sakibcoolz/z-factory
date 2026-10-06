@@ -100,6 +100,7 @@ async function ingestModel(tx: Tx, model: CatalogModel, familyId: string): Promi
       physicalType: port.physicalType,
       protocols: port.protocols,
       portCount: port.portCount,
+      maxConnections: port.maxConnections,
       notes: port.notes ?? null,
     };
     await tx.communicationPort.upsert({
@@ -118,9 +119,12 @@ async function ingestModel(tx: Tx, model: CatalogModel, familyId: string): Promi
   // Terminals have no database key of their own; the label is unique within a model.
   for (const terminal of model.terminals) {
     const values = {
-      direction: terminal.direction,
-      ioType: terminal.ioType,
-      signalType: terminal.signalType,
+      kind: terminal.kind,
+      maxConnections: terminal.maxConnections,
+      // Direction and class are not meaningful for every kind; the columns are filled all the same.
+      direction: terminal.direction ?? "INPUT",
+      ioType: terminal.ioType ?? "DIGITAL",
+      signalType: terminal.signalType ?? "",
       rangeMin: terminal.rangeMin ?? null,
       rangeMax: terminal.rangeMax ?? null,
       unit: terminal.unit ?? null,

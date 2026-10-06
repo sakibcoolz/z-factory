@@ -57,7 +57,18 @@ Device detail navigation is generated from the exact catalog model's capabilitie
 
 A Program tab is never shown just because an item is called a controller. The model must explicitly support programmable logic.
 
-TASK-307 makes the 2D topology the authoritative interactive wiring editor: one logical edge per device relationship, with exact endpoint mappings edited in the inspector. Existing PLC Connections/I/O Mapping screens become read-only projections or are retired as writable sources after migration.
+### Pin-to-pin wiring as built (TASK-307, ADR-0014)
+The designer is the only screen that writes wiring.
+
+- **Starting a wiring.** Drawing an edge between two devices that can be wired opens the wiring editor in the inspector for that pair. Nothing is stored by the gesture: a device is never wired because it was connected. Where a relationship is also possible (a drive drives a motor), the designer asks which is meant.
+- **The editor** lists the wires between the two devices (`PT-101 / OUT → PLC-01 / AI 0`, with address and tag for a PLC channel) and offers one wire at a time: an endpoint of each device, described by what it is (`analog output · 0–10 V`, `supply output · 24 V DC`, `0 V / common`) and how many wires are on it. It suggests the first destination that is possible.
+- **Blocked before saving.** A destination the rules refuse is marked "not possible"; choosing it shows the reason with both endpoints named and disables saving. The server checks again when the wire is stored, and its refusal is shown the same way.
+- **Move and Remove** act on one wire. Moving starts from where the wire is; its own ends count as free while it is being moved, and the old wire stays until the new one is accepted.
+- **One edge per pair.** However many wires two devices have, the canvas draws one `wired to · n wires` edge. Selecting it opens the editor; "Remove all wires" removes every wire of the pair, with PLC channels freed and their tags removed. A relationship that is not wiring keeps an edge of its own.
+- **The read-only topology view** lists the wires of an edge pin to pin and offers no edit.
+- **PLC screens.** Connections and I/O Mapping read the same wiring and have no form: the add-peripheral form of TASK-302 is gone.
+
+No wireframe exists for the wiring editor; it follows the inspector's conventions.
 
 TASK-405 keeps 2D simple but expands each logical edge in 3D to the persisted physical conductor set. For example, a modeled three-phase VFD-to-motor connection renders three thin conductors; all catalog device combinations use the same rule.
 
@@ -277,7 +288,7 @@ For a stored factory the wireframe's single wizard is split into steps that each
 
 1. **Create** (`devices/new/compact|modular`): catalog model, instance name, process role. Reached from the factory overview, which lists the factory's devices.
 2. **Hardware** (`plcs/[plcId]/hardware`): pin view drawn from the PLC's I/O points; selecting a pin (`?pin=`) shows its signal, program address, vendor address, tag and device. A modular PLC also shows its rack, its installed modules, and a form that offers only compatible modules and free slots.
-3. **Connections** (`plcs/[plcId]/connections`): connected devices with terminal → channel → address → tag, and the catalog peripherals the PLC still has room for. "Add" (`?add=`) opens a form with a name and, per terminal, the free compatible channels.
+3. **Connections** (`plcs/[plcId]/connections`): the devices wired to the PLC with terminal → channel → address → tag. Read-only since TASK-307: a projection of the factory's wiring with a link to the designer, where wires are made.
 4. **I/O mapping** (`plcs/[plcId]/io-mapping`): every channel with program address, Modbus address, tag and device.
 
 The factory overview lists the devices as they are connected (TASK-306). A PLC is a drop-down holding the devices connected to it, each under the device it is reached through (`PLC → drive → motor → pump`); a device appears once. A drop-down is closed at first and shows how many devices it holds and how many of them are faulted; "Expand all" and "Collapse all" open and close every one. A device with no way to a PLC is listed beside the PLCs, with what is connected to it below it. The hierarchy only reads the connections; they are changed in the designer and on the PLC screens.

@@ -5,7 +5,7 @@ import { ingestCatalog } from "@/lib/catalog/ingest";
 import type { PrismaClient } from "@/lib/generated/prisma/client";
 import { EMPTY_ACTION_STATE } from "@/lib/plc/form-state";
 import { createFactory } from "@/lib/services/factory-service";
-import { getPeripheralOptions, getPlcConfiguration } from "@/lib/services/plc-config-service";
+import { getPlcConfiguration } from "@/lib/services/plc-config-service";
 import { describeDb, openTestDb, resetDb } from "./harness";
 
 /**
@@ -168,41 +168,12 @@ describeDb("PLC configuration server actions", () => {
     expect((await getPlcConfiguration(db, alice, plcId)).occupancy.total).toBe(0);
   });
 
-  it("adds a peripheral with the channels chosen in the form, then removes it", async () => {
-    const plcId = plcIdFrom(
-      await redirected(
-        actions.createPlcAction(
-          factoryId,
-          EMPTY_ACTION_STATE,
-          form({ deviceModelId: await modelId("CPU 1214C DC/DC/DC"), name: "PLC-01", role: "" }),
-        ),
-      ),
-    );
-    const valveModel = await modelId("Generic on/off valve, 24 V DC");
-    const options = await getPeripheralOptions(db, alice, plcId, valveModel);
-    const fields: Record<string, string> = { name: "XV-101", role: "Inlet valve" };
-    // Take the last free channel of the right class for each terminal, not the suggested first one.
-    const taken = new Set<string>();
-    for (const terminal of options.terminals) {
-      const choice = [...terminal.options].reverse().find((option) => !taken.has(option.pointId));
-      if (!choice) throw new Error("no channel left");
-      taken.add(choice.pointId);
-      fields[`terminal:${terminal.id}`] = choice.pointId;
-    }
-
-    expect(
-      await redirected(actions.addPeripheralAction(factoryId, plcId, valveModel, EMPTY_ACTION_STATE, form(fields))),
-    ).toBe(`/factories/${factoryId}/plcs/${plcId}/connections`);
-    const [peripheral] = (await getPlcConfiguration(db, alice, plcId)).peripherals;
-    expect(peripheral).toMatchObject({ name: "XV-101", role: "Inlet valve" });
-    expect(Object.fromEntries((peripheral?.wires ?? []).map((wire) => [wire.terminalLabel, wire.pointLabel]))).toEqual({
-      Y1: "Qb.1",
-      ZSC: "Ib.5",
-      ZSO: "Ib.4",
-    });
+  it("has no action that wires a device: wiring is written in the designer only", async () => {
+    // The PLC screens are projections of the factory's wiring (TASK-307).
+    expect(Object.keys(actions).filter((name) => /peripheral|wire/i.test(name))).toEqual([]);
   });
 
-  it("refuses two terminals on one channel and reports a taken name on its field", async () => {
+  it("deletes a PLC from its screen", async () => {
     const plcId = plcIdFrom(
       await redirected(
         actions.createPlcAction(
@@ -212,40 +183,6 @@ describeDb("PLC configuration server actions", () => {
         ),
       ),
     );
-    const valveModel = await modelId("Generic on/off valve, 24 V DC");
-    const options = await getPeripheralOptions(db, alice, plcId, valveModel);
-    const inputs = options.terminals.filter((terminal) => terminal.required === "DI");
-    const samePoint = inputs[0]?.options[0]?.pointId ?? "";
-    const clash = await actions.addPeripheralAction(
-      factoryId,
-      plcId,
-      valveModel,
-      EMPTY_ACTION_STATE,
-      form({
-        name: "XV-101",
-        role: "",
-        [`terminal:${inputs[0]?.id}`]: samePoint,
-        [`terminal:${inputs[1]?.id}`]: samePoint,
-      }),
-    );
-    expect(clash.message).toMatch(/not available/);
-    expect(clash.values.name).toBe("XV-101");
-    expect(await db.deviceInstance.count({ where: { factoryId } })).toBe(1);
-
-    await redirected(
-      actions.addPeripheralAction(factoryId, plcId, valveModel, EMPTY_ACTION_STATE, form({ name: "XV-101", role: "" })),
-    );
-    const taken = await actions.addPeripheralAction(
-      factoryId,
-      plcId,
-      valveModel,
-      EMPTY_ACTION_STATE,
-      form({ name: "XV-101", role: "" }),
-    );
-    expect(taken.fieldErrors).toEqual({ name: "A device with this name already exists in this factory." });
-
-    const deviceId = (await getPlcConfiguration(db, alice, plcId)).peripherals[0]?.deviceId ?? "";
-    await redirected(actions.removePeripheralAction(factoryId, plcId, deviceId, EMPTY_ACTION_STATE));
     expect((await getPlcConfiguration(db, alice, plcId)).occupancy.occupied).toBe(0);
 
     expect(await redirected(actions.deletePlcAction(factoryId, plcId, EMPTY_ACTION_STATE))).toBe(

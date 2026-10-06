@@ -206,6 +206,8 @@ describe("catalog model view", () => {
           terminals: [
             {
               terminalLabel: "Y1",
+              kind: "SIGNAL",
+              maxConnections: 1,
               direction: "INPUT",
               ioType: "DIGITAL",
               signalType: "DC_24V",

@@ -27,6 +27,27 @@ const channelText = (group: ChannelSummary) => {
   return `${group.count} × ${group.ioType} · ${signals}`;
 };
 
+/** `OUT · out · 4–20 mA`, `+24V · supply in · 24 V DC · up to 8 wires`, `PE · earth` */
+function terminalText(terminal: CatalogModelDetail["terminals"][number]): string {
+  const direction = terminal.direction === "INPUT" ? "in" : "out";
+  const what =
+    terminal.kind === "SIGNAL"
+      ? direction
+      : terminal.kind === "POWER"
+        ? `supply ${direction}`
+        : terminal.kind === "COMMON"
+          ? "0 V"
+          : "earth";
+  return [
+    terminal.terminalLabel,
+    what,
+    terminal.signalType ? signalTypeLabel(terminal.signalType) : null,
+    terminal.maxConnections > 1 ? `up to ${terminal.maxConnections} wires` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 function Fact({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
@@ -175,7 +196,7 @@ export function CatalogModelView({ model, peripherals }: CatalogModelViewProps) 
               {model.terminals.length > 0
                 ? model.terminals.map((terminal) => (
                     <span key={terminal.terminalLabel} className="block">
-                      {`${terminal.terminalLabel} · ${terminal.direction === "INPUT" ? "in" : "out"} · ${signalTypeLabel(terminal.signalType)}`}
+                      {terminalText(terminal)}
                     </span>
                   ))
                 : "none (connects to other devices)"}

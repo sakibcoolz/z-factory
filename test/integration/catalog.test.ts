@@ -62,7 +62,7 @@ describeDb("device catalog against PostgreSQL", () => {
     const before = await count();
     expect(before).toMatchObject({
       manufacturers: 4,
-      models: 30,
+      models: 31,
       // 14 + 10 + 2 on the CPU 1214C, 14 + 10 on the TM241CE24T.
       builtInChannels: 50,
       racks: 2,
@@ -77,7 +77,7 @@ describeDb("device catalog against PostgreSQL", () => {
     const channelBefore = await db.builtInIoChannel.findFirstOrThrow({ where: { terminalLabel: "Ia.0" } });
 
     const result = await ingestCatalog(db, catalog);
-    expect(result).toEqual({ categories: before.categories, manufacturers: 4, models: 30, racks: 2, modules: 8 });
+    expect(result).toEqual({ categories: before.categories, manufacturers: 4, models: 31, racks: 2, modules: 8 });
     expect(await count()).toEqual(before);
     expect((await db.deviceModel.findMany({ select: { id: true }, orderBy: { id: "asc" } })).map((m) => m.id)).toEqual(
       idsBefore,
@@ -129,7 +129,7 @@ describeDb("device catalog against PostgreSQL", () => {
     expect(await db.moduleModel.count({ where: { OR: [{ sourceUrl: null }, { verifiedAt: null }] } })).toBe(0);
 
     const generic = await db.deviceModel.findMany({ where: { verificationStatus: "GENERIC" } });
-    expect(generic).toHaveLength(26);
+    expect(generic).toHaveLength(27);
     expect(generic.every((model) => !model.sku && !model.sourceUrl && !model.verifiedAt)).toBe(true);
   });
 
@@ -167,7 +167,7 @@ describeDb("device catalog against PostgreSQL", () => {
 
     // Terminals of generic models say which simulator signal they carry; faults follow the behaviour model.
     const terminals = await db.deviceIoDefinition.findMany({
-      where: { deviceModel: { modelName: "Generic VFD, hardwired control" } },
+      where: { deviceModel: { modelName: "Generic VFD, hardwired control" }, kind: "SIGNAL" },
       orderBy: { terminalLabel: "asc" },
     });
     expect(terminals.map((terminal) => [terminal.terminalLabel, terminal.direction, terminal.simulatorSignal])).toEqual(
@@ -181,6 +181,33 @@ describeDb("device catalog against PostgreSQL", () => {
         ["RESET", "INPUT", "faultReset"],
       ].sort(),
     );
+    // Supply, 0 V and earth terminals are terminals of their own kind; only they take more than one wire.
+    const shared = await db.deviceIoDefinition.findMany({
+      where: { kind: { not: "SIGNAL" } },
+      include: { deviceModel: { select: { modelName: true } } },
+      orderBy: [{ deviceModel: { modelName: "asc" } }, { terminalLabel: "asc" }],
+    });
+    const of = (modelName: string) =>
+      shared
+        .filter((terminal) => terminal.deviceModel.modelName === modelName)
+        .map((terminal) => [terminal.terminalLabel, terminal.kind, terminal.maxConnections])
+        .sort();
+    expect(of("Generic 24 V DC power supply")).toEqual([
+      ["+24V", "POWER", 8],
+      ["0V", "COMMON", 8],
+      ["PE", "EARTH", 8],
+    ]);
+    expect(of("Generic VFD, hardwired control")).toEqual([
+      ["COM", "COMMON", 4],
+      ["PE", "EARTH", 1],
+    ]);
+    expect(of("Generic pressure transmitter, 4–20 mA")).toEqual([
+      ["+24V", "POWER", 1],
+      ["0V", "COMMON", 1],
+    ]);
+    expect(await db.deviceIoDefinition.count({ where: { kind: "SIGNAL", maxConnections: { gt: 1 } } })).toBe(0);
+    expect(await db.communicationPort.count({ where: { maxConnections: { not: 16 } } })).toBe(0);
+
     const faults = await db.deviceFaultDefinition.findMany({
       where: { deviceModel: { modelName: "Generic VFD, hardwired control" } },
       orderBy: { code: "asc" },
@@ -197,9 +224,9 @@ describeDb("device catalog against PostgreSQL", () => {
 
   it("lists the catalog as manufacturer, family and model with totals", async () => {
     const overview = await getCatalogOverview(db);
-    expect(overview.totals).toEqual({ models: 30, manufacturers: 4, verified: 4, generic: 26, withAsset: 0 });
+    expect(overview.totals).toEqual({ models: 31, manufacturers: 4, verified: 4, generic: 27, withAsset: 0 });
     expect(overview.manufacturers.map((manufacturer) => [manufacturer.name, manufacturer.modelCount])).toEqual([
-      ["Generic / simulated", 26],
+      ["Generic / simulated", 27],
       ["Rockwell Automation", 1],
       ["Schneider Electric", 1],
       ["Siemens", 2],
@@ -333,7 +360,7 @@ describeDb("device catalog against PostgreSQL", () => {
     const plc = await create(await modelId("TM241CE24T"), "PLC-01");
     expect(plc).toMatchObject({ runtimeType: "OPENPLC", simulatorType: "NONE" });
     expect(await db.plcInstanceProfile.count({ where: { deviceInstanceId: plc.id } })).toBe(1);
-    expect(await db.deviceModel.count()).toBe(30);
+    expect(await db.deviceModel.count()).toBe(31);
   });
 
   it("represents controller, drive and remote-I/O chains, and direct wiring without an intermediate device", async () => {

@@ -185,7 +185,7 @@ const named = (modelName: string) => {
 
 describe("the prompt an asset is generated from", () => {
   it("describes every catalog model as a generic, unbranded shape within the provider's limit", () => {
-    expect(catalogModels).toHaveLength(30);
+    expect(catalogModels).toHaveLength(31);
     for (const model of catalogModels) {
       const { prompt, texturePrompt } = buildAssetPrompt(model, { vendorModels: catalogModels });
       expect(prompt.length).toBeLessThanOrEqual(MAX_PROMPT_CHARS);
@@ -240,7 +240,7 @@ describe("the prompt an asset is generated from", () => {
     expect(key("Generic pressure transmitter, 4–20 mA")).toBe("sensor:pressure transmitter");
     expect(key("Generic pressure transmitter, 4–20 mA")).toBe(key("Generic pressure transmitter, 0–10 V"));
     expect(key("Generic pressure transmitter, 4–20 mA")).not.toBe(key("Generic level transmitter, 4–20 mA"));
-    expect(new Set(catalogModels.map((model) => buildAssetPrompt(model).shapeKey)).size).toBe(26);
+    expect(new Set(catalogModels.map((model) => buildAssetPrompt(model).shapeKey)).size).toBe(27);
   });
 
   it("describes the kind of device, not only its category", () => {

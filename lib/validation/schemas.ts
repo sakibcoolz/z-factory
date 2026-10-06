@@ -6,6 +6,7 @@ import { z } from "zod";
 import { CONNECTION_RELATIONSHIPS, ENDPOINT_TYPES } from "@/lib/domain/device";
 import { TAG_DATA_TYPES, TAG_ROLES } from "@/lib/domain/tag";
 import { ipv4ToInt, maskFor } from "./network";
+import { WIRE_ENDPOINT_TYPES } from "./wiring";
 
 const trimmed = (max: number) => z.string().trim().min(1).max(max);
 
@@ -218,3 +219,14 @@ export const unlinkInputSchema = z.strictObject({
   targetId: z.uuid(),
   relationship: z.enum(CONNECTION_RELATIONSHIPS),
 });
+
+/** One end of a wire: a terminal of a device, an I/O point of a PLC, or a communication port. */
+const wireEndSchema = z.strictObject({
+  deviceId: z.uuid(),
+  type: z.enum(WIRE_ENDPOINT_TYPES),
+  /** Id of the terminal definition, the I/O point or the port. */
+  id: z.uuid(),
+});
+
+export const wireInputSchema = z.strictObject({ from: wireEndSchema, to: wireEndSchema });
+export type WireEnd = z.infer<typeof wireEndSchema>;

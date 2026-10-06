@@ -1,30 +1,18 @@
 import { PlcReport } from "@/components/export/plc-report";
 import { PinDetails, PinView } from "@/components/plc/pin-view";
 import { ModuleInstallForm } from "@/components/plc/module-install-form";
-import { PeripheralForm } from "@/components/plc/peripheral-form";
 import { StoredPlcShell } from "@/components/plc/stored-plc-shell";
 import { Button } from "@/components/ui/button";
 import { ConfirmAction } from "@/components/ui/confirm-action";
 import { Gauge, SectionRule } from "@/components/ui/primitives";
 import { StatePill } from "@/components/ui/state-pill";
 import { signalTypeLabel } from "@/lib/catalog/format";
-import { isDomainError } from "@/lib/domain/errors";
 import type { PlcConfigurationView } from "@/lib/domain/plc-config-view";
 import { type PlcExportFile, routes } from "@/lib/navigation/routes";
 import { modbusDisplayAddress, parseLocatedAddress, toModbusLocation } from "@/lib/protocols/modbus/located-address";
-import {
-  getPeripheralOptions,
-  listAddablePeripherals,
-  listInstallableModules,
-} from "@/lib/services/plc-config-service";
+import { listInstallableModules } from "@/lib/services/plc-config-service";
 import { buildPlcExport } from "@/lib/services/plc-export-service";
-import {
-  addPeripheralAction,
-  deletePlcAction,
-  installModuleAction,
-  removeModuleAction,
-  removePeripheralAction,
-} from "../actions";
+import { deletePlcAction, installModuleAction, removeModuleAction } from "../actions";
 import { loadPlc } from "./load-plc";
 
 /**
@@ -33,8 +21,6 @@ import { loadPlc } from "./load-plc";
  */
 
 type Ids = { factoryId: string; plcId: string };
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function Header({ view, title }: { view: PlcConfigurationView; title: string }) {
   const { model, plc } = view;
@@ -237,30 +223,16 @@ export async function StoredPlcHardware({ factoryId, plcId, pin }: Ids & { pin?:
   );
 }
 
-/** Connections: devices wired to the PLC, and the catalog peripherals it still has room for. */
-export async function StoredPlcConnections({ factoryId, plcId, add }: Ids & { add?: string }) {
-  const { actor, db, factory, view } = await loadPlc(factoryId, plcId);
-  const addable = await listAddablePeripherals(db, actor, plcId);
-  const options =
-    add && UUID.test(add)
-      ? await getPeripheralOptions(db, actor, plcId, add).catch((error: unknown) => {
-          if (isDomainError(error, "NOT_FOUND")) return undefined;
-          throw error;
-        })
-      : undefined;
+/**
+ * Connections: the devices wired to the PLC, as stored. A projection of the factory's
+ * wiring: wires are added, moved and removed pin by pin in the designer (TASK-307).
+ */
+export async function StoredPlcConnections({ factoryId, plcId }: Ids) {
+  const { factory, view } = await loadPlc(factoryId, plcId);
 
   return (
     <StoredPlcShell factory={factory} view={view} section="connections">
       <Header view={view} title="Connected devices" />
-      {options ? (
-        <PeripheralForm
-          // A new key resets the form when another model is chosen.
-          key={options.model.id}
-          action={addPeripheralAction.bind(null, factoryId, plcId, options.model.id)}
-          options={options}
-          cancelHref={routes.plcConnections(factoryId, plcId)}
-        />
-      ) : null}
       {view.peripherals.length > 0 ? (
         <table className="zf-tbl">
           <thead>
@@ -268,7 +240,6 @@ export async function StoredPlcConnections({ factoryId, plcId, add }: Ids & { ad
               <th>Device</th>
               <th>Model</th>
               <th>Terminal → channel · address · tag</th>
-              <th />
             </tr>
           </thead>
           <tbody>
@@ -287,52 +258,22 @@ export async function StoredPlcConnections({ factoryId, plcId, add }: Ids & { ad
                     ))
                   )}
                 </td>
-                <td>
-                  <ConfirmAction
-                    label="Remove"
-                    question={`Remove ${peripheral.name}? Its channels are freed and its tags deleted.`}
-                    confirmLabel="Remove device"
-                    action={removePeripheralAction.bind(null, factoryId, plcId, peripheral.deviceId)}
-                  />
-                </td>
               </tr>
             ))}
           </tbody>
         </table>
       ) : (
-        <p className="zf-sub">Nothing is connected yet. Choose a device below.</p>
+        <p className="zf-sub">Nothing is wired to this PLC yet.</p>
       )}
-      <SectionRule>
-        <span className="zf-k">Add a device from the catalog</span>
-      </SectionRule>
-      <table className="zf-tbl">
-        <thead>
-          <tr>
-            <th>Type</th>
-            <th>Model</th>
-            <th>Needs</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {addable.map((peripheral) => (
-            <tr key={peripheral.modelId} data-muted={!peripheral.fits}>
-              <td>{peripheral.categoryName}</td>
-              <td className="mono">{peripheral.modelName}</td>
-              <td className="mono">{peripheral.detail}</td>
-              <td>
-                {peripheral.fits ? (
-                  <Button size="sm" href={routes.plcConnections(factoryId, plcId, peripheral.modelId)}>
-                    Add
-                  </Button>
-                ) : (
-                  <StatePill tone="off">no room</StatePill>
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div className="flex items-center gap-2">
+        <Button size="sm" variant="primary" href={routes.designer(factoryId)}>
+          Edit wiring in the designer
+        </Button>
+      </div>
+      <p className="zf-sub">
+        This list is read from the factory&apos;s wiring. To add, move or remove a wire, connect the device and the PLC
+        in the designer and wire them pin by pin; each wire to a channel gets its tag at that channel&apos;s address.
+      </p>
     </StoredPlcShell>
   );
 }

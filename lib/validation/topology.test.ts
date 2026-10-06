@@ -25,7 +25,7 @@ describe("link options between two devices", () => {
   it("wires a device with terminals to a PLC, whichever way the edge is drawn", () => {
     expect(kinds(plc, vfd)).toEqual([["WIRE_IO", "plc", "vfd"]]);
     expect(kinds(vfd, plc)).toEqual([["WIRE_IO", "plc", "vfd"]]);
-    expect(linkOptions(sensor, plc)[0]?.label).toBe("Wire PT to free channels of PLC");
+    expect(linkOptions(sensor, plc)[0]?.label).toBe("Wire PT to PLC pin by pin");
   });
 
   it("links a protocol device to a PLC only over a protocol both have", () => {
@@ -49,9 +49,14 @@ describe("link options between two devices", () => {
     expect(kinds(contactor, pressureSwitch)).toEqual([
       ["MEASURES", "ps", "k1"],
       ["CONTROLS", "k1", "ps"],
+      // Two devices with terminals can also be wired pin by pin; offered last.
+      ["WIRE_IO", "k1", "ps"],
     ]);
-    // Drawn the other way only the measurement remains: a switch does not control a contactor.
-    expect(kinds(pressureSwitch, contactor)).toEqual([["MEASURES", "ps", "k1"]]);
+    // Drawn the other way the measurement and the wiring remain: a switch does not control a contactor.
+    expect(kinds(pressureSwitch, contactor)).toEqual([
+      ["MEASURES", "ps", "k1"],
+      ["WIRE_IO", "ps", "k1"],
+    ]);
   });
 
   it("lets controllers and remote I/O control devices, and nothing else", () => {

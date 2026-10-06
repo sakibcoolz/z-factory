@@ -190,6 +190,8 @@ enum ConnectionRelationship {
   MEASURES
   FEEDS_BACK_TO
   COMMUNICATES_WITH
+  /// A physical wire between two terminals that is not PLC I/O: supply, common, earth, or a signal between two devices.
+  WIRED_TO
 }
 
 enum EndpointType {
@@ -428,24 +430,44 @@ model ElectricalProfile {
 }
 
 model CommunicationPort {
-  id            String     @id @default(uuid(7)) @db.Uuid
-  deviceModelId String     @db.Uuid
-  name          String
-  physicalType  String
-  protocols     Protocol[]
-  portCount     Int        @default(1)
-  notes         String?
+  id             String     @id @default(uuid(7)) @db.Uuid
+  deviceModelId  String     @db.Uuid
+  name           String
+  physicalType   String
+  protocols      Protocol[]
+  portCount      Int        @default(1)
+  /// How many links Z-Factory allows on the port: a bus endpoint is shared within this limit.
+  maxConnections Int        @default(16)
+  notes          String?
 
   deviceModel DeviceModel @relation(fields: [deviceModelId], references: [id], onDelete: Cascade)
 
   @@unique([deviceModelId, name])
 }
 
-/// Reusable peripheral I/O requirement/capability, seen from the device.
+/// What a terminal is for. It decides what the terminal may be wired to.
+enum TerminalKind {
+  /// Carries one process signal: a digital or analog input or output.
+  SIGNAL
+  /// Supplies (OUTPUT) or takes (INPUT) the supply voltage named by `signalType`.
+  POWER
+  /// 0 V / reference potential (M, COM).
+  COMMON
+  /// Protective earth.
+  EARTH
+}
+
+/// A terminal of a device model, seen from the device: a signal the PLC reads or drives,
+/// or a supply, common or earth terminal.
 model DeviceIoDefinition {
   id              String        @id @default(uuid(7)) @db.Uuid
   deviceModelId   String        @db.Uuid
+  kind            TerminalKind  @default(SIGNAL)
+  /// How many wires the terminal takes. 1 for a signal; more only where the catalog says so.
+  maxConnections  Int           @default(1)
+  /// For a SIGNAL or POWER terminal. Not meaningful for COMMON and EARTH (stored as INPUT).
   direction       IoDirection
+  /// For a SIGNAL terminal. Not meaningful for the other kinds (stored as DIGITAL).
   ioType          IoSignalClass
   /// Normalized signal code, e.g. DC_24V, CURRENT_4_20MA, VOLTAGE_0_10V.
   signalType      String

@@ -5,6 +5,7 @@ import { factoryRepository } from "@/lib/db/repositories/factory-repository";
 import { plcConfigRepository } from "@/lib/db/repositories/plc-config-repository";
 import { plcRepository } from "@/lib/db/repositories/plc-repository";
 import { type TopologyDeviceRecord, topologyRepository } from "@/lib/db/repositories/topology-repository";
+import { wiringRepository } from "@/lib/db/repositories/wiring-repository";
 import { PLC_CATEGORY_CODE } from "@/lib/domain/device";
 import { DomainError } from "@/lib/domain/errors";
 import type { LinkResult, PaletteGroupView, TopologyEdgeView, TopologyView } from "@/lib/domain/topology-view";
@@ -20,7 +21,8 @@ import {
 } from "@/lib/validation/schemas";
 import { defaultPosition, linkOptions, type TopologyParty } from "@/lib/validation/topology";
 import { connectDevices } from "./connection-service";
-import { createPlc, deletePlc, unwireDevice, wireExistingDevice } from "./plc-config-service";
+import { createPlc, deletePlc, unwireDevice } from "./plc-config-service";
+import { connectWire, describeWires, disconnectDevices } from "./wiring-service";
 
 /**
  * The factory topology behind the designer canvas: devices as nodes, typed connections
@@ -61,48 +63,45 @@ export async function getTopology(db: PrismaClient, actor: Actor, factoryId: str
     topologyRepository.listPaletteModels(db),
   ]);
 
-  const terminalIds: string[] = [];
-  const pointIds: string[] = [];
-  for (const connection of connections) {
-    for (const [type, ref] of [
-      [connection.sourceEndpointType, connection.sourceEndpointRef],
-      [connection.targetEndpointType, connection.targetEndpointRef],
-    ] as const) {
-      if (type === "DEVICE_IO") terminalIds.push(ref);
-      if (type === "PLC_IO_POINT") pointIds.push(ref);
-    }
-  }
-  const [terminals, points] = await Promise.all([
-    topologyRepository.listTerminalLabels(db, terminalIds),
-    topologyRepository.listIoPoints(db, pointIds),
-  ]);
-  const terminalLabel = new Map(terminals.map((terminal) => [terminal.id, terminal.terminalLabel]));
-  const pointById = new Map(points.map((point) => [point.id, point]));
+  const wires = new Map(
+    (
+      await describeWires(
+        db,
+        await wiringRepository.listWires(
+          db,
+          devices.map((device) => device.id),
+        ),
+      )
+    ).map((wire) => [wire.id, wire]),
+  );
+  const plcIds = new Set(devices.filter(isPlc).map((device) => device.id));
 
-  // One edge per relationship between two devices; the wires of a PLC connection are its detail.
   const edges = new Map<string, TopologyEdgeView>();
   for (const connection of connections) {
+    const wire = wires.get(connection.id);
+    if (wire && connection.sourceEndpointType !== "PROTOCOL_PORT") {
+      // Every wire between two devices belongs to one logical edge. It starts at the PLC when there is one.
+      const [a, b] = [connection.sourceDeviceId, connection.targetDeviceId];
+      const reversed = edges.get(`${b}|${a}|WIRED_TO`);
+      const [sourceId, targetId] = reversed || (plcIds.has(b) && !plcIds.has(a)) ? [b, a] : [a, b];
+      const id = `${sourceId}|${targetId}|WIRED_TO`;
+      const edge = edges.get(id) ?? { id, relationship: "WIRED_TO", sourceId, targetId, wires: [], protocol: null };
+      edges.set(id, edge);
+      edge.wires.push(wire);
+      continue;
+    }
+    // One edge per relationship that is not wiring: drives, measures, communicates with, …
     const id = `${connection.sourceDeviceId}|${connection.targetDeviceId}|${connection.relationship}`;
-    const edge = edges.get(id) ?? {
-      id,
-      relationship: connection.relationship,
-      sourceId: connection.sourceDeviceId,
-      targetId: connection.targetDeviceId,
-      wires: [],
-      protocol: connection.protocol,
-    };
-    edges.set(id, edge);
-    const plcSideIsSource = connection.sourceEndpointType === "PLC_IO_POINT";
-    const point = pointById.get(plcSideIsSource ? connection.sourceEndpointRef : connection.targetEndpointRef);
-    if (!point || (!plcSideIsSource && connection.targetEndpointType !== "PLC_IO_POINT")) continue;
-    const channel = point.builtInChannel ?? point.moduleChannel;
-    edge.wires.push({
-      terminalLabel:
-        terminalLabel.get(plcSideIsSource ? connection.targetEndpointRef : connection.sourceEndpointRef) ?? null,
-      pointLabel: channel ? `${channel.ioType} ${channel.terminalLabel ?? channel.channelIndex}` : "",
-      logicalAddress: point.logicalAddress,
-      tagName: point.tag?.name ?? null,
-    });
+    if (!edges.has(id)) {
+      edges.set(id, {
+        id,
+        relationship: connection.relationship,
+        sourceId: connection.sourceDeviceId,
+        targetId: connection.targetDeviceId,
+        wires: [],
+        protocol: connection.protocol,
+      });
+    }
   }
 
   const palette = new Map<string, PaletteGroupView>();
@@ -263,9 +262,10 @@ export async function linkDevices(
   const source = option.sourceId === first.id ? first : second;
   const target = option.sourceId === first.id ? second : first;
   if (option.kind === "WIRE_IO") {
-    // Uses free compatible channels of the PLC; refused when one terminal finds none.
-    await wireExistingDevice(db, actor, source.id, target.id);
-  } else if (option.kind === "COMMUNICATES_WITH") {
+    // Nothing is wired because two devices are connected: the wires are made one by one.
+    return { status: "WIRE", firstId: source.id, secondId: target.id };
+  }
+  if (option.kind === "COMMUNICATES_WITH") {
     const protocol = toParty(source).protocols.find((candidate) => toParty(target).protocols.includes(candidate));
     const port = (device: TopologyDeviceRecord) =>
       device.deviceModel.communicationPorts.find((candidate) =>
@@ -273,25 +273,11 @@ export async function linkDevices(
       );
     const [sourcePort, targetPort] = [port(source), port(target)];
     if (!sourcePort || !targetPort) throw new DomainError("INVARIANT", "The shared protocol has no port on one side.");
-    await db.deviceConnection
-      .create({
-        data: {
-          factoryId,
-          sourceDeviceId: source.id,
-          targetDeviceId: target.id,
-          sourceEndpointType: "PROTOCOL_PORT",
-          sourceEndpointRef: sourcePort.id,
-          targetEndpointType: "PROTOCOL_PORT",
-          targetEndpointRef: targetPort.id,
-          relationship: "COMMUNICATES_WITH",
-          protocol: "MODBUS_TCP",
-        },
-      })
-      .catch(() => {
-        throw new DomainError("CONFLICT", `${source.name} and ${target.name} are already connected this way.`, {
-          rule: "already-connected",
-        });
-      });
+    // A port is a shared endpoint: the link is a wire between two ports, within what each port takes.
+    await connectWire(db, actor, factoryId, {
+      from: { deviceId: source.id, type: "PROTOCOL_PORT", id: sourcePort.id },
+      to: { deviceId: target.id, type: "PROTOCOL_PORT", id: targetPort.id },
+    });
   } else {
     await connectDevices(db, {
       factoryId,
@@ -304,28 +290,25 @@ export async function linkDevices(
 }
 
 /**
- * Removes one typed edge. An edge made of PLC I/O wires is removed together with the
- * device's other wires to that PLC: a device is wired to a PLC as a whole.
+ * Removes one logical edge. A wiring edge takes every wire between the two devices with
+ * it: PLC channels are freed and their tags removed. One wire is removed with `disconnectWire`.
  */
 export async function unlinkDevices(db: PrismaClient, actor: Actor, factoryId: string, input: unknown): Promise<void> {
   const data = parseInput(unlinkInputSchema, input);
   const { first: source, second: target } = await loadPair(db, actor, factoryId, data.sourceId, data.targetId);
+  if (data.relationship === "WIRED_TO") {
+    if ((await disconnectDevices(db, actor, factoryId, source.id, target.id)) === 0) throw notFound("connection");
+    return;
+  }
   const connections = (await topologyRepository.listConnectionsOf(db, source.id)).filter(
     (connection) =>
       connection.sourceDeviceId === source.id &&
       connection.targetDeviceId === target.id &&
-      connection.relationship === data.relationship,
+      connection.relationship === data.relationship &&
+      // The wires of two devices are one edge of their own.
+      (connection.sourceEndpointType === "DEVICE" || connection.sourceEndpointType === "PROTOCOL_PORT"),
   );
   if (connections.length === 0) throw notFound("connection");
-  const wired = connections.some(
-    (connection) =>
-      connection.sourceEndpointType === "PLC_IO_POINT" || connection.targetEndpointType === "PLC_IO_POINT",
-  );
-  if (wired) {
-    const [plc, device] = isPlc(source) ? [source, target] : [target, source];
-    await unwireDevice(db, actor, plc.id, device.id);
-    return;
-  }
   await plcConfigRepository.deleteConnections(
     db,
     connections.map((connection) => connection.id),

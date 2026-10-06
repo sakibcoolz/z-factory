@@ -48,9 +48,8 @@ export const routes = {
   /** Pin view; `pin` selects one I/O point. */
   plcHardware: (factoryId: string, plcId: string, pin?: string) =>
     `${plc(factoryId, plcId)}/hardware${pin ? `?pin=${encodeURIComponent(pin)}` : ""}`,
-  /** Peripherals; `add` opens the form for one catalog model. */
-  plcConnections: (factoryId: string, plcId: string, add?: string) =>
-    `${plc(factoryId, plcId)}/connections${add ? `?add=${encodeURIComponent(add)}` : ""}`,
+  /** The devices wired to the PLC, read from the factory's wiring. */
+  plcConnections: (factoryId: string, plcId: string) => `${plc(factoryId, plcId)}/connections`,
   /** Program editor; `version` opens a stored version instead of the selected one. */
   plcProgram: (factoryId: string, plcId: string, version?: number) =>
     `${plc(factoryId, plcId)}/program${version ? `?version=${version}` : ""}`,

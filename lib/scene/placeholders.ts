@@ -47,6 +47,7 @@ const BY_CATEGORY: Record<string, PlaceholderSpec> = {
   ACTUATOR: spec("valve", 0.6, 0.5, 0.3),
   HEATER: spec("box", 0.8, 0.5, 0.5),
   INDICATOR: spec("lamp", 0.2, 1.4, 0.2),
+  POWER_SUPPLY: spec("module", 0.3, 0.5, 0.3),
   SENSOR: spec("sensor", 0.25, 0.7, 0.25),
   PROXIMITY_SENSOR: spec("sensor", 0.2, 0.5, 0.2),
   SWITCH: spec("switch", 0.3, 1.0, 0.25),

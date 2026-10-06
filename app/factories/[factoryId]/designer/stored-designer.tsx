@@ -11,9 +11,13 @@ import { routes } from "@/lib/navigation/routes";
 import { getTopology } from "@/lib/services/topology-service";
 import { loadFactory } from "../load-factory";
 import {
+  connectWireAction,
+  disconnectWireAction,
   linkDevicesAction,
+  loadPairWiringAction,
   moveDevicesAction,
   placeDeviceAction,
+  reconnectWireAction,
   removeDeviceAction,
   renameDeviceAction,
   unlinkDevicesAction,
@@ -99,6 +103,12 @@ export async function StoredCanvas({ factoryId, mode }: StoredCanvasProps) {
                 unlink: unlinkDevicesAction.bind(null, factory.id),
                 remove: removeDeviceAction.bind(null, factory.id),
                 rename: renameDeviceAction.bind(null, factory.id),
+                wiring: {
+                  load: loadPairWiringAction.bind(null, factory.id),
+                  connect: connectWireAction.bind(null, factory.id),
+                  reconnect: reconnectWireAction.bind(null, factory.id),
+                  disconnect: disconnectWireAction.bind(null, factory.id),
+                },
               }
             : undefined
         }

@@ -5,6 +5,7 @@ import { requireActor } from "@/lib/auth/actor";
 import { getDb } from "@/lib/db/client";
 import { DomainError, isDomainError } from "@/lib/domain/errors";
 import type { LinkResult } from "@/lib/domain/topology-view";
+import type { PairWiringView } from "@/lib/domain/wiring-view";
 import { routes } from "@/lib/navigation/routes";
 import {
   linkDevices,
@@ -14,6 +15,7 @@ import {
   renameDevice,
   unlinkDevices,
 } from "@/lib/services/topology-service";
+import { connectWire, disconnectWire, getPairWiring, reconnectWire } from "@/lib/services/wiring-service";
 
 /**
  * Designer canvas mutations. The canvas calls these directly, so each returns a result
@@ -92,6 +94,52 @@ export async function renameDeviceAction(
 ): Promise<CanvasResult> {
   return run(factoryId, "designer.rename", async () => {
     await renameDevice(getDb(), await requireActor(), deviceId, { name: input.name, role: input.role || undefined });
+    return undefined;
+  });
+}
+
+type WireInput = {
+  from: { deviceId: string; type: string; id: string };
+  to: { deviceId: string; type: string; id: string };
+};
+
+/** The endpoints of two devices and the wires between them. Reads only; nothing is revalidated. */
+export async function loadPairWiringAction(
+  factoryId: string,
+  firstId: string,
+  secondId: string,
+  replacingWireId?: string,
+): Promise<CanvasResult<PairWiringView>> {
+  try {
+    const value = await getPairWiring(getDb(), await requireActor(), factoryId, firstId, secondId, replacingWireId);
+    return { ok: true, value };
+  } catch (error) {
+    if (isDomainError(error)) return { ok: false, message: error.message };
+    console.error(JSON.stringify({ level: "error", action: "designer.wiring", error: String(error) }));
+    return { ok: false, message: GENERIC_MESSAGE };
+  }
+}
+
+export async function connectWireAction(
+  factoryId: string,
+  input: WireInput,
+): Promise<CanvasResult<{ wireId: string }>> {
+  return run(factoryId, "designer.wire", async () => connectWire(getDb(), await requireActor(), factoryId, input));
+}
+
+export async function reconnectWireAction(
+  factoryId: string,
+  wireId: string,
+  input: WireInput,
+): Promise<CanvasResult<{ wireId: string }>> {
+  return run(factoryId, "designer.rewire", async () =>
+    reconnectWire(getDb(), await requireActor(), factoryId, wireId, input),
+  );
+}
+
+export async function disconnectWireAction(factoryId: string, wireId: string): Promise<CanvasResult> {
+  return run(factoryId, "designer.unwire", async () => {
+    await disconnectWire(getDb(), await requireActor(), factoryId, wireId);
     return undefined;
   });
 }

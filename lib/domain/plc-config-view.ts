@@ -101,37 +101,6 @@ export type InstallableModuleView = {
   channels: ChannelSummary[];
 };
 
-/** A catalog peripheral and whether this PLC has room for it right now. */
-export type AddablePeripheralView = {
-  modelId: string;
-  manufacturer: string;
-  modelName: string;
-  categoryCode: string;
-  categoryName: string;
-  connection: "DIRECT_IO" | "PROTOCOL" | null;
-  fits: boolean;
-  /** Why it fits or what is missing, e.g. "2 × DI, 1 × DO" or "no free AO 0–10 V". */
-  detail: string;
-};
-
-/** What the "add peripheral" form needs for one catalog model. */
-export type PeripheralOptionsView = {
-  model: { id: string; modelName: string; categoryName: string };
-  suggestedName: string;
-  connection: "DIRECT_IO" | "PROTOCOL" | null;
-  protocols: string[];
-  terminals: Array<{
-    id: string;
-    terminalLabel: string | null;
-    required: IoPointType;
-    signalType: string;
-    simulatorSignal: string | null;
-    /** Free channels that can take this terminal. */
-    options: Array<{ pointId: string; label: string; logicalAddress: string }>;
-    suggestedPointId: string | null;
-  }>;
-};
-
 export type FactoryDeviceView = {
   id: string;
   name: string;

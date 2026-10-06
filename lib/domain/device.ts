@@ -30,8 +30,16 @@ export const CONNECTION_RELATIONSHIPS = [
   "MEASURES",
   "FEEDS_BACK_TO",
   "COMMUNICATES_WITH",
+  "WIRED_TO",
 ] as const;
 export type ConnectionRelationship = (typeof CONNECTION_RELATIONSHIPS)[number];
+
+/**
+ * What a terminal of a device is for: one process signal, the supply voltage, the 0 V
+ * reference, or protective earth. Only terminals of the same kind are wired together.
+ */
+export const TERMINAL_KINDS = ["SIGNAL", "POWER", "COMMON", "EARTH"] as const;
+export type TerminalKind = (typeof TERMINAL_KINDS)[number];
 
 /** DEVICE_IO is a peripheral terminal (a DeviceIoDefinition of the device's model). */
 export const ENDPOINT_TYPES = ["DEVICE", "DEVICE_IO", "PLC_IO_POINT", "TAG", "PROTOCOL_PORT"] as const;

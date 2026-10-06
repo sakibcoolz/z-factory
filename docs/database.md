@@ -41,11 +41,15 @@ For PLCs, `architectureType = COMPACT | MODULAR`; it is null for every other cat
 `deviceModelId, supplyType, nominalVoltage, voltageMin, voltageMax, currentRange, powerRating, notes`
 
 ### CommunicationPort
-`id, deviceModelId, name, physicalType, protocols, portCount, notes`
+`id, deviceModelId, name, physicalType, protocols, portCount, maxConnections, notes`
+
+A port is a bus endpoint: it is shared. `maxConnections` (default 16) is the number of links Z-Factory allows on it (ADR-0014).
 
 ### DeviceIoDefinition
-Reusable peripheral I/O requirement/capability.
-`id, deviceModelId, direction, ioType, signalType, rangeMin, rangeMax, unit, terminalLabel, simulatorSignal, notes`
+A terminal of a device model, seen from the device.
+`id, deviceModelId, kind, maxConnections, direction, ioType, signalType, rangeMin, rangeMax, unit, terminalLabel, simulatorSignal, notes`
+
+`kind = SIGNAL | POWER | COMMON | EARTH` (TASK-307). A `SIGNAL` terminal carries one process signal and is what a PLC channel is wired to. A `POWER` terminal supplies (`OUTPUT`) or takes (`INPUT`) the voltage named by `signalType`. `COMMON` is 0 V and `EARTH` is protective earth; for these two `direction`, `ioType` and `signalType` are not meaningful (stored as `INPUT`, `DIGITAL` and an empty string). `maxConnections` is the number of wires the terminal takes: 1 unless the catalog marks it as shared.
 
 `simulatorSignal` names the signal of the device's simulator behaviour model the terminal carries (`run`, `actualFrequency`, …), so tags can be generated for it.
 
@@ -143,7 +147,11 @@ Resolved available/occupied PLC endpoint.
 ### DeviceConnection
 `id, factoryId, sourceDeviceId, targetDeviceId, sourceEndpointType, sourceEndpointRef, targetEndpointType, targetEndpointRef, relationship, protocol, metadataJson`
 
-Relationships include `CONTROLS`, `DRIVES`, `MECHANICALLY_DRIVES`, `MEASURES`, `FEEDS_BACK_TO`, `COMMUNICATES_WITH`.
+Relationships: `CONTROLS`, `DRIVES`, `MECHANICALLY_DRIVES`, `MEASURES`, `FEEDS_BACK_TO`, `COMMUNICATES_WITH`, `WIRED_TO`.
+
+A row whose endpoints are terminals, PLC I/O points or ports is **one wire between two exact endpoints**, and these rows are the only source of wiring (ADR-0014). It is stored from the end that drives or supplies to the end that reads or takes. A wire between a PLC channel and a terminal keeps `CONTROLS` (PLC output → device input) or `FEEDS_BACK_TO` (device output → PLC input) and has a tag bound to the channel; a link between two ports is `COMMUNICATES_WITH`; every other wire (supply, 0 V, earth, a signal between two devices) is `WIRED_TO`. A row with `DEVICE` endpoints is a relationship between two devices, not a wire.
+
+A terminal id belongs to a catalog model, so an endpoint is identified by the device and the reference together.
 
 Endpoint types: `DEVICE` (the device itself), `DEVICE_IO` (a peripheral terminal — a `DeviceIoDefinition` of the device's model), `PLC_IO_POINT`, `TAG`, `PROTOCOL_PORT`. `*EndpointRef` holds the id of the referenced row (the device id for `DEVICE`).
 
@@ -307,7 +315,7 @@ For high-volume history, partitioning/retention should be introduced first. Time
 Every factual vendor hardware profile keeps source URL plus verification metadata. Never fabricate pinouts, I/O counts, register maps, or electrical limits.
 
 ## Implementation (TASK-102)
-- Schema: `prisma/schema.prisma`; migrations: `prisma/migrations/` (`init`, `device_io_endpoint`, `factory_subnet_no_overlap`, `plc_api_host_port`, `tag_source_signal`, `catalog_capabilities`, `device_io_simulator_signal`, `device_canvas_position`, `catalog_3d_assets`, `catalog_asset_generation`, `process_modules`); generated client: `lib/generated/prisma/` (git-ignored).
+- Schema: `prisma/schema.prisma`; migrations: `prisma/migrations/` (`init`, `device_io_endpoint`, `factory_subnet_no_overlap`, `plc_api_host_port`, `tag_source_signal`, `catalog_capabilities`, `device_io_simulator_signal`, `device_canvas_position`, `catalog_3d_assets`, `catalog_asset_generation`, `process_modules`, `endpoint_wiring`); generated client: `lib/generated/prisma/` (git-ignored).
 - Primary keys are UUID v7 (`@default(uuid(7))`, PostgreSQL `uuid`), except `TelemetrySample.id` (`bigint` identity) and the one-to-one tables keyed by their owner (`ElectricalProfile`, `PlcInstanceProfile`, `DeviceRuntimeSnapshot`).
 - Catalog rows referenced by factory data are protected with `ON DELETE RESTRICT`; factory-owned rows cascade from `Factory`.
 - `DeviceInstance.dockerContainerId` is server-side only and never sent to the browser.
@@ -336,6 +344,7 @@ Prisma cannot express CHECK or EXCLUDE constraints, so these live as hand-writte
 | `Catalog3dAsset_version_check`, `Catalog3dAsset_scale_check` | version >= 1; scale null or positive |
 | `Catalog3dAsset_ready_file_check` | a `READY` asset has a storage key, a checksum and a size |
 | `DeviceInstance_scene_transform_check` | `sceneScale` between 0.1 and 10, `sceneRotationDeg` from 0 to below 360 |
+| `DeviceIoDefinition_max_connections_check`, `CommunicationPort_max_connections_check` | an endpoint takes at least one wire |
 | `ProcessModuleType_code_check`, `ProcessModuleType_version_check` | code is capitals, digits and underscores; version >= 1 |
 | `ModuleRoleDefinition_max_devices_check` | a role takes at least one device |
 | `ModuleSignalDefinition_direction_role_check` | a signal is an `OUTPUT` exactly when its role is `COMMAND` or `SETPOINT` |
@@ -343,6 +352,8 @@ Prisma cannot express CHECK or EXCLUDE constraints, so these live as hand-writte
 | `ProcessModuleInstance_name_check` | non-blank module name |
 
 Rules that span tables are enforced in the service layer (`lib/services/`, `lib/validation/`): compact vs modular I/O sources, module/CPU/slot compatibility, signal/point-type compatibility, I/O point ownership and availability, drive → motor categories, multi-word register overlap, process-module same-factory device assignment, required module roles/signals, module-to-PLC mapping compatibility, PLC-to-PLC same-factory validation, client/server role validation, writable-target validation, and inter-PLC register-span compatibility. `lib/db/errors.ts` turns constraint failures into typed domain errors without leaking driver messages.
+
+Wiring: the service layer enforces the rules of one wire (`lib/validation/wiring.ts`) and how many wires an endpoint takes, under a lock on the two devices (`lib/services/wiring-service.ts`); the exclusion constraints above additionally keep a PLC I/O point to one wire.
 
 Process modules: the service layer enforces same-factory device assignment, the categories and number of devices a role takes, roles and signals of the selected profile, configuration against the type's declared fields, and interlocks over the module's own signals (`lib/domain/process-module.ts`, `lib/services/process-module-service.ts`). Module-to-PLC mapping rules follow with `ModulePlcIoMapping` in TASK-605.
 

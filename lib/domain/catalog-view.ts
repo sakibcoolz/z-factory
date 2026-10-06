@@ -3,14 +3,21 @@
  * (docs/device-catalog.md). Types and pure rules; importable anywhere.
  */
 import type { ControlCapability, VerificationStatus } from "@/lib/domain/catalog";
-import type { IoDirection, IoPointType, IoSignalClass, PlcArchitecture } from "@/lib/domain/device";
+import type { IoDirection, IoPointType, IoSignalClass, PlcArchitecture, TerminalKind } from "@/lib/domain/device";
 
 /** A terminal of a peripheral, seen from the device. */
 export type CatalogTerminal = {
   terminalLabel: string | null;
-  direction: IoDirection;
-  ioType: IoSignalClass;
-  signalType: string;
+  /** A signal, or a supply, 0 V or earth terminal. */
+  kind: TerminalKind;
+  /** How many wires the terminal takes. */
+  maxConnections: number;
+  /** For a signal or supply terminal; null for 0 V and earth. */
+  direction: IoDirection | null;
+  /** For a signal terminal only. */
+  ioType: IoSignalClass | null;
+  /** The signal standard or supply voltage; null for 0 V and earth. */
+  signalType: string | null;
   /** Signal of the simulator behaviour model the terminal carries, when it has one. */
   simulatorSignal: string | null;
 };

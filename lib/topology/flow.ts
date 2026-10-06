@@ -12,6 +12,7 @@ export const RELATIONSHIP_LABELS: Record<ConnectionRelationship, string> = {
   MEASURES: "measures",
   FEEDS_BACK_TO: "feeds back to",
   COMMUNICATES_WITH: "communicates with",
+  WIRED_TO: "wired to",
 };
 
 /** How an edge is drawn: plain signal, network link or feedback. */

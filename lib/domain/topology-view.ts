@@ -5,6 +5,7 @@
  */
 import type { ConnectionRelationship, PlcArchitecture } from "@/lib/domain/device";
 import type { RuntimeState } from "@/lib/domain/runtime-state";
+import type { WireView } from "@/lib/domain/wiring-view";
 
 export type TopologyNodeView = {
   id: string;
@@ -23,21 +24,18 @@ export type TopologyNodeView = {
   placed: boolean;
 };
 
-export type TopologyWireView = {
-  terminalLabel: string | null;
-  pointLabel: string;
-  logicalAddress: string;
-  tagName: string | null;
-};
-
-/** One typed edge: every connection of one relationship between two devices. */
+/**
+ * One logical edge between two devices. Every wire between two devices is one edge
+ * (`WIRED_TO`), however many wires there are; a relationship that is not wiring (drives,
+ * measures, communicates with, …) is an edge of its own.
+ */
 export type TopologyEdgeView = {
   id: string;
   relationship: ConnectionRelationship;
   sourceId: string;
   targetId: string;
-  /** Wires through PLC I/O channels; empty for device-level and protocol links. */
-  wires: TopologyWireView[];
+  /** The physical wires of a wiring edge, pin to pin; empty for every other edge. */
+  wires: WireView[];
   protocol: string | null;
 };
 
@@ -54,5 +52,11 @@ export type TopologyView = {
   palette: PaletteGroupView[];
 };
 
-/** Result of asking for a link: made, or a choice between several possible relationships. */
-export type LinkResult = { status: "LINKED" } | { status: "CHOOSE"; options: Array<{ kind: string; label: string }> };
+/**
+ * Result of asking for a link: made, a choice between several possible relationships, or
+ * `WIRE`: the two devices are wired pin by pin, and nothing is stored until a wire is.
+ */
+export type LinkResult =
+  | { status: "LINKED" }
+  | { status: "CHOOSE"; options: Array<{ kind: string; label: string }> }
+  | { status: "WIRE"; firstId: string; secondId: string };

@@ -2,12 +2,18 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { type WiringActions, WiringEditor } from "@/components/canvas/wiring-editor";
 import { KeyValue } from "@/components/ui/primitives";
 import { RuntimeStatePill } from "@/components/ui/state-pill";
 import type { TopologyEdgeView, TopologyNodeView } from "@/lib/domain/topology-view";
 import { edgeLabel, edgesOf, nodeKind, RELATIONSHIP_LABELS } from "@/lib/topology/flow";
 
-export type InspectorSelection = { kind: "node"; id: string } | { kind: "edge"; id: string } | undefined;
+export type InspectorSelection =
+  | { kind: "node"; id: string }
+  | { kind: "edge"; id: string }
+  /** Two devices being wired pin by pin, before the first wire between them exists. */
+  | { kind: "pair"; firstId: string; secondId: string }
+  | undefined;
 
 type TopologyInspectorProps = {
   nodes: readonly TopologyNodeView[];
@@ -20,6 +26,10 @@ type TopologyInspectorProps = {
   onRename: (deviceId: string, input: { name: string; role: string }) => void;
   onRemoveDevice: (deviceId: string) => void;
   onRemoveEdge: (edge: TopologyEdgeView) => void;
+  /** Pin-to-pin wiring; absent in the read-only view. */
+  wiring?: WiringActions;
+  /** Called after a wire was added, moved or removed. */
+  onWiringChanged: () => void;
 };
 
 const mono = (value: string) => (
@@ -62,12 +72,36 @@ export function TopologyInspector(props: TopologyInspectorProps) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const name = (id: string) => nodes.find((node) => node.id === id)?.name ?? "?";
 
+  if (selection?.kind === "pair") {
+    return (
+      <div className="flex flex-col gap-2 p-2.5">
+        <span className="zf-k">Wiring</span>
+        <KeyValue
+          rows={[
+            ["Between", mono(name(selection.firstId))],
+            ["And", mono(name(selection.secondId))],
+          ]}
+        />
+        {props.wiring ? (
+          <WiringEditor
+            key={`${selection.firstId}:${selection.secondId}`}
+            firstId={selection.firstId}
+            secondId={selection.secondId}
+            actions={props.wiring}
+            onChanged={props.onWiringChanged}
+          />
+        ) : null}
+      </div>
+    );
+  }
+
   if (selection?.kind === "edge") {
     const edge = edges.find((candidate) => candidate.id === selection.id);
     if (!edge) return <p className="zf-sub p-2.5">This connection no longer exists.</p>;
+    const wired = edge.relationship === "WIRED_TO";
     return (
       <div className="flex flex-col gap-2 p-2.5">
-        <span className="zf-k">Connection</span>
+        <span className="zf-k">{wired ? "Wiring" : "Connection"}</span>
         <KeyValue
           rows={[
             ["From", mono(name(edge.sourceId))],
@@ -76,12 +110,21 @@ export function TopologyInspector(props: TopologyInspectorProps) {
             ...(edge.protocol ? ([["Protocol", edge.protocol.replace("MODBUS_TCP", "Modbus TCP")]] as const) : []),
           ]}
         />
-        {edge.wires.length > 0 ? (
-          <ul className="mono text-xs">
+        {wired && props.wiring && !readOnly ? (
+          <WiringEditor
+            key={edge.id}
+            firstId={edge.sourceId}
+            secondId={edge.targetId}
+            actions={props.wiring}
+            revision={edge.wires.map((wire) => wire.id).join(",")}
+            onChanged={props.onWiringChanged}
+          />
+        ) : edge.wires.length > 0 ? (
+          <ul className="mono flex flex-col gap-1 text-xs">
             {edge.wires.map((wire) => (
-              <li
-                key={wire.logicalAddress}
-              >{`${wire.terminalLabel ?? "—"} → ${wire.pointLabel} · ${wire.logicalAddress}`}</li>
+              <li key={wire.id} className="whitespace-normal">
+                {`${wire.from.name} → ${wire.to.name}${wire.logicalAddress ? ` · ${wire.logicalAddress}` : ""}`}
+              </li>
             ))}
           </ul>
         ) : null}
@@ -95,11 +138,11 @@ export function TopologyInspector(props: TopologyInspectorProps) {
               disabled={busy}
               onClick={() => props.onRemoveEdge(edge)}
             >
-              Remove connection
+              {wired ? "Remove all wires" : "Remove connection"}
             </button>
-            {edge.wires.length > 0 ? (
+            {wired ? (
               <p className="zf-sub">
-                Removing a wired connection disconnects the device from the PLC and frees all its channels.
+                Removes every wire between these two devices. PLC channels are free again and their tags are removed.
               </p>
             ) : null}
           </>
