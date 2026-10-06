@@ -31,6 +31,9 @@ Cross-cutting requirements now included in the roadmap:
 - post-MVP Go process simulation service (Phase 06, ADR-0008)
 - PLC-to-PLC communication with explicit Modbus TCP client/server mappings
 - independent PLC containers/programs with validated inter-PLC data exchange
+- production Go Thin Client Agent with dynamic file-driven PLC workers
+- secure MQTT edge-to-cloud transport
+- Web Factory TypeScript cloud application for monitoring, history and remote command orchestration
 
 Phase 06 execution units:
 - TASK-601 Process module domain & persistence
@@ -51,6 +54,14 @@ Phase 08 execution units:
 - TASK-803 PLC output -> simulator command bridge
 - TASK-804 Closed-loop scenarios, events & E2E validation
 
-Phase 09 is the **MVP 2** delivery boundary for production edge and cloud integration. Detailed TASK-9xx execution units will be added before implementation starts. Its primary dependency is TASK-503 (Z-Factory Thin Client Agent), plus the Phase 08 closed-loop validation foundation.
+Phase 09 execution units:
+- TASK-901 Web Factory TypeScript Cloud Foundation & Identity Model
+- TASK-902 MQTT Broker Integration, Agent Onboarding & Connectivity
+- TASK-903 Telemetry Ingestion, Cloud Persistence & Latest-State Projection
+- TASK-904 Web Factory Live Monitoring, Dashboards, Events & Alarms
+- TASK-905 Remote Command/Setpoint Lifecycle, Authorization & Audit
+- TASK-906 Production Edge Deployment, Resilience, Security & Physical E2E
+
+Phase 09 is the **MVP 2** delivery boundary. TASK-503 (Z-Factory Thin Client Agent) remains its primary edge-agent dependency, with Phase 08 providing closed-loop validation foundations.
 
 A phase can start only when prerequisites are met. Individual task files are the execution unit.
