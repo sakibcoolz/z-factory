@@ -54,7 +54,7 @@ Clearing an override returns that input to `AUTO`.
 | Task | Status |
 |---|---|
 | TASK-801 Simulation Override Runtime Contract & Go API | DONE |
-| TASK-802 Simulation Override UI & Operator Controls | PLANNED |
+| TASK-802 Simulation Override UI & Operator Controls | DONE |
 | TASK-803 PLC Output → Simulator Command Bridge | PLANNED |
 | TASK-804 Closed-Loop Test Scenarios, Events & E2E Validation | PLANNED |
 

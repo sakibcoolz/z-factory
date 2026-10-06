@@ -363,4 +363,16 @@ Simulator/debug UI will expose AUTO / MANUAL_OVERRIDE / SCENARIO for supported s
 
 An input row shows effective value, unit, source mode, override action, clear action and validation state. PLC outputs remain read-only in this test surface. The screen makes it explicit that an overridden input can cause the PLC program to change outputs.
 
+### Test inputs as built (TASK-802)
+On a process module's editor, in the Runtime section, while the module runs in the process bridge: **Test inputs · values the PLC reads**, one row per INPUT signal the process model declares measured (`PUMP_HOUSE`: discharge pressure, valve open; `TANK`: level, high-level switch).
+
+- **Value the PLC reads:** signal, name and the PLC tag it reaches.
+- **Delivered:** the effective value with unit (on/off for a switch); under it `model: …` while an override replaces the calculated value.
+- **Source:** `AUTO` (from the model), `MANUAL_OVERRIDE`, or `SCENARIO ramp a → b in n s`, with the simulated time it began and who set it.
+- **Test control:** a manual value (or on/off for a switch) or a ramp (from, to, seconds), Override, and Clear (disabled while the value is AUTO). The server's refusal (`DISCHARGE_PRESSURE takes 0 to 12 bar`, a command, …) or its result (`the PLC now reads 3.5 bar; the model calculates 2.94`) is shown under the row.
+- A warning above the table: changing a value here changes what the PLC program reads and may switch outputs, trip interlocks or raise alarms; only the simulation changes, the PLC's outputs stay read-only.
+- The page refreshes every 2 s while the bridge runs, so the delivered value and the resulting PLC and device state (the live values table above) follow.
+
+The browser calls a server action (`overrideAction`); only the server talks to the simulation service.
+
 Closed-loop views must show command/setpoint separately from actual feedback.
