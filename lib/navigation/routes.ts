@@ -70,6 +70,11 @@ export const routes = {
   plcRuntime: (factoryId: string, plcId: string) => `${plc(factoryId, plcId)}/runtime`,
   plcIoMapping: (factoryId: string, plcId: string) => `${plc(factoryId, plcId)}/io-mapping`,
   plcExport: (factoryId: string, plcId: string) => `${plc(factoryId, plcId)}/export`,
+  /** The PLC's links to other PLCs and the values they carry (Phase 07). */
+  plcCommunication: (factoryId: string, plcId: string) => `${plc(factoryId, plcId)}/communication`,
+  /** A link with its mappings as a JSON download (`z-factory.plc-link`). */
+  plcLinkFile: (factoryId: string, plcId: string, linkId: string) =>
+    `${plc(factoryId, plcId)}/communication/${encodeURIComponent(linkId)}/link.json`,
   /** The report alone, for printing. `runtime` adds the stored runtime state. */
   plcExportReport: (factoryId: string, plcId: string, runtime = false) =>
     `${plc(factoryId, plcId)}/export/report${runtime ? "?runtime=1" : ""}`,

@@ -2,7 +2,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import type { Actor } from "@/lib/auth/actor";
 import { processModuleRepository } from "@/lib/db/repositories/process-module-repository";
-import { listLinksOfPlc } from "./plc-communication-service";
+import { listLinksOfPlc, listPlcLinkMappingsOf } from "./plc-communication-service";
 import { plcRepository } from "@/lib/db/repositories/plc-repository";
 import { DomainError } from "@/lib/domain/errors";
 import {
@@ -18,6 +18,7 @@ import { edgeLabel, nodeKind, RELATIONSHIP_LABELS } from "@/lib/topology/flow";
 import { getCatalogModel } from "./catalog-service";
 import { getFactory } from "./factory-service";
 import { getPlcConfiguration } from "./plc-config-service";
+import { modbusDisplayAddress } from "@/lib/protocols/modbus/located-address";
 import { getModbusMap } from "./tag-service";
 import { getTopology } from "./topology-service";
 
@@ -260,19 +261,33 @@ export async function buildPlcExport(
       protocolLinks: view.peripherals.flatMap((peripheral) =>
         peripheral.protocols.map((protocol) => ({ device: peripheral.name, protocol: protocolName(protocol) })),
       ),
-      plcLinks: (await listLinksOfPlc(db, plcId)).map((link) => ({
-        relationship: link.relationship,
-        role: link.clientPlcId === plcId ? ("client" as const) : ("server" as const),
-        peer: link.source.plcId === plcId ? link.target.name : link.source.name,
-        protocol: protocolName(link.protocol),
-        serverHost: link.serverHost,
-        serverPort: link.serverPort,
-        unitId: link.unitId,
-        pollIntervalMs: link.pollIntervalMs,
-        enabled: link.enabled,
-        configVersion: link.configVersion,
-        mappings: link.mappingCount,
-      })),
+      plcLinks: await Promise.all(
+        (await listLinksOfPlc(db, plcId)).map(async (link) => ({
+          relationship: link.relationship,
+          role: link.clientPlcId === plcId ? ("client" as const) : ("server" as const),
+          peer: link.source.plcId === plcId ? link.target.name : link.source.name,
+          protocol: protocolName(link.protocol),
+          serverHost: link.serverHost,
+          serverPort: link.serverPort,
+          unitId: link.unitId,
+          pollIntervalMs: link.pollIntervalMs,
+          enabled: link.enabled,
+          configVersion: link.configVersion,
+          mappings: link.mappingCount,
+          values: (await listPlcLinkMappingsOf(db, link.id)).map((mapping) => ({
+            operation: mapping.operation,
+            clientTag: mapping.localTag.name,
+            serverTag: mapping.remoteTag.name,
+            serverRegister:
+              mapping.remoteTag.area !== null && mapping.remoteTag.address !== null
+                ? modbusDisplayAddress(mapping.remoteTag.area, mapping.remoteTag.address)
+                : "",
+            dataType: mapping.remoteTag.dataType,
+            intervalMs: mapping.effectiveIntervalMs,
+            enabled: mapping.enabled,
+          })),
+        })),
+      ),
     },
     topology: {
       nodes: topology.nodes

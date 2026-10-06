@@ -9,7 +9,15 @@ import type { PlcConfigurationView } from "@/lib/domain/plc-config-view";
 import { routes } from "@/lib/navigation/routes";
 
 export type StoredPlcSection =
-  "overview" | "hardware" | "connections" | "program" | "io-mapping" | "versions" | "runtime" | "export";
+  | "overview"
+  | "hardware"
+  | "connections"
+  | "communication"
+  | "program"
+  | "io-mapping"
+  | "versions"
+  | "runtime"
+  | "export";
 
 type StoredPlcShellProps = {
   factory: { id: string; name: string };
@@ -22,6 +30,7 @@ const SECTION_LABELS: Record<StoredPlcSection, string> = {
   overview: "Overview",
   hardware: "Hardware / Pinout",
   connections: "Connections",
+  communication: "Communication",
   program: "Program",
   "io-mapping": "I/O Mapping",
   versions: "Versions",
@@ -52,6 +61,12 @@ function sections(view: PlcConfigurationView, active: StoredPlcSection): TreeNod
       meta: String(view.peripherals.length),
       href: routes.plcConnections(factoryId, id),
       active: active === "connections",
+    },
+    // Links to other PLCs of the factory (Phase 07).
+    {
+      label: SECTION_LABELS.communication,
+      href: routes.plcCommunication(factoryId, id),
+      active: active === "communication",
     },
     // Program and Versions exist for a programmable model only; every controller model is one today.
     ...(programmable

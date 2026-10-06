@@ -368,3 +368,31 @@ export type PlcLinkMappingView = {
   /** Live quality comes from the link's runtime (TASK-703); null while nothing runs it. */
   quality: "GOOD" | "STALE" | "DISCONNECTED" | null;
 };
+
+/**
+ * Why one tag cannot be one end of a mapping, whatever the other end is; null when it can.
+ * The picker shows every tag with this reason, as the wiring editor does; the pair rules
+ * (type, scaling, unit) are checked by `checkLinkMapping` when the mapping is made.
+ */
+export function linkEndRefusal(operation: PlcLinkOperation, end: "local" | "remote", tag: LinkTag): string | null {
+  if (tag.protocolArea === null || tag.protocolAddress === null) return "no Modbus mapping";
+  if (!OPENPLC_LINK_TYPES.includes(tag.dataType)) return `${tag.dataType} is not carried (BOOL, INT16, UINT16)`;
+  if (end === "remote") {
+    return operation === "WRITE" && tagAuthority(tag) !== "EXTERNAL_COMMAND"
+      ? `${TAG_AUTHORITY_LABELS[tagAuthority(tag)]}: only a command or setpoint is written`
+      : null;
+  }
+  if (operation === "READ") {
+    const fillable = /^%[IM]/i.test(tag.logicalAddress ?? "");
+    const free = !tag.plcIoPointId && !tag.sourceSignal && !tag.moduleBound && tag.accessMode === "READ_ONLY";
+    if (!fillable || !free) return `${TAG_AUTHORITY_LABELS[tagAuthority(tag)]}: a link fills free %I or %M only`;
+    if (tag.dataType === "BOOL" && !/^%IX/i.test(tag.logicalAddress ?? "")) return "a bit from a peer arrives in %IX";
+    return null;
+  }
+  const source = tagAuthority(tag);
+  if (source !== "PROGRAM_OUTPUT" && source !== "PROGRAM_INTERNAL") {
+    return `${TAG_AUTHORITY_LABELS[source]}: a link sends only what the program computes`;
+  }
+  if (tag.dataType === "BOOL" && !/^%QX/i.test(tag.logicalAddress ?? "")) return "a bit sent to a peer leaves from %QX";
+  return null;
+}

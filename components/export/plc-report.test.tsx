@@ -189,7 +189,18 @@ const compact: PlcExportDocument = {
         pollIntervalMs: 1000,
         enabled: true,
         configVersion: 2,
-        mappings: 3,
+        mappings: 1,
+        values: [
+          {
+            operation: "WRITE",
+            clientTag: "Start_B",
+            serverTag: "Start_Cmd",
+            serverRegister: "00801",
+            dataType: "BOOL",
+            intervalMs: 1000,
+            enabled: true,
+          },
+        ],
       },
     ],
     protocolLinks: [{ device: "VFD-02", protocol: "Modbus TCP" }],
@@ -263,6 +274,8 @@ describe("PLC engineering report", () => {
     // The PLC-to-PLC links of the PLC are part of its network section (TASK-701).
     expect(within(section(11)).getByText("plc-02:502 (Modbus TCP)")).toBeInTheDocument();
     expect(within(section(11)).getByText("supervises")).toBeInTheDocument();
+    expect(within(section(11)).getByText("Start_Cmd · 00801")).toBeInTheDocument();
+    expect(within(section(11)).getByText("write to server command")).toBeInTheDocument();
     expect(within(section(11)).getByText("127.0.0.1:15991 → port 502")).toBeInTheDocument();
     expect(within(section(11)).getByText("VFD-02 (Modbus TCP)")).toBeInTheDocument();
     expect(within(section(12)).getByText("v2 · ST · deployed · sha256 abababababab")).toBeInTheDocument();

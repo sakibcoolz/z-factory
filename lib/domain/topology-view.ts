@@ -37,6 +37,16 @@ export type TopologyEdgeView = {
   /** The physical wires of a wiring edge, pin to pin; empty for every other edge. */
   wires: WireView[];
   protocol: string | null;
+  /** A PLC-to-PLC link (Phase 07): configured on the PLC's Communication screen, never on the canvas. */
+  plcLink?: {
+    linkId: string;
+    relationship: "COMMUNICATES_WITH" | "SUPERVISES";
+    /** Values carried over the link. */
+    values: number;
+    enabled: boolean;
+    /** The client PLC's Communication screen. */
+    href: string;
+  };
 };
 
 export type PaletteGroupView = {

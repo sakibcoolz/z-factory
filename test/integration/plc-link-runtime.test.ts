@@ -12,9 +12,12 @@ import type { PrismaClient } from "@/lib/generated/prisma/client";
 import { PlcLinkMonitorRuntime } from "@/lib/runtimes/plc-link/monitor";
 import { listEvents } from "@/lib/services/event-service";
 import { createFactory } from "@/lib/services/factory-service";
+import { buildPlcExport } from "@/lib/services/plc-export-service";
+import { getTopology } from "@/lib/services/topology-service";
 import {
   addPlcLinkMapping,
   createPlcLink,
+  getPlcCommunicationView,
   getPlcLinkHealth,
   type PlcLinkDeps,
   startPlcLinkMonitor,
@@ -238,7 +241,79 @@ describeRuntime("PLC-to-PLC link between two OpenPLC runtimes", () => {
     expect((refused as { details: { rule: string } }).details.rule).toBe("tag-read-only");
   }, 60_000);
 
+  it("refuses a write to the machine's feedback and a link to another factory, and shows the link everywhere", async () => {
+    // Scenario 4: the machine's Running is feedback its program produces; no link writes it.
+    const supStart = await db.tag.findFirstOrThrow({ where: { plcInstanceId: supervisor, name: "Start_B" } });
+    const running = await db.tag.findFirstOrThrow({ where: { plcInstanceId: machine, name: "Running" } });
+    const refusedWrite = await addPlcLinkMapping(db, alice, linkId, {
+      operation: "WRITE",
+      localTagId: supStart.id,
+      remoteTagId: running.id,
+    }).then(
+      () => undefined,
+      (error: unknown) => error as { details: { rule: string } },
+    );
+    expect(refusedWrite?.details.rule).toBe("plc-link-remote-write");
+    // Scenario 7: a PLC of another factory cannot be linked.
+    const cpu = (await db.deviceModel.findFirstOrThrow({ where: { modelName: "CPU 1214C DC/DC/DC" } })).id;
+    const other = await createFactory(db, alice, { name: "Other", slug: "other", subnetCidr: "10.213.250.0/28" });
+    const foreign = (await createPlc(db, alice, { factoryId: other.id, deviceModelId: cpu, name: "PLC-FOREIGN" })).id;
+    const crossFactory = await createPlcLink(db, alice, {
+      factoryId,
+      sourcePlcId: supervisor,
+      targetPlcId: foreign,
+      relationship: "SUPERVISES",
+    }).then(
+      () => undefined,
+      (error: unknown) => error as { details: { rule: string } },
+    );
+    expect(crossFactory?.details.rule).toBe("plc-link-factory");
+
+    // The path is traceable: Communication screen, topology edge, engineering export.
+    const view = await getPlcCommunicationView(db, alice, supervisor, links.monitor);
+    expect(view.links[0]).toMatchObject({
+      role: "client",
+      peer: { name: "PLC-MACHINE" },
+      deployedVersion: 4,
+      health: { quality: "GOOD" },
+    });
+    expect(
+      view.links[0]?.mappings.map((mapping) => [
+        mapping.operation,
+        mapping.localTag.name,
+        mapping.remoteTag.name,
+        mapping.quality,
+      ]),
+    ).toEqual([
+      ["READ", "B_Running", "Running", "GOOD"],
+      ["READ", "B_Counter", "Counter", "GOOD"],
+      ["WRITE", "Start_B", "Start_Cmd", "GOOD"],
+    ]);
+    const topology = await getTopology(db, alice, factoryId);
+    expect(topology.edges.find((edge) => edge.plcLink)).toMatchObject({
+      sourceId: supervisor,
+      targetId: machine,
+      relationship: "COMMUNICATES_WITH",
+      plcLink: { relationship: "SUPERVISES", values: 3, enabled: true },
+    });
+    const document = await buildPlcExport(db, alice, supervisor);
+    expect(document.network.plcLinks[0]).toMatchObject({
+      role: "client",
+      peer: "PLC-MACHINE",
+      serverHost: "plc-machine",
+      serverPort: 502,
+      pollIntervalMs: 200,
+      values: [
+        { operation: "READ", clientTag: "B_Running", serverTag: "Running", serverRegister: "00809", intervalMs: 200 },
+        { operation: "READ", clientTag: "B_Counter", serverTag: "Counter", serverRegister: "40101", intervalMs: 200 },
+        { operation: "WRITE", clientTag: "Start_B", serverTag: "Start_Cmd", serverRegister: "00801", intervalMs: 200 },
+      ],
+    });
+  }, 60_000);
+
   it("shows the link disconnected while the server is stopped, keeps the last value, and recovers", async () => {
+    const machineRecord = await db.deviceInstance.findUniqueOrThrow({ where: { id: machine } });
+    const imageBefore = (await docker.getContainer(machineRecord.dockerContainerId ?? "").inspect()).Image;
     await stopPlc(runtime, alice, machine);
     expect(await quality("DISCONNECTED")).toBe("DISCONNECTED");
     const frozen = Number(await read(supervisor, "B_Counter"));
@@ -248,6 +323,10 @@ describeRuntime("PLC-to-PLC link between two OpenPLC runtimes", () => {
     expect(await read(supervisor, "Gw_Start")).toBe(true);
 
     expect(await startPlc(runtime, alice, machine)).toEqual({ state: "RUNNING" });
+    // Scenario 6: the same container and image come back; nothing is rebuilt.
+    const after = await db.deviceInstance.findUniqueOrThrow({ where: { id: machine } });
+    expect(after.dockerContainerId).toBe(machineRecord.dockerContainerId);
+    expect((await docker.getContainer(after.dockerContainerId ?? "").inspect()).Image).toBe(imageBefore);
     expect(await quality("GOOD", 40_000)).toBe("GOOD");
     // The command is delivered again and the machine counts on.
     expect(await until(machine, "Running", (value) => value === true, 30_000)).toBe(true);

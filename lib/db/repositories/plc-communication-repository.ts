@@ -146,6 +146,37 @@ export const plcCommunicationRepository = {
     });
   },
 
+  /** The programmable controllers of a factory, with what the link rules need. */
+  listFactoryControllers(db: Db, factoryId: string) {
+    return db.deviceInstance.findMany({
+      where: { factoryId, plcProfile: { isNot: null } },
+      select: {
+        id: true,
+        name: true,
+        runtimeStatus: true,
+        deviceModel: { select: { capabilities: true, architectureType: true } },
+      },
+      orderBy: { name: "asc" },
+    });
+  },
+
+  /** A PLC's Modbus-mapped tags, with whether a module signal is bound to each. */
+  listPlcTags(db: Db, plcId: string) {
+    return db.tag.findMany({
+      where: { plcInstanceId: plcId },
+      include: { moduleMapping: { select: { id: true } } },
+      orderBy: [{ logicalAddress: "asc" }, { name: "asc" }],
+    });
+  },
+
+  /** Remote tags a WRITE mapping writes, on the given server PLCs. */
+  listWrittenTagIds(db: Db, plcIds: readonly string[]) {
+    return db.plcCommunicationMapping.findMany({
+      where: { operation: "WRITE", remoteTag: { plcInstanceId: { in: [...plcIds] } } },
+      select: { remoteTagId: true },
+    });
+  },
+
   /** Who already carries a tag over a link: a READ that fills it, or a WRITE that writes it. */
   findTagUse(db: Db, tagId: string) {
     return db.plcCommunicationMapping.findMany({

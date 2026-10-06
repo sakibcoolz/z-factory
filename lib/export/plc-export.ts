@@ -88,6 +88,16 @@ export type ExportPlcLink = {
   configVersion: number;
   /** Values carried over the link (TASK-702). */
   mappings: number;
+  /** The values, from the client's side: what is read from the server, what is written to it. */
+  values: Array<{
+    operation: string;
+    clientTag: string;
+    serverTag: string;
+    serverRegister: string;
+    dataType: string;
+    intervalMs: number;
+    enabled: boolean;
+  }>;
 };
 
 export type PlcExportDocument = {

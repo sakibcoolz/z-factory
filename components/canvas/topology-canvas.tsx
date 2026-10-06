@@ -216,7 +216,8 @@ function Canvas({ view, actions, plcLinks }: TopologyCanvasProps) {
   );
 
   const removeEdge = (edge: TopologyEdgeView) => {
-    if (!actions) return;
+    // A PLC link is changed on the PLC's Communication screen, not on the canvas.
+    if (!actions || edge.plcLink) return;
     perform(
       () => actions.unlink({ sourceId: edge.sourceId, targetId: edge.targetId, relationship: edge.relationship }),
       () => setSelection(undefined),
