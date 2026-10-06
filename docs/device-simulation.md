@@ -160,3 +160,14 @@ A latching fault trips the device: it stays faulted after the cause is cleared u
 - The measured signal of a sensor is named in its profile, not on the `MEASURES` connection.
 - A device fault raises an alarm (`AlarmEvent`, code `FAULT:<code>`) that ends when the fault is gone, for a latching fault when the device leaves its faulted state, and in any case when the simulation stops (TASK-401).
 - Relays and contactors are not simulated.
+
+
+## PLC I/O authority in simulation
+ADR-0015 applies to the simulator.
+
+- Simulator-generated sensor/process values are injected into the virtual PLC through the simulation bridge.
+- PLC logic consumes those values and writes its own local output variables.
+- The device simulator reads the program-generated outputs as commands to the simulated actuators.
+- The simulator never becomes the authority for PLC outputs.
+- Modbus is an implementation transport between the simulator and OpenPLC memory/registers; it is not the industrial meaning of the local I/O connection.
+- When targeting a real PLC, simulator injection is replaced by physical inputs or the selected real remote-I/O/device protocol, while the program still owns local outputs.
