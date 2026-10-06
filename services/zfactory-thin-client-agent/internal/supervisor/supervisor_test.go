@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sakibcoolz/z-factory/services/zfactory-thin-client-agent/internal/command"
 	"github.com/sakibcoolz/z-factory/services/zfactory-thin-client-agent/internal/config"
 	"github.com/sakibcoolz/z-factory/services/zfactory-thin-client-agent/internal/supervisor"
 	"github.com/sakibcoolz/z-factory/services/zfactory-thin-client-agent/internal/worker"
@@ -32,6 +33,8 @@ func (r *runner) Snapshot(bool) worker.Snapshot {
 }
 
 func (r *runner) Deployment() *config.Deployment { return r.deployment }
+
+func (r *runner) Submit(command.Write, func(worker.Result)) error { return nil }
 
 type fleet struct {
 	mu      sync.Mutex
