@@ -1,6 +1,7 @@
 # TASK-205 — Program-Authoritative I/O Semantics & Physical Target Boundary
 
 Status: **PLANNED**
+Linear: [ZFA-38](https://linear.app/recruit-verse/issue/ZFA-38)
 
 ## Objective
 Align the OpenPLC simulation and future physical-PLC deployment model with industrial PLC semantics: the PLC scan cycle owns local outputs; Modbus is used for external commands, setpoints, monitoring and simulation bridging, not as the normal mechanism for driving local output pins.
