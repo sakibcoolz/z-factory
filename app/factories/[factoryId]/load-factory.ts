@@ -1,12 +1,10 @@
 import "server-only";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { requireActor } from "@/lib/auth/actor";
 import { getDb } from "@/lib/db/client";
 import { getDocker } from "@/lib/docker/client";
 import { getDockerEngineStatus } from "@/lib/docker/status";
 import { isDomainError } from "@/lib/domain/errors";
-import { isDemoFactory } from "@/lib/fixtures";
-import { routes } from "@/lib/navigation/routes";
 import { getFactory, listFactories } from "@/lib/services/factory-service";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -16,8 +14,6 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * of another owner all end in the same not-found screen.
  */
 export async function loadFactory(factoryId: string) {
-  // The design-fixture factory has no database row; its screens start at the designer.
-  if (isDemoFactory(factoryId)) redirect(routes.designer(factoryId));
   if (!UUID.test(factoryId)) notFound();
 
   const actor = await requireActor();

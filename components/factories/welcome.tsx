@@ -2,13 +2,11 @@ import Link from "next/link";
 import { type DockerHostStatus, dockerStatusLabel } from "@/components/factories/factory-explorer";
 import { SectionRule } from "@/components/ui/primitives";
 import { StatePill, type Tone } from "@/components/ui/state-pill";
-import { DEMO_FACTORY_ID } from "@/lib/fixtures/factories";
 import { routes } from "@/lib/navigation/routes";
 
 const START_ACTIONS: ReadonlyArray<{ label: string; href: string }> = [
   { label: "New factory…", href: routes.newFactory() },
   { label: "Browse device catalog", href: routes.catalog() },
-  { label: "Open the Pump House Demo design fixture", href: routes.designer(DEMO_FACTORY_ID) },
 ];
 
 type WelcomeProps = {

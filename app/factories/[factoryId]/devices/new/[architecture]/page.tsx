@@ -1,13 +1,10 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { FactoryExplorer } from "@/components/factories/factory-explorer";
-import { CompactPlcConfig } from "@/components/plc/compact-plc-config";
-import { ModularPlcConfig } from "@/components/plc/modular-plc-config";
 import { PlcCreateForm } from "@/components/plc/plc-create-form";
 import { AppShell } from "@/components/shell/app-shell";
 import { Content, EditorTabs } from "@/components/shell/editor";
 import { getDb } from "@/lib/db/client";
-import { isDemoFactory, isModularBenchFactory } from "@/lib/fixtures";
 import { PLC_ARCHITECTURE_SLUGS, type PlcArchitectureSlug, routes } from "@/lib/navigation/routes";
 import { listFactoryDevices, listPlcModels } from "@/lib/services/plc-config-service";
 import { suggestDeviceName } from "@/lib/validation/io-address";
@@ -35,10 +32,7 @@ const isArchitecture = (value: string): value is PlcArchitectureSlug =>
 export default async function NewDevicePage({ params }: NewDevicePageProps) {
   const { factoryId, architecture } = await params;
 
-  // The design-fixture factories keep their static screens.
-  if (architecture === "compact" && isDemoFactory(factoryId)) return <CompactPlcConfig factoryId={factoryId} />;
-  if (architecture === "modular" && isModularBenchFactory(factoryId)) return <ModularPlcConfig />;
-  if (!isArchitecture(architecture) || isDemoFactory(factoryId) || isModularBenchFactory(factoryId)) notFound();
+  if (!isArchitecture(architecture)) notFound();
 
   const { factory, factories, docker, actor } = await loadFactory(factoryId);
   const db = getDb();

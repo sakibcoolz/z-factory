@@ -292,9 +292,9 @@ describe("factory view and edit", () => {
     expect(service.getFactory).toHaveBeenCalledTimes(1);
   });
 
-  it("sends the design-fixture factory to its designer", async () => {
+  it("knows no design-fixture factory any more", async () => {
     await expect(FactoryPage({ params: Promise.resolve({ factoryId: "factory_001" }) })).rejects.toThrow(
-      "NEXT_REDIRECT /factories/factory_001/designer",
+      "NEXT_NOT_FOUND",
     );
   });
 
