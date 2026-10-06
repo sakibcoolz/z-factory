@@ -38,6 +38,7 @@ import { type CompileDiagnostic, compileStructuredText, MAX_SOURCE_BYTES } from 
 import { parseInput } from "@/lib/validation/parse";
 import { modbusEndpointInputSchema } from "@/lib/validation/schemas";
 import { recordEvent } from "./event-service";
+import { modbusMasterPlan } from "./plc-communication-service";
 
 /**
  * Lifecycle of a PLC instance's OpenPLC runtime: versioned programs, start, deploy,
@@ -354,7 +355,9 @@ export async function deployProgramVersion(
   const client = openPlcClient(target, deps.runtimeSecret);
 
   try {
-    const deployed = await deployProgram(client, programVersion.sourceText);
+    // The PLC's links as a Modbus master go with the program (TASK-703).
+    const master = await modbusMasterPlan(db, device.id);
+    const deployed = await deployProgram(client, programVersion.sourceText, undefined, master.devices);
 
     await db.$transaction(async (transaction) => {
       await plcRepository.retireDeployedPrograms(transaction, device.id, programVersion.id);
@@ -386,6 +389,8 @@ export async function deployProgramVersion(
             offset: tag.offset,
             unit: tag.unit,
           })),
+          // The link versions the runtime now runs as a Modbus master.
+          plcLinks: master.links,
           runtime: profile.runtimeVersion,
           runtimeImage: profile.runtimeImage,
           imageDigest: profile.imageDigest,

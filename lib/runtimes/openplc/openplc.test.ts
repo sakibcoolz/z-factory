@@ -310,4 +310,108 @@ describe("modbus tcp client", () => {
     // Well below the 3 s response timeout: the close itself ends the exchange.
     expect(Date.now() - started).toBeLessThan(1500);
   });
+
+  it("enables the Modbus master plugin only for a PLC with links, with one device per server", () => {
+    const compiledFiles = { "generated.hpp": "", "generated_debug.cpp": "", "strucpp_runtime/include/a.h": "" };
+    expect(composeProgramBundle({ source: PROGRAM, md5: "abc", compiledFiles })).not.toHaveProperty(
+      "conf/modbus_master.json",
+    );
+    const bundle = composeProgramBundle({
+      source: PROGRAM,
+      md5: "abc",
+      compiledFiles,
+      modbusMaster: [
+        {
+          name: "link-1",
+          host: "plc-b",
+          port: 502,
+          unitId: 1,
+          timeoutMs: 500,
+          points: [
+            { operation: "READ", remoteArea: "COIL", remoteAddress: 808, localAddress: "%IX10.0", cycleTimeMs: 200 },
+            {
+              operation: "READ",
+              remoteArea: "HOLDING_REGISTER",
+              remoteAddress: 100,
+              localAddress: "%MW10",
+              cycleTimeMs: 200,
+            },
+            {
+              operation: "READ",
+              remoteArea: "INPUT_REGISTER",
+              remoteAddress: 3,
+              localAddress: "%IW4",
+              cycleTimeMs: 1000,
+            },
+            { operation: "WRITE", remoteArea: "COIL", remoteAddress: 800, localAddress: "%QX101.0", cycleTimeMs: 200 },
+            {
+              operation: "WRITE",
+              remoteArea: "HOLDING_REGISTER",
+              remoteAddress: 100,
+              localAddress: "%MW20",
+              cycleTimeMs: 200,
+            },
+          ],
+        },
+      ],
+    });
+    expect(JSON.parse(bundle["conf/modbus_master.json"] ?? "[]")).toEqual([
+      {
+        name: "link-1",
+        protocol: "MODBUS",
+        config: {
+          type: "SLAVE",
+          transport: "tcp",
+          host: "plc-b",
+          port: 502,
+          slave_id: 1,
+          timeout_ms: 500,
+          io_points: [
+            {
+              fc: 1,
+              offset: "808",
+              iec_location: "%IX10.0",
+              len: 1,
+              cycle_time_ms: 200,
+              error_handling: "keep-last-value",
+            },
+            {
+              fc: 3,
+              offset: "100",
+              iec_location: "%MW10",
+              len: 1,
+              cycle_time_ms: 200,
+              error_handling: "keep-last-value",
+            },
+            {
+              fc: 4,
+              offset: "3",
+              iec_location: "%IW4",
+              len: 1,
+              cycle_time_ms: 1000,
+              error_handling: "keep-last-value",
+            },
+            {
+              fc: 5,
+              offset: "800",
+              iec_location: "%QX101.0",
+              len: 1,
+              cycle_time_ms: 200,
+              error_handling: "keep-last-value",
+            },
+            {
+              fc: 6,
+              offset: "100",
+              iec_location: "%MW20",
+              len: 1,
+              cycle_time_ms: 200,
+              error_handling: "keep-last-value",
+            },
+          ],
+        },
+      },
+    ]);
+    // The slave plugin keeps serving the PLC's own map.
+    expect(bundle).toHaveProperty("conf/modbus_slave.json");
+  });
 });

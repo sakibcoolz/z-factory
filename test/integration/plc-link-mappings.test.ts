@@ -80,9 +80,9 @@ describeDb("PLC link mappings", () => {
     // PLC-A, the supervisor: what it computes for B, where B's values land, and a gateway command.
     await define(plcA, "A", [
       { name: "Start_B", dataType: "BOOL", role: "STATUS", logicalAddress: "%QX101.0" },
-      { name: "Speed_B", dataType: "INT16", role: "STATUS", logicalAddress: "%MW20", scale: 0.1, unit: "%" },
-      { name: "B_Temp", dataType: "FLOAT32", role: "PROCESS_VALUE", logicalAddress: "%MD10", unit: "°C" },
-      { name: "B_Running", dataType: "BOOL", role: "STATUS", logicalAddress: "%MX10.0" },
+      { name: "Speed_B", dataType: "INT16", role: "STATUS", logicalAddress: "%MW20", scale: 0.01, unit: "%" },
+      { name: "B_Temp", dataType: "INT16", role: "PROCESS_VALUE", logicalAddress: "%MW10", scale: 0.1, unit: "°C" },
+      { name: "B_Running", dataType: "BOOL", role: "STATUS", logicalAddress: "%IX10.0" },
       { name: "B_Pressure", dataType: "INT16", role: "PROCESS_VALUE", logicalAddress: "%MW30", unit: "bar" },
       { name: "Gw_Start", dataType: "BOOL", role: "COMMAND", logicalAddress: "%QX102.0" },
       { name: "A_Output", dataType: "BOOL", role: "STATUS", logicalAddress: "%QX103.0" },
@@ -115,7 +115,7 @@ describeDb("PLC link mappings", () => {
     const read = await map("READ", "B_Temp", "Temperature");
     expect(read).toMatchObject({
       operation: "READ",
-      localTag: { name: "B_Temp", logicalAddress: "%MD10", dataType: "FLOAT32", unit: "°C" },
+      localTag: { name: "B_Temp", logicalAddress: "%MW10", dataType: "INT16", unit: "°C" },
       remoteTag: { name: "Temperature", area: "HOLDING_REGISTER", address: 1224, dataType: "INT16", scale: 0.1 },
       updateIntervalMs: null,
       effectiveIntervalMs: 1000,

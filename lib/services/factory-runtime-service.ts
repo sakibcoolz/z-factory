@@ -5,6 +5,7 @@ import type { RuntimeState } from "@/lib/domain/runtime-state";
 import { getFactory } from "./factory-service";
 import { type GatewayDeps, syncGatewayEndpoints } from "./gateway-service";
 import { type LiveDeps, stopPlcMonitoring, syncFactoryMonitoring } from "./live-service";
+import { type PlcLinkDeps, startPlcLinkMonitor, stopPlcLinkMonitor } from "./plc-communication-service";
 import { type RuntimeDeps, startPlc, stopPlc } from "./plc-runtime-service";
 import {
   getProcessBridgeState,
@@ -34,6 +35,8 @@ export type FactoryRuntimeDeps = {
   gateway: GatewayDeps;
   /** The process bridge (TASK-603): started after the simulation, from the module I/O registry (TASK-605). */
   process?: ProcessBridgeDeps;
+  /** The PLC-to-PLC link monitor (TASK-703): watching starts with the PLCs and stops with them. */
+  links?: PlcLinkDeps;
 };
 
 export type FactoryRuntimeResult = {
@@ -110,6 +113,8 @@ export async function startFactory(
   } finally {
     // Whatever was started is read for live values, also when a later PLC failed.
     await syncFactoryMonitoring(deps.live, factory.id);
+    // The links run in the PLCs' own runtimes; Z-Factory watches them.
+    if (deps.links) startPlcLinkMonitor(deps.links, factory.id);
   }
 
   let simulatedDevices = 0;
@@ -140,6 +145,7 @@ export async function stopFactory(
   factoryId: string,
 ): Promise<FactoryRuntimeResult> {
   const factory = await getFactory(deps.runtime.db, actor, factoryId);
+  if (deps.links) stopPlcLinkMonitor(deps.links, factory.id);
   if (deps.process?.bridge.isRunning(factory.id)) await stopProcessBridge(deps.process, actor, factory.id);
   if (deps.simulation.simulator.isRunning(factory.id)) await stopFactorySimulation(deps.simulation, actor, factory.id);
 
