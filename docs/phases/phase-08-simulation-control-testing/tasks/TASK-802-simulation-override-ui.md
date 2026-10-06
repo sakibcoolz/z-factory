@@ -1,6 +1,7 @@
 # TASK-802 — Simulation Override UI & Operator Controls
 
 Status: **PLANNED**
+Linear: [ZFA-40](https://linear.app/recruit-verse/issue/ZFA-40)
 
 ## Goal
 Expose safe test controls in Z-Factory UI for simulation inputs.
