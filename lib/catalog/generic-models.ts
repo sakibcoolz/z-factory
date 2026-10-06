@@ -55,6 +55,10 @@ const analog = (
 
 const DC_24V = { supplyType: "DC", nominalVoltage: 24 } as const;
 
+/** The three phases of a motor connection: a drive supplies them, a motor takes them, one conductor each. */
+const PHASES = (direction: "INPUT" | "OUTPUT"): Terminal[] =>
+  ["U", "V", "W"].map((terminalLabel) => ({ terminalLabel, kind: "POWER", direction, signalType: "AC_400V" }));
+
 /** Supply terminals of a 24 V DC field device: it takes the supply and has a 0 V terminal. */
 const SUPPLY_24V: Terminal[] = [
   { terminalLabel: "+24V", kind: "POWER", direction: "INPUT", signalType: "DC_24V" },
@@ -89,7 +93,8 @@ export const genericModels: CatalogInput = {
         digital("RUNNING", "OUTPUT", "running"),
         digital("FAULT", "OUTPUT", "faulted"),
         analog("FREQ", "OUTPUT", "VOLTAGE_0_10V", "actualFrequency"),
-        // Reference potential of the control terminals, and the earth terminal of the housing.
+        // The motor output, the reference potential of the control terminals, and the earth terminal of the housing.
+        ...PHASES("OUTPUT"),
         { terminalLabel: "COM", kind: "COMMON", maxConnections: 4 },
         { terminalLabel: "PE", kind: "EARTH" },
       ],
@@ -103,7 +108,12 @@ export const genericModels: CatalogInput = {
       ports: ETHERNET_MODBUS,
     }),
     generic("MOTOR", "Generic motors", "Generic three-phase motor", {
-      terminals: [digital("K1", "INPUT", "run"), digital("K1 AUX", "OUTPUT", "running")],
+      terminals: [
+        digital("K1", "INPUT", "run"),
+        digital("K1 AUX", "OUTPUT", "running"),
+        ...PHASES("INPUT"),
+        { terminalLabel: "PE", kind: "EARTH" },
+      ],
       faults: ["OVERLOAD"],
     }),
     generic("PUMP", "Generic pumps", "Generic centrifugal pump", { faults: ["DRY_RUN"] }),

@@ -12,6 +12,8 @@ export const SIGNAL_TYPES = [
   "CURRENT_4_20MA",
   "CURRENT_0_20MA",
   "CURRENT_PM_20MA",
+  /** A phase of a three-phase 400 V AC motor supply; one conductor per phase terminal. */
+  "AC_400V",
 ] as const;
 export type SignalType = (typeof SIGNAL_TYPES)[number];
 
@@ -24,6 +26,7 @@ export const SIGNAL_TYPE_LABELS: Record<SignalType, string> = {
   CURRENT_4_20MA: "4–20 mA",
   CURRENT_0_20MA: "0–20 mA",
   CURRENT_PM_20MA: "±20 mA",
+  AC_400V: "400 V AC",
 };
 
 /**

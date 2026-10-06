@@ -44,20 +44,21 @@ Last architecture documentation update: 2026-10-06
 - Pin-to-pin wiring implemented (TASK-307, ADR-0014): the designer wires two exact endpoints at a time, with every refusal named before saving; terminals have a kind (signal, supply, 0 V, earth) and a number of wires they take; all wires of two devices are one edge; the PLC Connections screen is read-only and the add-peripheral form is gone. A wire to a PLC channel still creates its tag, so tags, simulator and export read the same wiring.
 - Capability-driven device screens implemented (TASK-308): catalog models declare capabilities; a device's screens follow its exact model (Parameters, Registers, Communications for drives and controllers; Program and Versions for programmable models only); a generic RTU runs the PLC program workflow on the OpenPLC adapter; deploy and program checks refuse what a model cannot do; parameter sets are immutable configuration versions that the simulation reads. No scripting or firmware adapter exists.
 - Design fixtures retired (TASK-309): `lib/fixtures/` and the fixture branches of the screens are gone; the factory explorer lists stored factories only, and an unknown id is not found.
+- 3D physical conductors implemented (TASK-405): a wiring edge is drawn as one thin line per stored wire, side by side and styled by kind; a relationship that is not wiring stays one logical line. The generic drive and motor model their three phases, so the demo's motor cable shows three conductors.
 - Container logs are not shown.
 - Post-MVP process-module architecture documented: generic devices remain catalog-backed, while process modules compose factory devices and allocate module-specific PLC I/O.
 - Phase 06 includes TASK-605 for an authoritative module PLC I/O registry.
 - ADR-0008 accepts a separate Go process-simulation service in Phase 06+ only; it does not alter current MVP Phase 02–05 implementation.
 - Phase 03 reopened for follow-up work: TASK-306 is done; TASK-307 (canonical pin-to-pin wiring and validation) is done; TASK-308 (capability-driven programming and configuration) is done; TASK-309 (retire the design fixtures) is done; Phase 03 is closed again.
 - Since TASK-307 one canonical endpoint wiring source replaces the PLC-centric writable mapping flow. Signal I/O is single-connection by default; explicitly modeled power, 0V/COM, PE/earth and bus endpoints are shareable within metadata-defined limits.
-- Phase 04 reopened for TASK-405: 2D keeps one logical edge, while 3D renders the exact physical conductor set for all catalog device relationships (for example, three distinct conductors for modeled three-phase VFD-to-motor wiring).
+- Phase 04 reopened for TASK-405 and closed again: 2D keeps one logical edge, while 3D renders the exact persisted conductor set (three distinct conductors for the modeled three-phase VFD-to-motor cable).
 - Programming UI is capability-driven (TASK-308): a PLC or programmable RTU exposes Program and Versions; a VFD and similar controllers get Parameters and Registers; a Program screen appears only when the exact model declares programmable logic.
 - Phase 07 is now PLC-to-PLC Communication. It plans independent PLC containers/programs exchanging explicitly mapped data over Modbus TCP.
 - PLC-to-PLC writes are limited to configured writable command/setpoint endpoints; target PLC local logic remains authoritative.
 - Cross-factory PLC-to-PLC links are out of scope for Phase 07.
 
 ## Planning gate
-- New follow-up tasks are mirrored to Linear: TASK-307 = ZFA-34 (Done), TASK-308 = ZFA-35 (Done), TASK-309 = ZFA-37 (Done), TASK-405 = ZFA-36 (Todo).
+- New follow-up tasks are mirrored to Linear: TASK-307 = ZFA-34 (Done), TASK-308 = ZFA-35 (Done), TASK-309 = ZFA-37 (Done), TASK-405 = ZFA-36 (Done).
 
 Phase task Markdown remains the execution unit. Linear mirrors every task of Phases 00–07: the Phase 06 tasks TASK-601–605 are ZFA-24 to ZFA-28 and the Phase 07 tasks TASK-701–704 are ZFA-29 to ZFA-32, each in its phase milestone and in the backlog (mirrored 2026-10-05). Phase 06 was started by the owner on 2026-10-05 with TASK-601; Phase 07 is not active until the owner starts a task of it. Phase 00 is closed.
 

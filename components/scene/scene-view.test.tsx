@@ -253,6 +253,7 @@ describe("SceneView", () => {
         targetId: "id-M-01",
         line: "signal",
         label: "controls",
+        conductors: [],
       },
       {
         id: "m1-m2",
@@ -261,6 +262,7 @@ describe("SceneView", () => {
         targetId: "id-M-02",
         line: "signal",
         label: "drives",
+        conductors: [],
       },
     ],
   };
@@ -366,5 +368,36 @@ describe("SceneView", () => {
 
     FakeEventSource.current.open();
     expect(shown("PLC-01")).toHaveAttribute("data-tone", "run");
+  });
+
+  it("lists the stored conductors of a selected device, and names a relationship that has none", () => {
+    const wired: FactorySceneView = {
+      ...CONNECTED,
+      connections: [
+        ...CONNECTED.connections,
+        {
+          id: "cable",
+          relationship: "WIRED_TO",
+          sourceId: "id-M-01",
+          targetId: "id-M-02",
+          line: "signal",
+          label: "wired to · 3 wires",
+          conductors: ["U", "V", "W"].map((phase) => ({
+            id: `wire-${phase}`,
+            kind: "POWER" as const,
+            from: `M-01 / ${phase}`,
+            to: `M-02 / ${phase}`,
+          })),
+        },
+      ],
+    };
+    const { inspector } = setup(wired);
+    fireEvent.click(inspector.getByRole("button", { name: /M-01/ }));
+
+    const list = within(inspector.getByRole("list", { name: "Connections of M-01" }));
+    expect(list.getByText("M-02 · wired to · 3 wires")).toBeInTheDocument();
+    expect(list.getByText("3 conductors · U → U, V → V, W → W")).toBeInTheDocument();
+    expect(list.getByText("M-02 · drives")).toBeInTheDocument();
+    expect(list.getAllByText("relationship, no conductor")).toHaveLength(2);
   });
 });

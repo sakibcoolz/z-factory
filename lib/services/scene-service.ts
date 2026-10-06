@@ -73,6 +73,8 @@ export async function getFactoryScene(db: PrismaClient, actor: Actor, factoryId:
       targetId: edge.targetId,
       line: edgeLine(edge.relationship),
       label: edgeLabel(edge),
+      // Exactly the wires that are stored: a conductor is never inferred from the kind of device.
+      conductors: edge.wires.map((wire) => ({ id: wire.id, kind: wire.kind, from: wire.from.name, to: wire.to.name })),
     })),
     extent,
   };

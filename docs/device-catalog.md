@@ -205,7 +205,7 @@ What a device can be wired to is catalog data, stated per endpoint. Nothing is i
 - **Ports** are bus endpoints and shared: `maxConnections` on a port (default 16) is the number of links Z-Factory allows on it. This is a limit of the simulation, not a vendor fact.
 - **PLC channels** are signal endpoints that take one wire; their standard and the standards they can be set to come from the channel definition as before.
 
-Generic models with supply terminals: the power supply (new category `POWER_SUPPLY`), the transmitters (`+24V` in, `0V`) and the hardwired drive (`COM`, `PE`). Vendor PLC records have no supply terminals: those are vendor facts and have not been sourced.
+Generic models with supply terminals: the power supply (new category `POWER_SUPPLY`), the transmitters (`+24V` in, `0V`), the hardwired drive (`COM`, `PE`, and its motor output `U`, `V`, `W` as `POWER` terminals of the signal type `AC_400V`, TASK-405) and the three-phase motor (`U`, `V`, `W` in, `PE`). Vendor PLC records have no supply terminals: those are vendor facts and have not been sourced.
 
 The rules of a wire are in `lib/validation/wiring.ts`; see `docs/design.md` → Pin-to-pin wiring as built.
 

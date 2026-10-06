@@ -7,6 +7,7 @@
  */
 import type { ConnectionRelationship } from "@/lib/domain/device";
 import type { RuntimeState } from "@/lib/domain/runtime-state";
+import type { WireEndpointKind } from "@/lib/validation/wiring";
 
 /** The reusable 3D asset of a catalog model, as far as a renderer needs it. */
 export type SceneAssetView = {
@@ -69,6 +70,19 @@ export type SceneDeviceView = {
   placeholder: PlaceholderSpec;
 };
 
+/**
+ * One physical wire of a connection, as stored by the wiring (TASK-307): the 3D view draws
+ * one thin line per conductor and never one it was not given.
+ */
+export type SceneConductorView = {
+  /** The wire's id. */
+  id: string;
+  kind: WireEndpointKind;
+  /** `VFD-01 / U` */
+  from: string;
+  to: string;
+};
+
 export type SceneConnectionView = {
   id: string;
   relationship: ConnectionRelationship;
@@ -77,6 +91,8 @@ export type SceneConnectionView = {
   /** Same line styles as the 2D topology: signal solid, network dashed, feedback dotted. */
   line: "signal" | "network" | "feedback";
   label: string;
+  /** The persisted conductors of a wiring edge; empty for a relationship that is not wiring (TASK-405). */
+  conductors: SceneConductorView[];
 };
 
 export type FactorySceneView = {

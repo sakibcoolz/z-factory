@@ -107,6 +107,9 @@ designer wiring editor
 
 Nothing is wired because two devices are connected, and no other screen writes wiring: the PLC's Connections and I/O Mapping screens are projections. The editor shows, for every pair of endpoints, the refusal of the same rule function the service applies when the wire is stored.
 
+### Physical conductors (TASK-405)
+The scene's connections carry the stored wires of a wiring edge as `conductors` (`getFactoryScene` reads them from `getTopology`, which reads the canonical wiring of ADR-0014). The renderer draws one line per conductor (`lib/scene/conductors.ts` lays the bundle and styles each kind) and keeps one logical line for a relationship that is not wiring. The 3D view owns no wiring of its own and invents no conductor from the kind of device.
+
 ## Programmable device abstraction
 Implemented in TASK-308 (`docs/programmable-devices.md` → Implementation): `DeviceModel.capabilities` is catalog data; `lib/domain/device-capabilities.ts` decides from it which screens a device has and whether the program workflow may run; the runtime service refuses a program for a model without the capability or in a language the adapter does not compile before any side effect; a generic RTU runs the PLC workflow unchanged. The existing PLC program/version workflow is generalized through capability-driven adapters.
 

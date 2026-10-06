@@ -16,6 +16,7 @@ import { addGateway, connectGateway, type GatewayDeps, getGatewaysView, mapAllGa
 import { addPeripheral, createPlc, installModule } from "./plc-config-service";
 import { createProgramVersion } from "./plc-runtime-service";
 import { createTag } from "./tag-service";
+import { connectWire, getPairWiring } from "./wiring-service";
 import { linkDevices, moveDevices, placeDevice } from "./topology-service";
 
 /**
@@ -120,6 +121,17 @@ export async function createDemoFactory(
   const pumpId = await place("pump");
   // Named, because two devices with terminals could also be wired pin by pin.
   await linkDevices(db, actor, factoryId, { fromId: vfdId, toId: motorId, kind: "DRIVES" });
+  // The motor cable, phase by phase, so the 3D view draws three conductors (TASK-405).
+  const phases = await getPairWiring(db, actor, factoryId, vfdId, motorId);
+  for (const label of ["U", "V", "W"]) {
+    const from = phases.first.endpoints.find((endpoint) => endpoint.label === label);
+    const to = phases.second.endpoints.find((endpoint) => endpoint.label === label);
+    if (!from || !to) throw new DomainError("INVARIANT", `The demo drive or motor has no ${label} terminal.`);
+    await connectWire(db, actor, factoryId, {
+      from: { deviceId: vfdId, type: from.type, id: from.id },
+      to: { deviceId: motorId, type: to.type, id: to.id },
+    });
+  }
   await linkDevices(db, actor, factoryId, { fromId: motorId, toId: pumpId, kind: "MECHANICALLY_DRIVES" });
   await linkDevices(db, actor, factoryId, { fromId: transmitterId, toId: pumpId, kind: "MEASURES" });
   await db.simulationProfile.createMany({
