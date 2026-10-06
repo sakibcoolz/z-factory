@@ -10,6 +10,7 @@
 | 05 | External Gateway MVP | DONE | Modbus runtime externally reachable |
 | 06 | Process Module Framework & Go Simulation Service | IN PROGRESS | Phase 02–05 foundations stable; ADR-0008 |
 | 07 | PLC-to-PLC Communication | PLANNED | Multi-PLC OpenPLC runtime + Modbus mapping stable |
+| 08 | Simulation Control, Overrides & Closed-Loop Testing | PLANNED | Go simulation + PLC bridge stable; ADR-0015 |
 
 Cross-cutting requirements now included in the roadmap:
 - PostgreSQL + Prisma domain model
@@ -42,5 +43,11 @@ Phase 07 execution units:
 - TASK-702 Modbus TCP client/server mapping
 - TASK-703 PLC-to-PLC runtime adapter & Docker networking
 - TASK-704 PLC-to-PLC UI, validation & E2E tests
+
+Phase 08 execution units:
+- TASK-801 Simulation override runtime contract & Go API
+- TASK-802 Simulation override UI & operator controls
+- TASK-803 PLC output -> simulator command bridge
+- TASK-804 Closed-loop scenarios, events & E2E validation
 
 A phase can start only when prerequisites are met. Individual task files are the execution unit.
