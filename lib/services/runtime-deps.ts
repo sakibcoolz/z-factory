@@ -17,6 +17,7 @@ import type { LiveDeps } from "./live-service";
 import type { PlcLinkDeps } from "./plc-communication-service";
 import type { ProcessBridgeDeps } from "./process-bridge-service";
 import type { RuntimeDeps } from "./plc-runtime-service";
+import type { ScenarioDeps } from "./scenario-service";
 import type { SimulationDeps } from "./simulation-service";
 
 /** Database, Docker client, runtime policy and secret for the runtime services, from the environment. */
@@ -103,4 +104,9 @@ export function getFactoryRuntimeDeps(): FactoryRuntimeDeps {
     process: getProcessBridgeDeps(),
     links: getPlcLinkDeps(),
   };
+}
+
+/** The runtime, the device simulation and the process bridge, for closed-loop scenarios (TASK-804). */
+export function getScenarioDeps(): ScenarioDeps {
+  return { runtime: getRuntimeDeps(), simulation: getSimulationDeps(), process: getProcessBridgeDeps() };
 }

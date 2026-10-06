@@ -26,7 +26,16 @@ Examples:
 - ALARM_RAISED / ALARM_ACKNOWLEDGED / ALARM_CLEARED
 - PLC_LINK_CHANGED (family LINK; a PLC-to-PLC link or one of its mappings created, changed or removed, with the link's version)
 - CONNECTION_DOWN / CONNECTION_UP with `link: plc-link` (TASK-703): a PLC-to-PLC link's quality changed; `deviceId` is the client PLC, `to` the server, `state` the new quality (`STALE`, `DISCONNECTED`, `GOOD`) and `message` the reason. They raise no alarm.
-- PROCESS_OVERRIDE_SET / PROCESS_OVERRIDE_CLEARED (family PROCESS, TASK-801): a test put a value the PLC reads into MANUAL_OVERRIDE or SCENARIO, or back to AUTO; with `module`, `code` (signal), `mode`, `value` or `profile`, and `by`
+- PROCESS_OVERRIDE_SET / PROCESS_OVERRIDE_CLEARED (family PROCESS, TASK-801): a test put a value the PLC reads into MANUAL_OVERRIDE or SCENARIO, or back to AUTO; with `module`, `code` (signal), `mode`, `value` or `profile`, and `by`. Since TASK-804:
+  - PROCESS_OVERRIDE_CHANGED: a value already out of AUTO was given a new value or profile; `from` holds the mode and value it had.
+  - PROCESS_OVERRIDE_REJECTED: the change was refused for a module that exists; carries `rule` and `message`.
+  - Clearing a value that is already in AUTO records nothing.
+  - A change made by a scenario also carries `scenario` and `runId`.
+- SCENARIO_STARTED / SCENARIO_COMPLETED / SCENARIO_FAILED / SCENARIO_REJECTED (family SCENARIO, TASK-804): one closed-loop test run, with `scenario`, `runId` and `by`.
+  - The end of a run carries `status`, `durationS`, `passed`/`steps`, `overridden` (the values the run took out of AUTO) and, on failure, `failure`.
+  - A refused run carries `rule` and `message`.
+  - A forced simulated sensor or switch is recorded as SIMULATED_INPUT_FORCED / SIMULATED_INPUT_RELEASED on the device.
+  - Simulator loss is already recorded: PROCESS_QUALITY_CHANGED (`STALE`, `DISCONNECTED`), CONNECTION_DOWN with `link: device-simulator` or `process-bridge`, and the feedback quality of TASK-803. No tick is ever recorded as an event.
 - PROCESS_BRIDGE_STARTED / PROCESS_BRIDGE_STOPPED
 - PROCESS_STATE_CHANGED / PROCESS_QUALITY_CHANGED (family PROCESS)
 - PROCESS_ALARM_RAISED / PROCESS_ALARM_CLEARED

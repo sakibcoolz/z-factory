@@ -670,6 +670,13 @@ export class FactorySimulation {
   }
 
   /** Forces the simulated value of a sensor or switch; `null` returns it to its source. */
+  /** The sensors and switches whose value is forced, with that value. */
+  forced(): Array<{ deviceId: string; name: string; value: SignalValue }> {
+    return [...this.sensors, ...this.switches].flatMap((device) =>
+      device.override === null ? [] : [{ deviceId: device.id, name: device.name, value: device.override }],
+    );
+  }
+
   setOverride(deviceId: string, value: SignalValue | null): SimEvent {
     const device = this.require(deviceId);
     const accepted =

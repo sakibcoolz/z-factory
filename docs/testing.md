@@ -54,6 +54,19 @@ As built (TASK-802): `components/modules/module-editor.test.tsx` renders the tes
 
 As built (TASK-803): `lib/domain/tag-authority.test.ts` keeps commands the program gives simulated equipment (`run` on `%M`, a module OUTPUT) apart from feedback and checks that every device signal key flows one way in every type. `lib/runtimes/tag-monitor/monitor.test.ts` degrades a good read of a feedback tag to its writer's quality (once per writer and cycle, a quality change alone published) and back. `lib/runtimes/device-sim/runtime.test.ts` and `lib/runtimes/process-bridge/runtime.test.ts` report feedback quality (GOOD, DISCONNECTED, STALE, BAD for a lost sensor) and release feedback on stop without touching the PLC's commands. `test/integration/command-bridge.test.ts` (Docker) runs a real OpenPLC program with a valve, a drive and a motor: authorities on the Live Tags screen, feedback `STALE` before the simulation starts, the valve travelling over its stroke time while the program holds the drive, the drive running once the open limit switch proves the valve open with command and actual frequency apart, program-driven tags refused to writers, a stuck valve not moving, released feedback on stop that makes the program withdraw the drive and shows `STALE` on the screen and in the telemetry, and the loop closed again on restart.
 
+As built (TASK-804):
+- `lib/domain/scenario.test.ts` covers the comparisons (on/off, tolerance, missing values), the step labels, the time bound and the schema (defaults, unknown kinds, step and total limits).
+- `test/integration/closed-loop-scenarios.test.ts` (Docker) runs a real OpenPLC program with a drive, a motor, a pump, a pressure transmitter and a temperature transmitter:
+  - Scenarios that would write the program's alarm or output, or that name an unknown device, are refused and recorded, and nothing reaches the PLC.
+  - A high-temperature scenario runs twice with the same outcome. TT-01 is forced to 92 °C; the program raises its alarm, withdraws the run command, the drive ramps down and the pump stops; the program confirms the stop from the feedback; after CLEAR the alarm stays latched until a reset below 75 °C. Only commands and setpoints were written, and the forced value is named in the report and the events.
+  - The VFD, motor and process loop runs twice alike: the program limits the speed, the pressure follows, and the program trips on its own feedback.
+  - A run with an unmet expectation fails with the reason and still returns to AUTO.
+  - A run refuses to start while a value is forced, and *clear all* releases it.
+- `test/integration/process-bridge-runtime.test.ts` runs a process-override scenario twice on the Go service with the same outcome:
+  - DISCHARGE_PRESSURE overridden above the trip, the program trips, and the model's pump stops;
+  - CHANGED and CLEARED events carrying the run;
+  - a refused override of a command recorded as `PROCESS_OVERRIDE_REJECTED`, failing the run and leaving AUTO.
+
 ## PLC-to-PLC communication (Phase 07)
 As built (TASK-701): `lib/domain/plc-communication.test.ts` covers the link rules (self, factory, controller, server capability by client end), the service name and the snapshot. `test/integration/plc-communication.test.ts` (PostgreSQL) creates links between catalog PLCs and an RTU, refuses self, cross-factory, non-controller, duplicate and out-of-range inputs, versions every change with the server's name following the roles, exports the link by names and in both PLCs' engineering exports, hides another owner's links, keeps the history after removal and removes the link with its PLC.
 

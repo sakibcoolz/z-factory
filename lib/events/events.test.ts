@@ -146,10 +146,19 @@ describe("event vocabulary", () => {
       "PROCESS_ALARM_RAISED",
     ]);
     expect(eventTypesOf("PROCESS").sort()).toEqual([
+      "PROCESS_OVERRIDE_CHANGED",
       "PROCESS_OVERRIDE_CLEARED",
+      "PROCESS_OVERRIDE_REJECTED",
       "PROCESS_OVERRIDE_SET",
       "PROCESS_QUALITY_CHANGED",
       "PROCESS_STATE_CHANGED",
+    ]);
+    // Closed-loop test runs (TASK-804) have their own family.
+    expect(eventTypesOf("SCENARIO").sort()).toEqual([
+      "SCENARIO_COMPLETED",
+      "SCENARIO_FAILED",
+      "SCENARIO_REJECTED",
+      "SCENARIO_STARTED",
     ]);
     expect(new Set(KNOWN_EVENT_TYPES).size).toBe(KNOWN_EVENT_TYPES.length);
   });

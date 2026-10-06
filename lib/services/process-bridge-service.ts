@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { Actor } from "@/lib/auth/actor";
 import { processBridgeRepository, type ProcessTagRecord } from "@/lib/db/repositories/process-bridge-repository";
 import { type ModuleRecord, processModuleRepository } from "@/lib/db/repositories/process-module-repository";
-import { DomainError } from "@/lib/domain/errors";
+import { DomainError, isDomainError } from "@/lib/domain/errors";
 import type { NewRuntimeEvent } from "@/lib/domain/events";
 import {
   checkProcessMappings,
@@ -470,11 +470,27 @@ export async function listProcessOverrides(deps: ProcessBridgeDeps, actor: Actor
   return deps.client.overrides(record.id);
 }
 
+/** Who asked for an override change, as the record names it (TASK-804). */
+export type OverrideOrigin = { by?: string; scenario?: { name: string; runId: string } };
+
+const overridePayload = (state: { mode: string; value?: number; profile?: { kind: string } } | undefined) =>
+  state === undefined
+    ? { mode: "AUTO" }
+    : {
+        mode: state.mode,
+        ...(state.value !== undefined ? { value: state.value } : {}),
+        ...(state.profile ? { profile: state.profile.kind } : {}),
+      };
+
 /**
  * Puts a value the PLC reads into MANUAL_OVERRIDE or SCENARIO, or back to AUTO. The
  * override is runtime test state of the simulation: nothing in the module's configuration
  * changes, no PLC output is written, and the bridge delivers the effective value at its
- * next cycle. Every change is recorded with who asked.
+ * next cycle. Every change is recorded with who asked: `PROCESS_OVERRIDE_SET` for a value
+ * that was in AUTO, `PROCESS_OVERRIDE_CHANGED` for one already overridden,
+ * `PROCESS_OVERRIDE_CLEARED` when one returns to AUTO (clearing one that is in AUTO
+ * records nothing), and `PROCESS_OVERRIDE_REJECTED` with the reason when the change is
+ * refused for a module that exists.
  */
 export async function setProcessOverride(
   deps: ProcessBridgeDeps,
@@ -482,35 +498,78 @@ export async function setProcessOverride(
   moduleId: string,
   signalKey: string,
   input: unknown,
+  origin: OverrideOrigin = {},
 ): Promise<ProcessSimSignalState> {
-  const request = parseInput(overrideInputSchema, input);
-  const { record, signal, client } = await overridableSignal(deps, actor, moduleId, signalKey);
-  const state =
-    request.mode === "AUTO"
-      ? await client.clearOverride(record.id, signal.key, actor.ownerId)
-      : await client.setOverride(record.id, signal.key, { ...request, source: actor.ownerId });
-  await recordEvents(deps, [
-    {
-      type: request.mode === "AUTO" ? "PROCESS_OVERRIDE_CLEARED" : "PROCESS_OVERRIDE_SET",
-      factoryId: record.factoryId,
-      deviceId: null,
-      severity: request.mode === "AUTO" ? "INFO" : "WARNING",
-      payload: {
-        module: record.name,
-        moduleId: record.id,
-        code: signal.key,
-        name: signal.name,
-        mode: request.mode,
-        ...(request.mode === "MANUAL_OVERRIDE" ? { value: request.value } : {}),
-        ...(request.mode === "SCENARIO" ? { profile: request.profile.kind } : {}),
-        by: actor.ownerId,
+  const by = origin.by ?? actor.ownerId;
+  const subject = isUuid(moduleId) ? await processModuleRepository.findModule(deps.db, actor.ownerId, moduleId) : null;
+  try {
+    const request = parseInput(overrideInputSchema, input);
+    const { record, signal, client } = await overridableSignal(deps, actor, moduleId, signalKey);
+    const before = (await client.overrides(record.id)).find(
+      (state) => state.signal === signal.key && state.mode !== "AUTO",
+    );
+    const state =
+      request.mode === "AUTO"
+        ? await client.clearOverride(record.id, signal.key, by)
+        : await client.setOverride(record.id, signal.key, { ...request, source: by });
+    if (request.mode === "AUTO" && !before) return state;
+    await recordEvents(deps, [
+      {
+        type:
+          request.mode === "AUTO"
+            ? "PROCESS_OVERRIDE_CLEARED"
+            : before
+              ? "PROCESS_OVERRIDE_CHANGED"
+              : "PROCESS_OVERRIDE_SET",
+        factoryId: record.factoryId,
+        deviceId: null,
+        severity: request.mode === "AUTO" ? "INFO" : "WARNING",
+        payload: {
+          module: record.name,
+          moduleId: record.id,
+          code: signal.key,
+          name: signal.name,
+          mode: request.mode,
+          ...(request.mode === "MANUAL_OVERRIDE" ? { value: request.value } : {}),
+          ...(request.mode === "SCENARIO" ? { profile: request.profile.kind } : {}),
+          ...(before ? { from: overridePayload(before) } : {}),
+          by,
+          ...(origin.scenario ? { scenario: origin.scenario.name, runId: origin.scenario.runId } : {}),
+        },
       },
-    },
-  ]);
-  return state;
+    ]);
+    return state;
+  } catch (error) {
+    if (subject && isDomainError(error) && error.code !== "NOT_FOUND") {
+      await recordEvents(deps, [
+        {
+          type: "PROCESS_OVERRIDE_REJECTED",
+          factoryId: subject.factoryId,
+          deviceId: null,
+          severity: "WARNING",
+          payload: {
+            module: subject.name,
+            moduleId: subject.id,
+            code: signalKey.slice(0, 120),
+            rule: typeof error.details.rule === "string" ? error.details.rule : error.code,
+            message: error.message,
+            by,
+            ...(origin.scenario ? { scenario: origin.scenario.name, runId: origin.scenario.runId } : {}),
+          },
+        },
+      ]);
+    }
+    throw error;
+  }
 }
 
 /** Returns a value to AUTO; clearing one that is not overridden changes nothing. */
-export function clearProcessOverride(deps: ProcessBridgeDeps, actor: Actor, moduleId: string, signalKey: string) {
-  return setProcessOverride(deps, actor, moduleId, signalKey, { mode: "AUTO" });
+export function clearProcessOverride(
+  deps: ProcessBridgeDeps,
+  actor: Actor,
+  moduleId: string,
+  signalKey: string,
+  origin: OverrideOrigin = {},
+) {
+  return setProcessOverride(deps, actor, moduleId, signalKey, { mode: "AUTO" }, origin);
 }

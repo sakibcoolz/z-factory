@@ -229,6 +229,40 @@ INPUT signal of a module running in the bridge, send the actor as the source, an
 `PROCESS_OVERRIDE_SET` / `PROCESS_OVERRIDE_CLEARED`. The bridge delivers the effective value
 at its next cycle; nothing writes a PLC output.
 
+## Scenarios (Phase 08, TASK-804)
+A scenario is a repeatable closed-loop test: it asks for what an operator may ask for, changes what the simulation feeds the PLC, and checks what the PLC program does about it. It never writes what the program decides; an alarm, a trip or an output is expected, never set (ADR-0015).
+
+**Definition.** JSON, validated by `scenarioSchema` (`lib/validation/scenario.ts`; types in `lib/domain/scenario.ts`). It has a `name`, an optional `description`, and 1–100 `steps`. Things are named the way an engineer names them, so one scenario runs on any factory built the same way.
+
+| Step | What it does |
+|---|---|
+| `WRITE {plc, tag, value}` | writes a command or setpoint tag (`EXTERNAL_COMMAND`); any other tag refuses the run before it starts |
+| `FORCE {device, value}` | forces a simulated sensor (number) or switch (true/false) of the device simulator |
+| `OVERRIDE {module, signal, value}` | MANUAL_OVERRIDE of a process module's measured value |
+| `RAMP {module, signal, from, to, durationS}` | SCENARIO profile (RAMP) of a process module's measured value |
+| `CLEAR` | every forced and overridden value of the factory back to AUTO |
+| `EXPECT {plc, tag, op, value, tolerance?, withinS = 10, holdS?}` | reads the tag until `op` (EQ, NE, GT, GTE, LT, LTE) holds, at most `withinS`; with `holdS` it must then hold that long |
+| `WAIT {seconds}` | waits |
+
+A step takes at most 300 s. A scenario takes at most 900 s, counting every WAIT and EXPECT at its limit.
+
+**Run.** `runScenario(deps, actor, factoryId, scenario)` in `lib/services/scenario-service.ts`, with the screen at `/factories/[factoryId]/scenarios`.
+- Before anything is changed, the run is refused when:
+  - the definition is invalid;
+  - a name does not exist in the factory;
+  - a WRITE targets anything but a command or setpoint;
+  - another scenario of the factory is running;
+  - any value of the factory is out of AUTO (`scenario-overrides-active`). A run starts from AUTO so that it can be repeated.
+- The refusal is recorded as `SCENARIO_REJECTED`.
+- Otherwise the steps run in order. The first failing step ends the run (`FAILED`, later steps `SKIPPED`). Every value is returned to AUTO whatever the outcome.
+- The report has, per step: the result, the last value read and the time.
+- It also lists every value the run took out of AUTO, which is the evidence of what was overridden.
+- Events: `SCENARIO_STARTED`, then `SCENARIO_COMPLETED` or `SCENARIO_FAILED` (docs/events-telemetry.md). Override changes made by a run carry its `runId`.
+
+**Repeatability.** Process models advance in lockstep with the bridge. Device models follow real elapsed time. The PLC scans every 50 ms. So a scenario that expects settled values with a tolerance, and waits with `withinS` rather than fixed delays, gives the same steps, results and on/off readings on every run; only timings differ. The tests run each scenario twice and compare.
+
+**Clear all.** `clearAllOverrides(deps, actor, factoryId)` releases every forced sensor or switch and every overridden process value of the factory, and records each release. `listActiveOverrides` lists what is out of AUTO. The Scenarios screen shows both, with a *Clear all overrides* button. The module editor's per-value controls are unchanged (TASK-802).
+
 ## Observability
 Structured JSON logs (`log/slog`) for every request, instance lifecycle change and event.
 `GET /healthz` (no token): status, version, contract version, uptime, instance count,
