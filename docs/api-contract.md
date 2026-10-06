@@ -195,15 +195,15 @@ Refusals carry `details.rule`, `details.from` and `details.to`: `wire-same-devic
 `unwireDevice` (`lib/services/plc-config-service.ts`) removes every wire between a PLC and one device; deleting a device uses it.
 
 ### `process-modules` (TASK-601)
-Services in `lib/services/process-module-service.ts`. Module types are shared reference data, not owned by a factory. Every function on a module takes the `Actor`; a module, factory or device of another owner is not found. There is no screen, route or server action yet (TASK-604), and no PLC binding (`process-modules/io-registry`, TASK-605).
+Services in `lib/services/process-module-service.ts`. Module types are shared reference data, not owned by a factory. Every function on a module takes the `Actor`; a module, factory or device of another owner is not found. There is no screen, route or server action yet (TASK-604). The PLC binding is the registry below.
 
 | Operation | Entry point | Rules |
 |---|---|---|
 | module types | `listModuleTypes(db)` | every stored version; the newest of each code is `latest` |
 | module type | `getModuleType(db, typeId)` | profiles, configuration fields, roles, signals, signal counts per direction |
 | define type | `defineModuleType(db, definition)` | checked by `parseModuleType`; a `(code, version)` is stored once and never changed |
-| list modules | `listModules(db, actor, factoryId)` | name order; profile, type, device count, signal counts, `complete` and issues |
-| module | `getModule(db, actor, moduleId)` | roles of the profile with their devices, signals of the profile, configuration, interlocks, issues |
+| list modules | `listModules(db, actor, factoryId)` | name order; profile, type, device count, signal counts, `complete` and issues, binding counts, `readyToRun` |
+| module | `getModule(db, actor, moduleId)` | roles of the profile with their devices, signals of the profile, configuration, interlocks, issues, binding counts, `readyToRun` |
 | create module | `createModule(db, actor, { factoryId, typeId, name, location?, profile?, config? })` | name unique in the factory; profile one of the type's (its first by default); configuration checked against the type and filled with defaults |
 | update module | `updateModule(db, actor, moduleId, { name?, location?, profile?, config? })` | a given `config` replaces the stored one; a profile is refused while a device or interlock has no place in it |
 | delete module | `deleteModule(db, actor, moduleId)` | removes assignments and interlocks; devices stay |
@@ -215,6 +215,23 @@ Services in `lib/services/process-module-service.ts`. Module types are shared re
 Refusals carry a rule in `details.rule`: `module-profile`, `module-config`, `module-device-factory`, `module-role-category`, `module-role-profile`, `module-role-full`, `module-profile-in-use`, `module-interlock`, `module-type-version`.
 
 Writing the shipped types is not an API: `ingestModuleTypes(db, loadModuleTypes())` runs from `npm run db:seed`.
+
+### `process-modules/io-registry` (TASK-605)
+Services in `lib/services/module-io-service.ts` (docs/process-modules.md → The PLC I/O registry). A binding is a `ModulePlcIoMapping`: one signal of the module's profile on one tag of a PLC of the same factory, under the rules of `lib/domain/process-bridge.ts`.
+
+| Operation | Entry point | Rules |
+|---|---|---|
+| registry | `getModuleIoRegistry(db, actor, moduleId)` | every consumed signal of the profile with state `BOUND` / `INVALID` / `UNBOUND`, `blocking`, the issue, the binding (PLC, tag, located address, Modbus area and address, type, scaling, unit, I/O point); internal signals apart; counts per direction; what the module takes of each PLC; `readyToRun` |
+| candidates | `listBindableTags(db, actor, moduleId, signalKey)` | every tag of the factory's PLCs; `refusal` null when it may be bound, else the rule (`tag-mapped` with `heldBy` when a module holds it) |
+| bind | `bindModuleSignal(db, actor, moduleId, { signalKey, tagId })` | signal of the profile, not INTERNAL; tag of the factory, free, accepted by the rules; refused while the signal is bound (`signal-bound`); the module's row is locked |
+| rebind | `rebindModuleSignal(db, actor, moduleId, { signalKey, tagId })` | same rules; the signal has to be bound (`signal-unbound`) |
+| release | `releaseModuleSignal(db, actor, moduleId, signalKey)` | frees the tag; tag, PLC and module stay |
+| factory summary | `getFactoryIoSummary(db, actor, factoryId)` | per PLC: modules and the inputs, outputs and alarms it gives; per module: bound signals |
+| bridge mappings | `listFactoryModuleMappings(db, actor, factoryId)` | the stored bindings as `{ moduleId, signalKey, tagId }`; `planProcessBridge` reads them itself |
+| export | `exportModuleIo(db, actor, moduleId)` | `z-factory.module-io` v1: module name, type, version, profile; bindings by signal, PLC name, tag name |
+| import | `importModuleIo(db, actor, moduleId, document)` | same type version and profile; PLCs and tags found by name in the factory; replaces the bindings, all or nothing |
+
+Refusals carry a rule in `details.rule`: the mapping rules of docs/process-simulation.md → Bridge (`module-signal-direction`, `module-signal-profile`, `signal-plc-driven`, `signal-address`, `signal-data-type`, `signal-range`, `signal-unit`, `modbus-mapping`, `tag-in-use`), plus `tag-mapped` (`OCCUPIED_ENDPOINT`), `signal-bound`, `signal-unbound`, `module-io-type`, `module-io-profile`, `module-io-tag`, `duplicate-signal`.
 
 ### `plc export` (TASK-304)
 Service: `buildPlcExport(db, actor, plcId, { includeRuntime })` in `lib/services/plc-export-service.ts`, returning the document described in `docs/plc-export.md`.

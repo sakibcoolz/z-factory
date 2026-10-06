@@ -120,15 +120,18 @@ Phase 06 introduces an optional dedicated Go simulation service for advanced cou
 ## Fidelity
 Process models are deterministic software/control-test approximations unless explicitly documented otherwise. They are not process-design, mechanical, electrical, thermodynamic, or safety certification.
 
-## Implementation (TASK-601)
-The domain and its persistence exist; binding signals to a PLC (TASK-605), the process runtime (TASK-602, TASK-603) and the screens (TASK-604) do not yet.
+## Implementation (TASK-601, TASK-605)
+The domain and its persistence exist, with the PLC I/O registry (TASK-605) and the process runtime (TASK-602, TASK-603; docs/process-simulation.md). The screens are TASK-604.
 
 ```text
 lib/domain/process-module.ts        pure rules: directions, profiles, configuration, roles, interlocks, issues
+lib/domain/process-bridge.ts        pure rules: which tag may carry which signal (shared with the bridge)
+lib/domain/module-io-view.ts        the registry's shapes; builds rows, counts and per-PLC use from stored bindings
 lib/process-modules/schema.ts       shape and rules of a type definition (parseModuleType)
 lib/process-modules/types.ts        the shipped types
 lib/process-modules/ingest.ts       writes type versions (npm run db:seed)
 lib/services/process-module-service.ts   types, module instances, device roles, interlocks
+lib/services/module-io-service.ts        the registry: bind, rebind, release, candidates, summary, export/import
 ```
 
 ### Module types
@@ -147,7 +150,7 @@ Shipped types (generic templates; they name device categories, never a manufactu
 | `PUMP_HOUSE` v1 | `SINGLE_PUMP`, `DUTY_STANDBY` | duty pump, duty drive or starter (optional), standby pump and drive (`DUTY_STANDBY`), discharge pressure transmitter, suction level switch (optional), discharge valve (optional) | 7 inputs (3 required), 5 outputs (2 required), 1 internal, 2 alarms |
 | `TANK` v1 | `LEVEL`, `LEVEL_TEMPERATURE` | level transmitter, inlet valve, outlet valve (optional), high-level switch (optional), temperature transmitter (`LEVEL_TEMPERATURE`), agitator (optional) | 6 inputs (2 required), 3 outputs (1 required), 1 internal, 2 alarms |
 
-Neither has a process model yet (`simulatorModelType` is null); their configuration fields are read by the model that TASK-602 adds.
+Both are simulated by the process model of the same name (`simulatorModelType`); their configuration fields are the model's parameters.
 
 ### Module instances
 - A module belongs to one factory and is named like a device (`PUMP-HOUSE-01`); the name is unique within the factory. A factory of another owner, and everything in it, does not exist for the caller.
@@ -165,4 +168,21 @@ Neither has a process model yet (`simulatorModelType` is null); their configurat
 An interlock is metadata of a module instance: while every condition in `when` holds, the outputs in `blocks` are expected to be held off. A BOOL signal is read with `IS_TRUE` / `IS_FALSE`; a number is compared with a value inside the signal's range; `blocks` names `OUTPUT` signals of the module's profile. An interlock that names a signal the module does not have is refused. It documents and tests the control program. It does not act on the PLC, and it is never a safety function.
 
 ### What a module reports
-`getModule` returns the roles and signals of the selected profile, the devices in each role, the interlocks, signal counts per direction (required and optional) and the issues that keep the module from being complete: a required role without a device, a role with too many devices, a device whose category or profile no longer fits, an enabled interlock that no longer fits. `complete` covers roles and interlocks only. Whether required signals are bound to a PLC, which decides whether a module may run, is added by the registry (TASK-605).
+`getModule` returns the roles and signals of the selected profile, the devices in each role, the interlocks, signal counts per direction (required and optional) and the issues that keep the module from being complete: a required role without a device, a role with too many devices, a device whose category or profile no longer fits, an enabled interlock that no longer fits. `complete` covers roles and interlocks only. `bindings` counts the module's PLC bindings (accepted, invalid, required signals without one) and `readyToRun` says whether the module is complete, every required signal is bound to an accepted tag and its type names a process model.
+
+### The PLC I/O registry (TASK-605)
+A module's signal is bound to one tag of one PLC of the same factory (`ModulePlcIoMapping`). The registry (`getModuleIoRegistry`) lists every consumed signal of the profile (INPUT, OUTPUT and ALARM; INTERNAL signals are listed apart and never bound) with its state:
+
+- **BOUND** — a tag the rules accept.
+- **INVALID** — bound to a tag the rules no longer accept (its role changed, it was given to a device signal, it now overlaps). The rules run again every time the registry is read, so nothing silently feeds the bridge.
+- **UNBOUND** — no tag; `blocking` when the signal is required.
+
+Which tag a signal may take is decided by the rules of `lib/domain/process-bridge.ts`, the same ones the bridge applies (docs/process-simulation.md → Bridge): a tag the program drives (READ_ONLY), on `%Q` or `%M` for a command into the process and on `%M` for feedback, BOOL for an on/off signal and a register for a number, a scaled range and a unit that carry the signal, no device signal on the tag, and a tag that no module holds (`tag-mapped`, `OCCUPIED_ENDPOINT`). Tags of one PLC never overlap by the tag registry's own rule, so a module cannot create overlapping registers. A tag of another factory, or of another owner, is not found.
+
+Operations: `bindModuleSignal` (refuses a signal that is already bound), `rebindModuleSignal` (moves a bound signal), `releaseModuleSignal` (frees the tag; the tag, the PLC and the module stay as they are). The module's row is locked while a binding is made, and a tag's uniqueness is a database constraint, so two bindings racing for one tag end with exactly one. `listBindableTags(moduleId, signalKey)` returns every tag of the factory's PLCs as a candidate: free compatible ones without a refusal, the others with the rule that refuses them and who holds them, so a picker shows both.
+
+Summaries: the registry carries per-direction counts and what the module takes of each PLC; `getFactoryIoSummary` sums what every PLC of a factory gives to modules and what every module takes. The PLC engineering export lists the module signals its tags carry (docs/plc-export.md).
+
+Export and import: `exportModuleIo` writes the module's bindings by names (`schema: "z-factory.module-io"`, version 1: module name, type code and version, profile; per binding the signal, PLC name, tag name, located address and type). `importModuleIo` rebuilds them on a module of the same type version and profile, resolving PLCs and tags by name in the module's factory, all or nothing.
+
+Runtime: the process bridge reads the stored bindings (`planProcessBridge` without mappings) and `startFactory` starts it after the device simulation when the factory has modules to run; a module with an unbound required signal, an invalid binding or a missing device is blocked and the factory start reports why (`processNote`). Deleting a module removes its bindings; the tags stay.

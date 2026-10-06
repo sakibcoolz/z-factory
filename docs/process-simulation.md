@@ -113,10 +113,11 @@ PLC program -> tag the program drives (%Q/%M) -> Modbus read  -> module OUTPUT s
 model output -> module INPUT/ALARM signal     -> Modbus write -> memory tag (%M)      -> PLC program
 ```
 
-**Mappings.** One module signal is carried by one PLC tag. The bridge receives mappings as
-`{ moduleId, signalKey, tagId }`; storing and allocating them is the module I/O registry
-(TASK-605). Whoever supplies them, `lib/domain/process-bridge.ts` decides whether they are
-accepted, with the same rules the device simulator applies to device signals:
+**Mappings.** One module signal is carried by one PLC tag. The bindings are stored by the
+module I/O registry (TASK-605, docs/process-modules.md → The PLC I/O registry) and read by
+`planProcessBridge`; a caller may pass mappings `{ moduleId, signalKey, tagId }` instead.
+Whoever supplies them, `lib/domain/process-bridge.ts` decides whether they are accepted,
+with the same rules the device simulator applies to device signals:
 
 | Rule | Refuses |
 | --- | --- |
@@ -168,11 +169,13 @@ with `link: process-bridge` per PLC; `PROCESS_STATE_CHANGED` for the model's own
 alarms. Live module state (status, quality, inputs, outputs, active alarms, PLC links) is
 read from bridge memory; events are the history.
 
-**Lifecycle.** `startProcessBridge(deps, actor, factoryId, mappings)` plans, validates,
-loads and starts; it needs `PROCESS_SIM_URL`/`PROCESS_SIM_TOKEN` and a configured Modbus
-endpoint on every mapped PLC (a PLC that is not running drives nothing until it comes up).
-`stopProcessBridge` unloads the models; `stopFactory` stops the bridge first. `startFactory`
-does not start it until the registry (TASK-605) supplies the mappings. The module's stored
+**Lifecycle.** `startProcessBridge(deps, actor, factoryId)` plans from the stored bindings,
+validates, loads and starts; it needs `PROCESS_SIM_URL`/`PROCESS_SIM_TOKEN` and a configured
+Modbus endpoint on every mapped PLC (a PLC that is not running drives nothing until it comes
+up). `stopProcessBridge` unloads the models. `startFactory` starts the bridge after the device
+simulation when the factory has modules with a model and bindings (a factory without them
+has nothing to start and nothing to report; a blocked module or a missing service is
+reported in `processNote`); `stopFactory` stops the bridge first. The module's stored
 `status` follows the bridge (RUNNING/STOPPED).
 
 ## Observability

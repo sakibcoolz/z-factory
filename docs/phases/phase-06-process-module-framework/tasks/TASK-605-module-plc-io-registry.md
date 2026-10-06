@@ -1,6 +1,6 @@
 # TASK-605 — Module PLC I/O Registry & Allocation
 
-Status: **PLANNED**
+Status: **DONE**
 Linear: [ZFA-28](https://linear.app/recruit-verse/issue/ZFA-28)
 
 ## User story
@@ -66,3 +66,54 @@ The exact count is profile/configuration driven. The framework must not claim th
 - Rebinding/releasing updates occupancy correctly.
 - An export reconstructs logical signal -> PLC tag/I/O/register bindings.
 - Tests cover duplicate allocation, cross-factory binding, wrong direction/type, register overlap and required-signal validation.
+
+## Implementation (2026-10-06)
+Design: docs/process-modules.md → The PLC I/O registry; docs/database.md → ModulePlcIoMapping;
+docs/api-contract.md → `process-modules/io-registry`.
+
+- `prisma/migrations/20261006160000_module_plc_io_mapping` — `ModulePlcIoMapping`
+  (module, signal definition, PLC, tag; unique tag; unique module+signal; cascade with
+  module, tag and PLC; restrict on the signal definition). No parallel address space: the
+  tag is the endpoint; its I/O point is read through the tag.
+- `lib/domain/module-io-view.ts` — registry shapes and `buildModuleIo`: rows per consumed
+  signal of the profile (BOUND / INVALID / UNBOUND, `blocking`, issue, binding view),
+  internal signals apart, counts per direction, per-PLC use. Every stored binding is
+  re-checked with the bridge rules (`lib/domain/process-bridge.ts`) on every read.
+- `lib/services/module-io-service.ts` — `getModuleIoRegistry`, `listBindableTags`
+  (candidates with refusals and holders), `bindModuleSignal`, `rebindModuleSignal`,
+  `releaseModuleSignal` (module row locked; tag uniqueness is a constraint),
+  `getFactoryIoSummary`, `listFactoryModuleMappings`, `exportModuleIo` / `importModuleIo`
+  (`z-factory.module-io` v1, by PLC and tag names, same type version and profile, all or
+  nothing).
+- Module summaries carry `bindings` counts and `readyToRun`. `planProcessBridge` reads the
+  stored bindings when no mappings are given; `startFactory` starts the bridge after the
+  device simulation when the factory has modules to run (`processModules`, `processNote`);
+  `stopFactory` stops it. The runtime screen's start notice reports it.
+- PLC engineering export: `moduleSignals` in the document and a table under section 7 of
+  the report (the module signals the PLC's tags carry).
+- Constraint messages in `lib/db/errors.ts`; schemas in `lib/validation/process-module.ts`.
+
+Not in this task: the screen and picker (TASK-604) — the services return everything a
+picker needs (`listBindableTags` with refusals).
+
+## Evidence
+- Unit: `lib/domain/module-io-view.test.ts` (3), `components/export/plc-report.test.tsx`
+  (module signals table).
+- PostgreSQL: `test/integration/module-io.test.ts` (12 tests: unbound list and blocking,
+  candidates with refusals, bind/ready, every refusal incl. other owner and another module,
+  race for one tag → exactly one wins, rebind/release, INVALID when the tag changes and
+  gone with the tag, profile change, factory summary and bridge plan from stored bindings,
+  PLC export, export/import, cascade on delete). `process-modules`, `process-bridge` tests
+  still green.
+- OpenPLC + service: `test/integration/process-bridge-runtime.test.ts` now binds through
+  the registry and adds `startFactory`/`stopFactory` running the bridge from the stored
+  bindings (6 tests).
+
+## Validation (2026-10-06)
+- `npx prettier --check .` — clean. `npm run lint` — clean. `npx tsc --noEmit` — clean.
+- `npm run build` — succeeds.
+- `services/process-sim`: `gofmt -l` clean, `go vet ./...` clean, `go test -race ./...` green.
+- `TEST_DOCKER=1 PROCESS_SIM_BIN=<built binary> npm test` — 83 files, 951 tests passed
+  (220 s); no test container or network left behind.
+- Dev database: migration `module_plc_io_mapping` applied.
+- Graphify refreshed: 3883 nodes, 10274 edges, 209 communities.
