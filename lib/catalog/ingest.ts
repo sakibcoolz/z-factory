@@ -71,6 +71,7 @@ async function ingestModel(tx: Tx, model: CatalogModel, familyId: string): Promi
     architectureType: model.architectureType ?? null,
     runtimeSupport: model.runtimeSupport,
     controlCapability: model.controlCapability,
+    capabilities: model.capabilities,
     lifecycleStatus: model.lifecycleStatus,
     metadataJson: model.facts,
     ...provenance(model.verification),

@@ -8,7 +8,7 @@ import {
   type PeripheralCompatibility,
   summarizeAssetVersions,
 } from "@/lib/domain/catalog-view";
-import { PLC_CATEGORY_CODE } from "@/lib/domain/device";
+import { isProgrammableController } from "@/lib/domain/device-capabilities";
 import { DomainError } from "@/lib/domain/errors";
 import type { PrismaClient } from "@/lib/generated/prisma/client";
 import { placeholderFor } from "@/lib/scene/placeholders";
@@ -122,7 +122,7 @@ function toTerminals(model: { ioDefinitions: CatalogModelRecord["ioDefinitions"]
 
 export async function getCatalogModel(db: PrismaClient, modelId: string): Promise<CatalogModelDetail> {
   const model = await loadModel(db, modelId);
-  const isPlc = model.family.category.code === PLC_CATEGORY_CODE;
+  const isPlc = isProgrammableController(model);
   const assetVersions = model.assets3d.map((asset) => ({
     id: asset.id,
     version: asset.version,
@@ -206,7 +206,7 @@ export async function listCompatiblePeripherals(
   options: { compatibleOnly?: boolean } = {},
 ): Promise<PeripheralCompatibility[]> {
   const plc = await loadModel(db, plcModelId);
-  if (plc.family.category.code !== PLC_CATEGORY_CODE) {
+  if (!isProgrammableController(plc)) {
     throw new DomainError("INCOMPATIBLE", "Peripheral compatibility is evaluated for a PLC model.", {
       rule: "plc-model",
     });

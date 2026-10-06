@@ -1,7 +1,7 @@
 import "server-only";
 import type { PrismaClient } from "@/lib/generated/prisma/client";
 import { deviceRepository } from "@/lib/db/repositories/device-repository";
-import { PLC_CATEGORY_CODE } from "@/lib/domain/device";
+import { isProgrammableController } from "@/lib/domain/device-capabilities";
 import { DomainError } from "@/lib/domain/errors";
 import { parseInput } from "@/lib/validation/parse";
 import { assertModelArchitecture } from "@/lib/validation/plc-architecture";
@@ -21,7 +21,11 @@ export async function createDeviceInstance(db: PrismaClient, input: unknown) {
   }
 
   const category = model.family.category;
-  assertModelArchitecture({ categoryCode: category.code, architectureType: model.architectureType });
+  assertModelArchitecture({
+    categoryCode: category.code,
+    architectureType: model.architectureType,
+    capabilities: model.capabilities,
+  });
 
   return db.$transaction(async (transaction) => {
     const instance = await deviceRepository.createInstance(transaction, {
@@ -29,7 +33,8 @@ export async function createDeviceInstance(db: PrismaClient, input: unknown) {
       runtimeType: model.runtimeSupport,
       simulatorType: category.simulatorType,
     });
-    if (category.code === PLC_CATEGORY_CODE) {
+    // A controller runs a program of its own; it gets the profile the program, I/O and runtime hang on.
+    if (isProgrammableController(model)) {
       await deviceRepository.createPlcProfile(transaction, instance.id);
     }
     return instance;

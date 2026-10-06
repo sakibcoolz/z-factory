@@ -44,6 +44,7 @@ const PIPE_STAND = "on a short vertical pipe stub with a flange foot";
  */
 const FORMS: Record<string, string> = {
   PLC: `industrial control cabinet, ${CABINET}, three small round indicator lamps on the door and a ventilation grille near the bottom`,
+  RTU: "remote terminal unit, compact rugged controller module with a row of screw terminals along the top and bottom edges, status lights and two ethernet sockets on the front, on a short piece of mounting rail",
   VFD: "variable-frequency drive, tall rectangular drive unit with a ribbed aluminium heat sink at the back, ventilation slots at the top and bottom, a front cover with a small keypad and a blank display, cable glands underneath, bolted to a floor-standing steel mounting frame",
   SERVO_DRIVE:
     "servo drive, slim tall book-shaped drive unit with a ribbed heat sink on one side, connectors along the front and a small blank display, bolted to a floor-standing steel mounting frame",

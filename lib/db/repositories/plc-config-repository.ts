@@ -176,7 +176,7 @@ export const plcConfigRepository = {
   /** PLC catalog models of one architecture, for the create form. */
   listPlcModels(db: Db, architectureType: "COMPACT" | "MODULAR") {
     return db.deviceModel.findMany({
-      where: { architectureType, family: { category: { code: "PLC" } } },
+      where: { architectureType, capabilities: { has: "PROGRAMMABLE" } },
       include: {
         family: { include: { manufacturer: true } },
         builtInIoChannels: { orderBy: channelOrder },

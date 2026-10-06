@@ -4,6 +4,7 @@
  * left out rather than filled in.
  */
 import type { CatalogInput } from "@/lib/catalog/schema";
+import { PLC_CAPABILITIES } from "@/lib/catalog/capabilities";
 
 const RETRIEVED = "2026-10-05";
 const MANUFACTURER = "Rockwell Automation";
@@ -45,6 +46,7 @@ export const rockwell: CatalogInput = {
       architectureType: "MODULAR",
       runtimeSupport: "OPENPLC",
       controlCapability: "PROGRAMMABLE",
+      capabilities: [...PLC_CAPABILITIES],
       verification: controllerSpecs,
       // MOD power voltage range 18…32 V DC. The publication states no nominal value.
       electrical: { supplyType: "DC", voltageMin: 18, voltageMax: 32, notes: "MOD power; 450 mA max." },

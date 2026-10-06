@@ -4,6 +4,7 @@
  * documents do not state are left out rather than filled in.
  */
 import type { CatalogInput } from "@/lib/catalog/schema";
+import { PLC_CAPABILITIES } from "@/lib/catalog/capabilities";
 
 const RETRIEVED = "2026-10-05";
 const MANUFACTURER = "Siemens";
@@ -42,6 +43,7 @@ export const siemens: CatalogInput = {
       architectureType: "COMPACT",
       runtimeSupport: "OPENPLC",
       controlCapability: "PROGRAMMABLE",
+      capabilities: [...PLC_CAPABILITIES],
       verification: verified(easyBook),
       // Table A-8: rated voltage 24 V DC, tolerance 20.4 to 28.8 V DC.
       electrical: { supplyType: "DC", nominalVoltage: 24, voltageMin: 20.4, voltageMax: 28.8 },
@@ -96,6 +98,7 @@ export const siemens: CatalogInput = {
       architectureType: "MODULAR",
       runtimeSupport: "OPENPLC",
       controlCapability: "PROGRAMMABLE",
+      capabilities: [...PLC_CAPABILITIES],
       verification: verified(cpu1511Manual),
       // Supply voltage 24 V DC, permissible range 19.2 to 28.8 V.
       electrical: { supplyType: "DC", nominalVoltage: 24, voltageMin: 19.2, voltageMax: 28.8 },

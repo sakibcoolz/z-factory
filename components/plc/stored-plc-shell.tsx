@@ -4,6 +4,7 @@ import { Content, EditorTabs } from "@/components/shell/editor";
 import { SideBar, SideSection, Tree, type TreeNode } from "@/components/shell/side-bar";
 import { KeyValue } from "@/components/ui/primitives";
 import { RuntimeStatePill, runtimeStateTone } from "@/components/ui/state-pill";
+import { DEVICE_CAPABILITY_LABELS, hasCapability } from "@/lib/domain/device-capabilities";
 import type { PlcConfigurationView } from "@/lib/domain/plc-config-view";
 import { routes } from "@/lib/navigation/routes";
 
@@ -35,6 +36,7 @@ const STATUS_TONE: Partial<Record<string, "ok" | "flt" | "deg" | "off">> = { flt
 function sections(view: PlcConfigurationView, active: StoredPlcSection): TreeNode[] {
   const { factoryId, id } = view.plc;
   const modular = view.plc.architectureType === "MODULAR";
+  const programmable = hasCapability(view.model, "PROGRAMMABLE");
   const installed = view.rack?.slots.filter((slot) => slot.module).length ?? 0;
   const pending = (label: string): TreeNode => ({ label, meta: "not wired yet", muted: true });
   return [
@@ -51,7 +53,10 @@ function sections(view: PlcConfigurationView, active: StoredPlcSection): TreeNod
       href: routes.plcConnections(factoryId, id),
       active: active === "connections",
     },
-    { label: SECTION_LABELS.program, href: routes.plcProgram(factoryId, id), active: active === "program" },
+    // Program and Versions exist for a programmable model only; every controller model is one today.
+    ...(programmable
+      ? [{ label: SECTION_LABELS.program, href: routes.plcProgram(factoryId, id), active: active === "program" }]
+      : []),
     {
       label: SECTION_LABELS["io-mapping"],
       meta: `v${view.plc.ioMappingVersion}`,
@@ -63,7 +68,9 @@ function sections(view: PlcConfigurationView, active: StoredPlcSection): TreeNod
     { label: "Live Tags", meta: "factory", href: routes.tags(factoryId, id) },
     { label: "Events", meta: "factory", href: routes.events(factoryId, { device: id }) },
     pending("Logs"),
-    { label: SECTION_LABELS.versions, href: routes.plcVersions(factoryId, id), active: active === "versions" },
+    ...(programmable
+      ? [{ label: SECTION_LABELS.versions, href: routes.plcVersions(factoryId, id), active: active === "versions" }]
+      : []),
     { label: SECTION_LABELS.runtime, href: routes.plcRuntime(factoryId, id), active: active === "runtime" },
     { label: SECTION_LABELS.export, href: routes.plcExport(factoryId, id), active: active === "export" },
   ];
@@ -79,7 +86,7 @@ export function StoredPlcShell({ factory, view, section, children }: StoredPlcSh
       activity="factories"
       sidebar={
         <SideBar title={plc.name}>
-          <SideSection title="PLC">
+          <SideSection title={model.categoryCode === "RTU" ? "RTU" : "PLC"}>
             <Tree items={sections(view, section)} />
           </SideSection>
           <SideSection title="Instance">
@@ -91,8 +98,12 @@ export function StoredPlcShell({ factory, view, section, children }: StoredPlcSh
                 [
                   "Runtime",
                   <span key="v" className="syn-type">
-                    OpenPLC
+                    {model.runtimeSupport === "OPENPLC" ? "OpenPLC" : "none"}
                   </span>,
+                ],
+                [
+                  "Capabilities",
+                  model.capabilities.map((capability) => DEVICE_CAPABILITY_LABELS[capability]).join(", "),
                 ],
               ]}
             />

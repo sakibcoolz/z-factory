@@ -46,6 +46,13 @@ export const routes = {
   stream: (factoryId: string) => `${factory(factoryId)}/stream`,
   plc,
   /** Pin view; `pin` selects one I/O point. */
+  /** A device that is not a controller: its screens are assembled from the model's capabilities (TASK-308). */
+  device: (factoryId: string, deviceId: string) => `${factory(factoryId)}/devices/${deviceId}`,
+  deviceConnections: (factoryId: string, deviceId: string) => `${factory(factoryId)}/devices/${deviceId}/connections`,
+  deviceParameters: (factoryId: string, deviceId: string) => `${factory(factoryId)}/devices/${deviceId}/parameters`,
+  deviceRegisters: (factoryId: string, deviceId: string) => `${factory(factoryId)}/devices/${deviceId}/registers`,
+  deviceCommunications: (factoryId: string, deviceId: string) =>
+    `${factory(factoryId)}/devices/${deviceId}/communications`,
   plcHardware: (factoryId: string, plcId: string, pin?: string) =>
     `${plc(factoryId, plcId)}/hardware${pin ? `?pin=${encodeURIComponent(pin)}` : ""}`,
   /** The devices wired to the PLC, read from the factory's wiring. */

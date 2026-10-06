@@ -6,7 +6,7 @@ import { plcConfigRepository } from "@/lib/db/repositories/plc-config-repository
 import { plcRepository } from "@/lib/db/repositories/plc-repository";
 import { type TopologyDeviceRecord, topologyRepository } from "@/lib/db/repositories/topology-repository";
 import { wiringRepository } from "@/lib/db/repositories/wiring-repository";
-import { PLC_CATEGORY_CODE } from "@/lib/domain/device";
+import { isProgrammableController } from "@/lib/domain/device-capabilities";
 import { DomainError } from "@/lib/domain/errors";
 import type { LinkResult, PaletteGroupView, TopologyEdgeView, TopologyView } from "@/lib/domain/topology-view";
 import type { PrismaClient } from "@/lib/generated/prisma/client";
@@ -38,7 +38,8 @@ async function requireFactory(db: PrismaClient, actor: Actor, factoryId: string)
   return factory;
 }
 
-const isPlc = (device: TopologyDeviceRecord) => device.deviceModel.family.category.code === PLC_CATEGORY_CODE;
+/** A programmable controller (PLC or RTU): the device that is wired to and programmed. */
+const isPlc = (device: TopologyDeviceRecord) => isProgrammableController(device.deviceModel);
 
 function toParty(device: TopologyDeviceRecord): TopologyParty {
   const category = device.deviceModel.family.category;
@@ -140,7 +141,7 @@ export async function getTopology(db: PrismaClient, actor: Actor, factoryId: str
     edges: [...edges.values()],
     // PLCs first: a factory starts with one.
     palette: [...palette.values()].sort(
-      (a, b) => Number(b.categoryCode === PLC_CATEGORY_CODE) - Number(a.categoryCode === PLC_CATEGORY_CODE),
+      (a, b) => Number(b.items[0]?.architectureType !== null) - Number(a.items[0]?.architectureType !== null),
     ),
   };
 }
@@ -160,7 +161,7 @@ export async function placeDevice(
   const name = data.name ?? suggestDeviceName(category.code, await plcConfigRepository.listDeviceNames(db, factoryId));
 
   let id: string;
-  if (category.code === PLC_CATEGORY_CODE) {
+  if (isProgrammableController(model)) {
     id = (await createPlc(db, actor, { factoryId, deviceModelId: model.id, name })).id;
   } else {
     const device = await deviceRepository.createInstance(db, {

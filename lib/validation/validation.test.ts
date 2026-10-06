@@ -29,23 +29,50 @@ function expectDomainError(action: () => unknown, code: DomainErrorCode, rule?: 
 }
 
 describe("compact vs modular PLC rules", () => {
-  it("requires every PLC model to declare an architecture", () => {
+  const programmable = ["PROGRAMMABLE", "IEC_61131_3"] as const;
+
+  it("requires every programmable controller to declare an architecture", () => {
     expectDomainError(
-      () => assertModelArchitecture({ categoryCode: "PLC", architectureType: null }),
+      () => assertModelArchitecture({ categoryCode: "PLC", architectureType: null, capabilities: programmable }),
       "VALIDATION",
       "plc-architecture-required",
     );
-    expect(() => assertModelArchitecture({ categoryCode: "PLC", architectureType: "COMPACT" })).not.toThrow();
-    expect(() => assertModelArchitecture({ categoryCode: "PLC", architectureType: "MODULAR" })).not.toThrow();
+    for (const architectureType of ["COMPACT", "MODULAR"] as const) {
+      expect(() =>
+        assertModelArchitecture({ categoryCode: "PLC", architectureType, capabilities: programmable }),
+      ).not.toThrow();
+    }
+    // A programmable RTU is a controller like a PLC.
+    expect(() =>
+      assertModelArchitecture({ categoryCode: "RTU", architectureType: "COMPACT", capabilities: programmable }),
+    ).not.toThrow();
+    expectDomainError(
+      () => assertModelArchitecture({ categoryCode: "RTU", architectureType: null, capabilities: programmable }),
+      "VALIDATION",
+      "plc-architecture-required",
+    );
   });
 
-  it("keeps architecture off non-PLC models", () => {
+  it("keeps architecture off models that are not programmable controllers", () => {
     expectDomainError(
-      () => assertModelArchitecture({ categoryCode: "VFD", architectureType: "COMPACT" }),
+      () => assertModelArchitecture({ categoryCode: "VFD", architectureType: "COMPACT", capabilities: [] }),
       "VALIDATION",
       "architecture-plc-only",
     );
-    expect(() => assertModelArchitecture({ categoryCode: "VFD", architectureType: null })).not.toThrow();
+    // An RTU that is configuration-only is not a controller; a PLC is always one.
+    expectDomainError(
+      () => assertModelArchitecture({ categoryCode: "RTU", architectureType: "COMPACT", capabilities: [] }),
+      "VALIDATION",
+      "architecture-plc-only",
+    );
+    expectDomainError(
+      () => assertModelArchitecture({ categoryCode: "PLC", architectureType: "COMPACT", capabilities: [] }),
+      "VALIDATION",
+      "plc-programmable",
+    );
+    expect(() =>
+      assertModelArchitecture({ categoryCode: "VFD", architectureType: null, capabilities: [] }),
+    ).not.toThrow();
   });
 
   it("gives racks to modular PLCs only", () => {

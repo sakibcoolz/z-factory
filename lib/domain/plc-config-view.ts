@@ -3,6 +3,7 @@
  * (docs/design.md → PLC creation flow, PLC edit). Pure types; importable anywhere.
  */
 import type { VerificationStatus } from "@/lib/domain/catalog";
+import type { DeviceCapability } from "@/lib/domain/device-capabilities";
 import type { ChannelSummary } from "@/lib/domain/catalog-view";
 import type { IoPointStatus, IoPointType, PlcArchitecture } from "@/lib/domain/device";
 import type { RuntimeState } from "@/lib/domain/runtime-state";
@@ -78,6 +79,11 @@ export type PlcConfigurationView = {
     modelName: string;
     sku: string | null;
     verificationStatus: VerificationStatus;
+    /** PLC or RTU: the kind of controller the model is. */
+    categoryCode: string;
+    /** What Z-Factory can do with the model; the screens follow these (TASK-308). */
+    capabilities: DeviceCapability[];
+    runtimeSupport: string;
   };
   electrical: {
     supplyType: string | null;

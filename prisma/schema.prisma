@@ -237,6 +237,35 @@ enum ConfigurationScope {
   PLC
   IO_MAPPING
   MODBUS_MAPPING
+  /// The parameter set of one device instance (TASK-308).
+  DEVICE_PARAMETERS
+}
+
+/// What Z-Factory can do with a catalog model: which screens, checks and runtime adapters
+/// apply. Declared per model in the catalog, never inferred from a category or a name.
+enum DeviceCapability {
+  /// Runs a user program; Program and Versions screens apply.
+  PROGRAMMABLE
+  /// Programmed in an IEC 61131-3 language (Structured Text through the OpenPLC adapter).
+  IEC_61131_3
+  /// Runs user scripts; no adapter exists yet, so no screen offers it.
+  SCRIPTABLE
+  /// Behaviour set by parameters; the Parameters screen applies.
+  PARAMETER_CONFIGURABLE
+  /// Controls its load from its own terminals or keypad.
+  LOCAL_CONTROL
+  /// Commanded over a network.
+  REMOTE_CONTROL
+  /// Records values on its own.
+  DATA_LOGGING
+  /// Reads other devices over Modbus.
+  MODBUS_CLIENT
+  /// Serves its registers over Modbus.
+  MODBUS_SERVER
+  /// Exposes I/O for a controller elsewhere.
+  REMOTE_IO
+  /// Takes a firmware image; no adapter exists yet.
+  FIRMWARE_DEPLOYABLE
 }
 
 enum SimulationProfileKind {
@@ -346,6 +375,8 @@ model DeviceModel {
   architectureType   PlcArchitecture?
   runtimeSupport     RuntimeType        @default(NONE)
   controlCapability  ControlCapability  @default(DIRECT_IO)
+  /// What Z-Factory can do with the model (TASK-308). Screens and adapters follow these.
+  capabilities       DeviceCapability[]
   lifecycleStatus    LifecycleStatus    @default(UNKNOWN)
   // Provenance (docs/references/plc-source-policy.md). Never fabricate vendor facts.
   verificationStatus VerificationStatus @default(UNVERIFIED)

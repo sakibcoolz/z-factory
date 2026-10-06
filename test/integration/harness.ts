@@ -74,6 +74,8 @@ export async function createGenericModel(
       modelName,
       architectureType: options.architectureType,
       runtimeSupport: categoryCode === "PLC" ? "OPENPLC" : "DEVICE_SIM",
+      // A controller model is programmable in IEC 61131-3 on the OpenPLC adapter; nothing else declares a capability here.
+      capabilities: categoryCode === "PLC" ? ["PROGRAMMABLE", "IEC_61131_3"] : [],
       verificationStatus: "GENERIC",
       builtInIoChannels: { create: options.builtInChannels ?? [] },
       ioDefinitions: { create: options.ioDefinitions ?? [] },

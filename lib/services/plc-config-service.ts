@@ -8,7 +8,8 @@ import { type ConfigPlcRecord, plcConfigRepository } from "@/lib/db/repositories
 import { plcRepository } from "@/lib/db/repositories/plc-repository";
 import { tagRepository } from "@/lib/db/repositories/tag-repository";
 import type { ChannelSummary } from "@/lib/domain/catalog-view";
-import { type IoPointType, PLC_CATEGORY_CODE } from "@/lib/domain/device";
+import type { IoPointType } from "@/lib/domain/device";
+import { isProgrammableController } from "@/lib/domain/device-capabilities";
 import { buildDeviceTree, type DeviceTreeNode } from "@/lib/domain/device-tree";
 import { DomainError } from "@/lib/domain/errors";
 import type {
@@ -105,8 +106,8 @@ export async function createPlc(db: PrismaClient, actor: Actor, input: unknown):
   const data = parseInput(plcInputSchema, input);
   if (!(await factoryRepository.findById(db, actor.ownerId, data.factoryId))) throw notFound("factory", "factoryId");
   const model = await plcConfigRepository.findPlcModel(db, data.deviceModelId);
-  if (!model || model.family.category.code !== PLC_CATEGORY_CODE || !model.architectureType) {
-    throw new DomainError("INCOMPATIBLE", "Choose a PLC model from the catalog.", {
+  if (!model || !isProgrammableController(model) || !model.architectureType) {
+    throw new DomainError("INCOMPATIBLE", "Choose a PLC or RTU model from the catalog.", {
       rule: "plc-model",
       field: "deviceModelId",
     });
@@ -363,6 +364,9 @@ export async function getPlcConfiguration(
       modelName: model.modelName,
       sku: model.sku,
       verificationStatus: model.verificationStatus,
+      categoryCode: model.family.category.code,
+      capabilities: model.capabilities,
+      runtimeSupport: model.runtimeSupport,
     },
     electrical: electrical
       ? {
@@ -618,7 +622,7 @@ export async function addPeripheral(
   const data = parseInput(peripheralInputSchema, input);
   const plc = await loadConfigPlc(db, actor, plcId);
   const model = await plcConfigRepository.findPeripheralModel(db, data.deviceModelId);
-  if (!model || model.family.category.code === PLC_CATEGORY_CODE) throw notFound("catalog model", "deviceModelId");
+  if (!model || isProgrammableController(model)) throw notFound("catalog model", "deviceModelId");
   const plan = planWiring(plc, model, data.assignments);
 
   return db.$transaction(async (transaction) => {

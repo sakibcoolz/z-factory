@@ -100,7 +100,7 @@ describe("factory device hierarchy", () => {
     expect(within(screen.getByText("P-01").closest("tr") as HTMLElement).getByText("Faulted")).toBeInTheDocument();
   });
 
-  it("links a PLC to its screen and shows type, model and state of every device", () => {
+  it("links every device to its screen and shows type, model and state of every device", () => {
     render(<DeviceTree factoryId={FACTORY_ID} nodes={factory()} />);
     fireEvent.click(toggle("PLC-02"));
 
@@ -112,7 +112,11 @@ describe("factory device hierarchy", () => {
     expect(valve.getByText("Valve")).toBeInTheDocument();
     expect(valve.getByText("Generic / simulated Generic Valve")).toBeInTheDocument();
     expect(valve.getByText("Stopped")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "XV-201" })).not.toBeInTheDocument();
+    // Every other device opens its own screen.
+    expect(screen.getByRole("link", { name: "XV-201" })).toHaveAttribute(
+      "href",
+      `/factories/${FACTORY_ID}/devices/id-XV-201`,
+    );
   });
 
   it("offers no drop-down controls when nothing is connected", () => {
