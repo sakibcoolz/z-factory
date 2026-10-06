@@ -25,7 +25,10 @@ import { createFactory } from "@/lib/services/factory-service";
 import { createProgramVersion, type RuntimeDeps, startPlc, stopPlc } from "@/lib/services/plc-runtime-service";
 import { bindModuleSignal, getModuleIoRegistry } from "@/lib/services/module-io-service";
 import {
+  clearProcessOverride,
   getProcessBridgeState,
+  listProcessOverrides,
+  setProcessOverride,
   type ProcessBridgeDeps,
   startProcessBridge,
   stopProcessBridge,
@@ -380,6 +383,53 @@ describeLoop("process simulation in a closed loop with a real OpenPLC runtime", 
     expect(await until("PH_Running", (value) => value === true)).toBe(true);
     await write("Reset_Cmd", false);
   }, 60_000);
+
+  it("lets a test override what the PLC reads, and the PLC program decides on it (TASK-801)", async () => {
+    expect(await until("PH_Running", (value) => value === true)).toBe(true);
+    const refusals = async (signal: string, input: unknown) =>
+      (
+        await setProcessOverride(deps, alice, moduleId, signal, input).then(
+          () => undefined,
+          (error: unknown) => error as DomainError,
+        )
+      )?.details;
+    // A command the PLC gives is never overridden; a value outside the range is refused.
+    expect(await refusals("DUTY_RUN_CMD", { mode: "MANUAL_OVERRIDE", value: 0 })).toMatchObject({
+      rule: "process-override-signal",
+    });
+    expect(await refusals("DISCHARGE_PRESSURE", { mode: "MANUAL_OVERRIDE", value: 99 })).toMatchObject({
+      rule: "process-sim-configuration",
+    });
+
+    // 3.5 bar is above the program's 3 bar trip; the pump itself runs at 70 % (2.94 bar).
+    const set = await setProcessOverride(deps, alice, moduleId, "DISCHARGE_PRESSURE", {
+      mode: "MANUAL_OVERRIDE",
+      value: 3.5,
+    });
+    expect(set).toMatchObject({ mode: "MANUAL_OVERRIDE", effective: 3.5, source: "alice" });
+    expect(Number(await until("PH_Pressure", (value) => Number(value) === 3.5))).toBe(3.5);
+    // The PLC program, not the test, trips the pump.
+    expect(await until("High_Pressure_Trip", (value) => value === true)).toBe(true);
+    expect(await until("PH_Run_Cmd", (value) => value === false)).toBe(false);
+    expect(await until("PH_Running", (value) => value === false)).toBe(false);
+    const overrides = await listProcessOverrides(deps, alice, moduleId);
+    expect(overrides.find((entry) => entry.signal === "DISCHARGE_PRESSURE")).toMatchObject({
+      mode: "MANUAL_OVERRIDE",
+      effective: 3.5,
+      calculated: 0,
+    });
+
+    // Back to AUTO: the calculated value returns, the trip stays until the program is reset.
+    expect(await clearProcessOverride(deps, alice, moduleId, "DISCHARGE_PRESSURE")).toMatchObject({ mode: "AUTO" });
+    expect(Number(await until("PH_Pressure", (value) => Number(value) === 0))).toBe(0);
+    expect(await read("High_Pressure_Trip")).toBe(true);
+    await write("Reset_Cmd", true);
+    expect(await until("High_Pressure_Trip", (value) => value === false)).toBe(false);
+    await write("Reset_Cmd", false);
+    expect(await until("PH_Running", (value) => value === true)).toBe(true);
+    const types = await eventTypes();
+    expect(types).toEqual(expect.arrayContaining(["PROCESS_OVERRIDE_SET", "PROCESS_OVERRIDE_CLEARED"]));
+  }, 90_000);
 
   it("marks the module DISCONNECTED while the PLC is away, then stops cleanly", async () => {
     await stopPlc(runtime, alice, plcId);

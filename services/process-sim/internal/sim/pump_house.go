@@ -118,3 +118,13 @@ func (m *PumpHouse) State() map[string]float64 {
 
 // round keeps outputs to a fixed precision, so equal states give byte-equal snapshots.
 func round(value float64) float64 { return math.Round(value*1e6) / 1e6 }
+
+// Measured: the discharge pressure and the delivered flow (transmitters), and the valve's
+// open limit switch. Ranges reach twice the rated values, so a test can go past a trip.
+func (m *PumpHouse) Measured() []Measured {
+	return []Measured{
+		{Name: "DISCHARGE_PRESSURE", Unit: "bar", Min: 0, Max: 2 * m.params["ratedPressure"]},
+		{Name: "FLOW", Unit: "m3/h", Min: 0, Max: 2 * m.params["ratedFlow"]},
+		{Name: "DISCHARGE_VALVE_OPEN", Bool: true, Min: 0, Max: 1},
+	}
+}

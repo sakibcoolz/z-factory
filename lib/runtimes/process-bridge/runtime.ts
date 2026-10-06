@@ -4,7 +4,12 @@ import { DomainError, isDomainError } from "@/lib/domain/errors";
 import type { EventSeverity, RuntimeEventEnvelope } from "@/lib/domain/events";
 import { fromModelValue, type ProcessQuality, toModelValue } from "@/lib/domain/process-bridge";
 import type { ModuleSignal } from "@/lib/domain/process-module";
-import type { ProcessSimConfig, ProcessSimSnapshot, ProcessSimStatus } from "@/lib/domain/process-sim";
+import type {
+  ProcessSimConfig,
+  ProcessSimSignalState,
+  ProcessSimSnapshot,
+  ProcessSimStatus,
+} from "@/lib/domain/process-sim";
 import { type BridgeOptions, PlcBridge, type PlcIo, type SignalBinding } from "@/lib/runtimes/device-sim/bridge";
 import type { Signals } from "@/lib/runtimes/device-sim/engine";
 import type { ProcessSimClient } from "@/lib/runtimes/process-sim/client";
@@ -48,6 +53,8 @@ export type ProcessModuleSnapshot = {
   outputs: Record<string, number>;
   /** Keys of the ALARM signals that are active. */
   alarms: string[];
+  /** Measured outputs a test has overridden (Phase 08); `outputs` carry their effective values. */
+  overrides: ProcessSimSignalState[];
   /** The PLCs the module exchanges with and whether each answered last. */
   plcs: Array<{ plcId: string; up: boolean | null }>;
   /** Why the last exchange with the service failed, or null. */
@@ -447,6 +454,7 @@ function toSnapshot(running: Running, state: ModuleState): ProcessModuleSnapshot
     inputs: state.snapshot?.inputs ?? {},
     outputs: state.snapshot?.outputs ?? {},
     alarms: [...state.activeAlarms].sort(),
+    overrides: state.snapshot?.overrides ?? [],
     plcs: state.plcIds.map((plcId) => ({ plcId, up: running.links.get(plcId) ?? null })),
     error: state.error,
   };

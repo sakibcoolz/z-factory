@@ -18,10 +18,16 @@ import {
   type ModuleSignal,
   resolveModuleConfig,
 } from "@/lib/domain/process-module";
-import { PROCESS_SIM_CONTRACT_VERSION, PROCESS_SIM_MODELS, type ProcessSimConfig } from "@/lib/domain/process-sim";
+import {
+  PROCESS_SIM_CONTRACT_VERSION,
+  PROCESS_SIM_MODELS,
+  type ProcessSimConfig,
+  type ProcessSimSignalState,
+} from "@/lib/domain/process-sim";
 import type { RuntimeState } from "@/lib/domain/runtime-state";
 import type { EventBus } from "@/lib/events/bus";
 import type { PrismaClient } from "@/lib/generated/prisma/client";
+import { parseInput } from "@/lib/validation/parse";
 import { type ModbusEndpoint, readModbus, writeModbus, writeModbusRegisters } from "@/lib/protocols/modbus/client";
 import type { PlcIo, SignalBinding } from "@/lib/runtimes/device-sim/bridge";
 import type {
@@ -86,6 +92,7 @@ export type ProcessBridgeState = { running: false } | ({ running: true } & Proce
 
 export const DEFAULT_PROCESS_TICK_MS = 100;
 
+const isUuid = (value: string) => z.uuid().safeParse(value).success;
 const notFound = (what: string) => new DomainError("NOT_FOUND", `The ${what} does not exist.`);
 
 function toSignalTag(tag: ProcessTagRecord): ProcessSignalTag {
@@ -395,4 +402,115 @@ export async function getProcessBridgeState(
   await getFactory(deps.db, actor, factoryId);
   const status = deps.bridge.status(factoryId);
   return status ? { running: true, ...status } : { running: false };
+}
+
+// ───────────────────────────── overrides (Phase 08, TASK-801) ─────────────────────────────
+
+const overrideInputSchema = z.discriminatedUnion("mode", [
+  z.strictObject({ mode: z.literal("AUTO") }),
+  z.strictObject({ mode: z.literal("MANUAL_OVERRIDE"), value: z.number().finite() }),
+  z.strictObject({
+    mode: z.literal("SCENARIO"),
+    profile: z.discriminatedUnion("kind", [
+      z.strictObject({
+        kind: z.literal("RAMP"),
+        from: z.number().finite(),
+        to: z.number().finite(),
+        durationS: z.number().positive().max(86_400),
+      }),
+      z.strictObject({
+        kind: z.literal("STEPS"),
+        steps: z
+          .array(z.strictObject({ atS: z.number().min(0), value: z.number().finite() }))
+          .min(1)
+          .max(100),
+      }),
+    ]),
+  }),
+]);
+
+/**
+ * The module of a running bridge, and its signal a test may override: an INPUT of the
+ * module, i.e. a value the PLC reads. Commands the PLC gives (OUTPUT) and the module's
+ * alarms are never overridden; the simulation service checks again that the signal is a
+ * measured value and that the value is in its range.
+ */
+async function overridableSignal(deps: ProcessBridgeDeps, actor: Actor, moduleId: string, signalKey: string) {
+  const record = isUuid(moduleId) ? await processModuleRepository.findModule(deps.db, actor.ownerId, moduleId) : null;
+  if (!record) throw notFound("process module");
+  const type = toModuleTypeDefinition(record.processModuleType);
+  const signal = type.signals.find((candidate) => candidate.key === signalKey);
+  if (!signal) {
+    throw new DomainError("NOT_FOUND", `This module type has no signal ${signalKey}.`, { field: "signal" });
+  }
+  if (signal.direction !== "INPUT") {
+    throw new DomainError(
+      "INCOMPATIBLE",
+      signal.direction === "OUTPUT"
+        ? `${signal.name} is a command the PLC gives; a test changes what the PLC reads, never what it decides.`
+        : `${signal.name} is not a value the PLC reads from the process; only those can be overridden.`,
+      { rule: "process-override-signal", signal: signalKey },
+    );
+  }
+  const status = deps.bridge.status(record.factoryId);
+  if (!deps.client || !status?.modules.some((module) => module.moduleId === record.id)) {
+    throw new DomainError("CONFLICT", `${record.name} is not running in the process bridge.`, {
+      rule: "process-bridge-not-running",
+    });
+  }
+  return { record, signal, client: deps.client };
+}
+
+/** Every measured value of a running module with its mode, calculated and effective value. */
+export async function listProcessOverrides(deps: ProcessBridgeDeps, actor: Actor, moduleId: string) {
+  const record = isUuid(moduleId) ? await processModuleRepository.findModule(deps.db, actor.ownerId, moduleId) : null;
+  if (!record) throw notFound("process module");
+  const status = deps.bridge.status(record.factoryId);
+  if (!deps.client || !status?.modules.some((module) => module.moduleId === record.id)) return [];
+  return deps.client.overrides(record.id);
+}
+
+/**
+ * Puts a value the PLC reads into MANUAL_OVERRIDE or SCENARIO, or back to AUTO. The
+ * override is runtime test state of the simulation: nothing in the module's configuration
+ * changes, no PLC output is written, and the bridge delivers the effective value at its
+ * next cycle. Every change is recorded with who asked.
+ */
+export async function setProcessOverride(
+  deps: ProcessBridgeDeps,
+  actor: Actor,
+  moduleId: string,
+  signalKey: string,
+  input: unknown,
+): Promise<ProcessSimSignalState> {
+  const request = parseInput(overrideInputSchema, input);
+  const { record, signal, client } = await overridableSignal(deps, actor, moduleId, signalKey);
+  const state =
+    request.mode === "AUTO"
+      ? await client.clearOverride(record.id, signal.key, actor.ownerId)
+      : await client.setOverride(record.id, signal.key, { ...request, source: actor.ownerId });
+  await recordEvents(deps, [
+    {
+      type: request.mode === "AUTO" ? "PROCESS_OVERRIDE_CLEARED" : "PROCESS_OVERRIDE_SET",
+      factoryId: record.factoryId,
+      deviceId: null,
+      severity: request.mode === "AUTO" ? "INFO" : "WARNING",
+      payload: {
+        module: record.name,
+        moduleId: record.id,
+        code: signal.key,
+        name: signal.name,
+        mode: request.mode,
+        ...(request.mode === "MANUAL_OVERRIDE" ? { value: request.value } : {}),
+        ...(request.mode === "SCENARIO" ? { profile: request.profile.kind } : {}),
+        by: actor.ownerId,
+      },
+    },
+  ]);
+  return state;
+}
+
+/** Returns a value to AUTO; clearing one that is not overridden changes nothing. */
+export function clearProcessOverride(deps: ProcessBridgeDeps, actor: Actor, moduleId: string, signalKey: string) {
+  return setProcessOverride(deps, actor, moduleId, signalKey, { mode: "AUTO" });
 }

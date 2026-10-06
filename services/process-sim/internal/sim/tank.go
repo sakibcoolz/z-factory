@@ -107,3 +107,11 @@ func (m *Tank) Step(dt float64, inputs map[string]float64) (map[string]float64, 
 func (m *Tank) State() map[string]float64 {
 	return map[string]float64{"content": m.content, "inlet": m.inlet, "outlet": m.outlet, "high": asFloat(m.high), "low": asFloat(m.low)}
 }
+
+// Measured: the level transmitter and the high-level switch.
+func (m *Tank) Measured() []Measured {
+	return []Measured{
+		{Name: "LEVEL", Unit: "%", Min: 0, Max: 100},
+		{Name: "HIGH_LEVEL", Bool: true, Min: 0, Max: 1},
+	}
+}

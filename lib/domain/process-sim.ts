@@ -42,6 +42,36 @@ export type ProcessSimEvent = {
   values?: Record<string, number>;
 };
 
+/** Where a measured output's value comes from (Phase 08, TASK-801). */
+export type ProcessSimMode = "AUTO" | "MANUAL_OVERRIDE" | "SCENARIO";
+
+/** A SCENARIO value over simulated time: a ramp (then held) or steps at offsets. */
+export type ProcessSimProfile =
+  | { kind: "RAMP"; from: number; to: number; durationS: number }
+  | { kind: "STEPS"; steps: Array<{ atS: number; value: number }> };
+
+export type ProcessSimOverrideRequest =
+  | { mode: "AUTO"; source?: string }
+  | { mode: "MANUAL_OVERRIDE"; value: number; source?: string }
+  | { mode: "SCENARIO"; profile: ProcessSimProfile; source?: string };
+
+/** One measured output: where its value comes from, what the model calculates, what is delivered. */
+export type ProcessSimSignalState = {
+  signal: string;
+  unit: string;
+  bool: boolean;
+  min: number;
+  max: number;
+  mode: ProcessSimMode;
+  calculated: number;
+  effective: number;
+  value?: number;
+  profile?: ProcessSimProfile;
+  sinceTick: number;
+  sinceTimeS: number;
+  source?: string;
+};
+
 /** What inspecting an instance returns. */
 export type ProcessSimSnapshot = {
   instanceId: string;
@@ -59,6 +89,8 @@ export type ProcessSimSnapshot = {
   outputs: Record<string, number>;
   state: Record<string, number>;
   lastEventSeq: number;
+  /** Overridden measured outputs; `outputs` already carry their effective values. */
+  overrides?: ProcessSimSignalState[];
   error?: string;
   loadedAt: string;
 };

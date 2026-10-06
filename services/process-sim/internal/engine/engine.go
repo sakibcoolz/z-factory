@@ -77,8 +77,10 @@ type Snapshot struct {
 	Outputs       map[string]float64 `json:"outputs"`
 	State         map[string]float64 `json:"state"`
 	LastEventSeq  uint64             `json:"lastEventSeq"`
-	Error         string             `json:"error,omitempty"`
-	LoadedAt      time.Time          `json:"loadedAt"`
+	// Overridden measured outputs; Outputs already carry their effective values.
+	Overrides []SignalState `json:"overrides,omitempty"`
+	Error     string        `json:"error,omitempty"`
+	LoadedAt  time.Time     `json:"loadedAt"`
 }
 
 // ErrNotFound is returned for an instance id the engine does not hold.
@@ -98,19 +100,23 @@ const eventsKept = 200
 
 // Instance is one loaded model with its state. Every method takes its lock.
 type Instance struct {
-	mu       sync.Mutex
-	config   Config
-	model    sim.Model
-	status   Status
-	tick     uint64
-	inputs   map[string]float64
-	outputs  map[string]float64
-	events   []Event
-	eventSeq uint64
-	err      string
-	loadedAt time.Time
-	stop     chan struct{}
-	log      *slog.Logger
+	mu     sync.Mutex
+	config Config
+	model  sim.Model
+	status Status
+	tick   uint64
+	inputs map[string]float64
+	// What the model calculates, and what is delivered: the same, except for overridden
+	// measured outputs (Phase 08).
+	calculated map[string]float64
+	outputs    map[string]float64
+	overrides  map[string]*override
+	events     []Event
+	eventSeq   uint64
+	err        string
+	loadedAt   time.Time
+	stop       chan struct{}
+	log        *slog.Logger
 }
 
 // Engine holds the instances and the counters the metrics report.
@@ -190,13 +196,15 @@ func (e *Engine) Load(config Config) (Snapshot, error) {
 		return Snapshot{}, &ConfigError{fmt.Sprintf("the service holds %d instances, its limit", e.maxInstances)}
 	}
 	instance := &Instance{
-		config:   config,
-		model:    model,
-		status:   StatusLoaded,
-		inputs:   copyValues(config.Inputs),
-		outputs:  map[string]float64{},
-		loadedAt: e.now(),
-		log:      e.log.With("instance", config.InstanceID, "factory", config.FactoryID, "model", config.ModelType),
+		config:     config,
+		model:      model,
+		status:     StatusLoaded,
+		inputs:     copyValues(config.Inputs),
+		calculated: map[string]float64{},
+		outputs:    map[string]float64{},
+		overrides:  map[string]*override{},
+		loadedAt:   e.now(),
+		log:        e.log.With("instance", config.InstanceID, "factory", config.FactoryID, "model", config.ModelType),
 	}
 	e.instances[config.InstanceID] = instance
 	instance.log.Info("instance loaded", "configVersion", config.ConfigVersion, "tickMs", config.TickMs, "clock", config.Clock)
@@ -341,7 +349,10 @@ func (e *Engine) Reset(id string) (Snapshot, error) {
 	instance.status = StatusLoaded
 	instance.tick = 0
 	instance.inputs = copyValues(instance.config.Inputs)
+	instance.calculated = map[string]float64{}
 	instance.outputs = map[string]float64{}
+	// Overrides are test state of a run; a reset ends the run.
+	instance.overrides = map[string]*override{}
 	instance.err = ""
 	instance.record(sim.Event{Type: "RESET", Message: "instance reset to its initial state"})
 	instance.log.Info("instance reset")
@@ -451,7 +462,8 @@ func (i *Instance) advanceLocked(e *Engine) {
 	dt := float64(i.config.TickMs) / 1000
 	outputs, events := i.model.Step(dt, i.inputs)
 	i.tick++
-	i.outputs = outputs
+	i.calculated = outputs
+	i.applyLocked()
 	for _, event := range events {
 		i.record(event)
 	}
@@ -492,6 +504,7 @@ func (i *Instance) snapshotLocked() Snapshot {
 		Outputs:       copyValues(i.outputs),
 		State:         i.model.State(),
 		LastEventSeq:  i.eventSeq,
+		Overrides:     overridden(i.signalStatesLocked(true)),
 		Error:         i.err,
 		LoadedAt:      i.loadedAt,
 	}
@@ -503,4 +516,11 @@ func copyValues(values map[string]float64) map[string]float64 {
 		out[key] = value
 	}
 	return out
+}
+
+func overridden(states []SignalState) []SignalState {
+	if len(states) == 0 {
+		return nil
+	}
+	return states
 }
