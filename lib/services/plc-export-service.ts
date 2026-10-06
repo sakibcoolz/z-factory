@@ -2,6 +2,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import type { Actor } from "@/lib/auth/actor";
 import { processModuleRepository } from "@/lib/db/repositories/process-module-repository";
+import { listLinksOfPlc } from "./plc-communication-service";
 import { plcRepository } from "@/lib/db/repositories/plc-repository";
 import { DomainError } from "@/lib/domain/errors";
 import {
@@ -259,6 +260,18 @@ export async function buildPlcExport(
       protocolLinks: view.peripherals.flatMap((peripheral) =>
         peripheral.protocols.map((protocol) => ({ device: peripheral.name, protocol: protocolName(protocol) })),
       ),
+      plcLinks: (await listLinksOfPlc(db, plcId)).map((link) => ({
+        relationship: link.relationship,
+        role: link.clientPlcId === plcId ? ("client" as const) : ("server" as const),
+        peer: link.source.plcId === plcId ? link.target.name : link.source.name,
+        protocol: protocolName(link.protocol),
+        serverHost: link.serverHost,
+        serverPort: link.serverPort,
+        unitId: link.unitId,
+        pollIntervalMs: link.pollIntervalMs,
+        enabled: link.enabled,
+        configVersion: link.configVersion,
+      })),
     },
     topology: {
       nodes: topology.nodes

@@ -80,6 +80,19 @@ const CONSTRAINTS: Record<string, ConstraintRule> = {
     code: "CONFLICT",
     message: "The module already has an interlock with this code.",
   },
+  PlcCommunicationConnection_sourcePlcInstanceId_targetPlcInstanceId_protocol_key: {
+    code: "CONFLICT",
+    message: "These two PLCs already have a link over this protocol in this direction.",
+  },
+  PlcCommunicationConnection_distinct_plcs_check: { code: "VALIDATION", message: "A PLC cannot be linked to itself." },
+  PlcCommunicationConnection_roles_check: {
+    code: "INVARIANT",
+    message: "The client and the server of a link are its two PLCs, one each.",
+  },
+  PlcCommunicationConnection_endpoint_check: {
+    code: "VALIDATION",
+    message: "Port, unit id or poll interval of the link is out of range.",
+  },
   ModulePlcIoMapping_tagId_key: {
     code: "OCCUPIED_ENDPOINT",
     message: "This tag already carries a module signal.",

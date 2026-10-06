@@ -14,6 +14,7 @@ import { programSupport } from "@/lib/domain/device-capabilities";
 import { DomainError, isDomainError } from "@/lib/domain/errors";
 import type { EventSeverity } from "@/lib/domain/events";
 import type { RuntimeState } from "@/lib/domain/runtime-state";
+import { serviceNameFor } from "@/lib/domain/service-name";
 import type { ModbusArea } from "@/lib/domain/tag";
 import { isExternallyWritable, tagAuthority, TAG_AUTHORITY_LABELS } from "@/lib/domain/tag-authority";
 import type { EventBus } from "@/lib/events/bus";
@@ -87,17 +88,7 @@ function assertProgrammable(device: PlcRecord, language: ProgramLanguage = "ST")
   }
 }
 
-/** DNS name of the PLC inside its factory network, e.g. `S7-1200-1214C-01` → `s7-1200-1214c-01`. */
-export function serviceNameFor(deviceName: string): string {
-  const name = deviceName
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 63)
-    .replace(/-+$/, "");
-  if (!name) throw new DomainError("VALIDATION", "The device name cannot be used as a service name.");
-  return name;
-}
+export { serviceNameFor };
 
 function targetOf(device: PlcRecord): OpenPlcTarget | undefined {
   const modbus = device.runtimePorts.find((port) => port.protocol === "MODBUS_TCP");

@@ -239,6 +239,16 @@ enum ConfigurationScope {
   MODBUS_MAPPING
   /// The parameter set of one device instance (TASK-308).
   DEVICE_PARAMETERS
+  /// A PLC-to-PLC communication link and its mappings (TASK-701).
+  PLC_COMMUNICATION
+}
+
+/// How one PLC relates to another over a communication link (Phase 07).
+enum PlcRelationship {
+  /// Peers exchanging data.
+  COMMUNICATES_WITH
+  /// The source coordinates the target; the target keeps its own local control logic.
+  SUPERVISES
 }
 
 /// What Z-Factory can do with a catalog model: which screens, checks and runtime adapters
@@ -664,6 +674,7 @@ model Factory {
   gateways              Gateway[]
   processModules        ProcessModuleInstance[]
   configurationVersions ConfigurationVersion[]
+  plcLinks              PlcCommunicationConnection[]
   commands              DeviceCommand[]
   events                RuntimeEvent[]
   alarms                AlarmEvent[]
@@ -730,15 +741,51 @@ model PlcInstanceProfile {
   /// Loopback host port the runtime's management API is published on while a container exists.
   apiHostPort          Int?    @unique
 
-  deviceInstance     DeviceInstance         @relation(fields: [deviceInstanceId], references: [id], onDelete: Cascade)
-  programVersion     ProgramVersion?        @relation("CurrentProgram", fields: [programVersionId], references: [id], onDelete: SetNull)
-  programVersions    ProgramVersion[]       @relation("PlcPrograms")
+  deviceInstance     DeviceInstance               @relation(fields: [deviceInstanceId], references: [id], onDelete: Cascade)
+  programVersion     ProgramVersion?              @relation("CurrentProgram", fields: [programVersionId], references: [id], onDelete: SetNull)
+  programVersions    ProgramVersion[]             @relation("PlcPrograms")
   racks              FactoryRack[]
   ioPoints           PlcIoPoint[]
   tags               Tag[]
   moduleMappings     ModulePlcIoMapping[]
   gatewayConnections GatewayPlcConnection[]
   commands           DeviceCommand[]
+  linksAsSource      PlcCommunicationConnection[] @relation("PlcLinkSource")
+  linksAsTarget      PlcCommunicationConnection[] @relation("PlcLinkTarget")
+}
+
+/// A communication link between two PLC instances of one factory (Phase 07, TASK-701,
+/// docs/architecture.md → PLC-to-PLC communication). The client PLC talks to the server
+/// PLC's protocol endpoint over the factory network; both keep their own program, container
+/// and local control logic. Mappings of tags over the link are TASK-702.
+model PlcCommunicationConnection {
+  id                  String          @id @default(uuid(7)) @db.Uuid
+  factoryId           String          @db.Uuid
+  sourcePlcInstanceId String          @db.Uuid
+  targetPlcInstanceId String          @db.Uuid
+  relationship        PlcRelationship
+  protocol            Protocol        @default(MODBUS_TCP)
+  /// Which of the two is the protocol client; the other is the server (CHECK).
+  clientPlcInstanceId String          @db.Uuid
+  serverPlcInstanceId String          @db.Uuid
+  /// The server's name on the factory Docker network: deterministic DNS, never an address.
+  serverHost          String
+  serverPort          Int             @default(502)
+  unitId              Int             @default(1)
+  pollIntervalMs      Int             @default(1000)
+  enabled             Boolean         @default(true)
+  /// Bumped by every change to the link or its mappings; the configuration versions snapshot it.
+  configVersion       Int             @default(1)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  factory   Factory            @relation(fields: [factoryId], references: [id], onDelete: Cascade)
+  sourcePlc PlcInstanceProfile @relation("PlcLinkSource", fields: [sourcePlcInstanceId], references: [deviceInstanceId], onDelete: Cascade)
+  targetPlc PlcInstanceProfile @relation("PlcLinkTarget", fields: [targetPlcInstanceId], references: [deviceInstanceId], onDelete: Cascade)
+
+  /// One link per ordered pair and protocol.
+  @@unique([sourcePlcInstanceId, targetPlcInstanceId, protocol])
+  @@index([factoryId])
 }
 
 /// Rack selected for a modular PLC instance.

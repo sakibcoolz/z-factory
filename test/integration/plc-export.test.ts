@@ -282,6 +282,7 @@ describeDb("PLC engineering export against PostgreSQL", () => {
       modbusEndpoint: { bindAddress: "127.0.0.1", hostPort: 15991, containerPort: 502 },
       modbusConventions: { addressBase: "zero-based", byteOrder: "BIG_ENDIAN", wordOrder: "HIGH_WORD_FIRST" },
       protocolLinks: [{ device: "VFD-02", protocol: "Modbus TCP" }],
+      plcLinks: [],
     });
   });
 
