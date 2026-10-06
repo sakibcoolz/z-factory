@@ -543,6 +543,13 @@ export class FactorySimulation {
     return this.require(deviceId).outputs;
   }
 
+  /** Whether the device's signal can be trusted: BAD for a sensor that lost its signal. Undefined for an unknown device. */
+  quality(deviceId: string): "GOOD" | "BAD" | undefined {
+    const device = this.devices.get(deviceId);
+    if (!device) return undefined;
+    return device.type === "SENSOR" ? device.quality : "GOOD";
+  }
+
   /** Advances every device by `dtS` seconds and returns the meaningful changes. */
   step(dtS: number): SimEvent[] {
     if (!Number.isFinite(dtS) || dtS < 0) {
@@ -596,7 +603,7 @@ export class FactorySimulation {
       faulted: device.tripped || device.activeFaults.size > 0,
       tripped: device.tripped,
       activeFaults: [...device.activeFaults],
-      quality: device.type === "SENSOR" ? device.quality : "GOOD",
+      quality: this.quality(device.id) ?? "GOOD",
       inputs: { ...device.inputs },
       outputs: { ...device.outputs },
     }));

@@ -84,6 +84,25 @@ export function qualityAt(
   return nowMs - Date.parse(reading.readAt) > staleAfterMs ? "STALE" : "GOOD";
 }
 
+/**
+ * What fills a feedback tag (TASK-803): a simulated device or a process module, through its
+ * bridge. The PLC holds whatever was last written, so a value read from it is only as good
+ * as the thing that keeps writing it.
+ */
+export type FeedbackWriter = { kind: "DEVICE"; deviceId: string } | { kind: "MODULE"; moduleId: string };
+
+const QUALITY_RANK: Record<TagQuality, number> = { GOOD: 0, STALE: 1, BAD: 2, DISCONNECTED: 3 };
+
+/**
+ * The quality of a feedback value read from the PLC: the worse of the read and the writer.
+ * A PLC that answers does not make held feedback healthy: while the simulator behind it is
+ * stopped or cannot advance it is STALE, while it cannot reach the PLC DISCONNECTED, while
+ * the simulated signal itself is lost BAD.
+ */
+export function feedbackQuality(read: TagQuality, writer: TagQuality): TagQuality {
+  return QUALITY_RANK[writer] > QUALITY_RANK[read] ? writer : read;
+}
+
 /** `tag:<plcId>:<name>`: the key a reading is known by on both sides of the stream. */
 export function tagKey(reading: Pick<LiveTagReading, "plcId" | "name">): string {
   return `${reading.plcId}:${reading.name}`;

@@ -172,4 +172,23 @@ ADR-0015 applies to the simulator.
 - Modbus is an implementation transport between the simulator and OpenPLC memory/registers; it is not the industrial meaning of the local I/O connection.
 - When targeting a real PLC, simulator injection is replaced by physical inputs or the selected real remote-I/O/device protocol, while the program still owns local outputs.
 
+## Command bridge (TASK-803)
+The control path of Phase 08 runs through the two bridges that already exist; TASK-803 makes each step explicit and keeps loss visible.
+
+```text
+PLC program -> program-driven tag (PROGRAM_OUTPUT: %Q, or %M the program writes)
+            -> bridge read -> simulated device command (run, frequencySetpoint, open, …)
+            -> device model over time (ramp, travel, inertia, faults)        [device simulator]
+            -> process model over time (pressure, flow, level)                [Go service, process bridge]
+            -> actual feedback (actualFrequency, position, opened, …)
+            -> bridge write -> SIMULATION_FEEDBACK memory (%M) -> PLC program
+```
+
+- **Command and actual stay separate.** A command signal (`run`, `frequencySetpoint`, `open`, `positionSetpoint`, a module OUTPUT) and its actual value (`running`, `actualFrequency`, `position`, `opened`/`closed`, a module INPUT) are different signals on different tags. A tag carrying a command is `PROGRAM_OUTPUT` wherever it sits, `%M` included; a tag carrying feedback is `SIMULATION_FEEDBACK`. Neither is writable from outside (`tagAuthority`, `deviceSignalDirection` in `lib/domain/simulation.ts`: a signal key flows the same way in every device type).
+- **Only the program commands.** The bridges read what the scan cycle wrote; no UI action or gateway write produces a device command (ADR-0015). Test conditions go through simulation overrides and forced sensor values, never through the PLC's outputs.
+- **Dynamic response.** The models answer over simulated time: the drive ramps, the motor follows with its time constant, the valve travels its stroke and its limit switches change at the ends, a stuck valve does not move. Nothing jumps to the commanded value unless the model says so.
+- **Loss is explicit.** A PLC the bridge cannot read drives nothing: its commands count as de-energized. A bridge that stops (the simulation is stopped, the process bridge is stopped) writes every feedback tag de-energized (false / 0, or the bottom of a range that excludes 0), as the wiring of powered-down equipment reads, so the program sees running and limit-switch signals drop instead of running on the last values; the PLC's commands are never written. On the Live Tags screen the feedback carries the quality of its writer (`STALE`, `DISCONNECTED`, `BAD`; docs/events-telemetry.md → Live tags), so a PLC that answers does not make held feedback look healthy.
+
+Code: `PlcBridge.release` and `linkUp` (`lib/runtimes/device-sim/bridge.ts`), `feedbackQuality` of the device simulator and of the process bridge, `writerQuality` of the tag monitor (`lib/runtimes/tag-monitor/monitor.ts`), `feedbackQuality` in `lib/domain/live.ts`. Tests: `test/integration/command-bridge.test.ts` (Docker) runs a valve and a drive against a real OpenPLC program that opens the valve on request and runs the drive only once the open limit switch proves it open.
+
 As built (TASK-205): the bridge reads `PROGRAM_OUTPUT` tags (`%Q`, and `%M` the program writes) and delivers feedback to `%M` memory only — the `PROGRAM_INPUT` shadow of a wired DI/AI channel or `SIMULATION_FEEDBACK` memory — never to a `%Q` address, an input point or a command tag (`signal-address`). The owner model and its enforcement are in `docs/openplc-runtime.md` → As built (TASK-205); the process bridge of `docs/process-simulation.md` follows the same rule.

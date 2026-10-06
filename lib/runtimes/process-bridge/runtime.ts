@@ -11,6 +11,7 @@ import type {
   ProcessSimStatus,
 } from "@/lib/domain/process-sim";
 import { type BridgeOptions, PlcBridge, type PlcIo, type SignalBinding } from "@/lib/runtimes/device-sim/bridge";
+import type { TagQuality } from "@/lib/domain/tag";
 import type { Signals } from "@/lib/runtimes/device-sim/engine";
 import type { ProcessSimClient } from "@/lib/runtimes/process-sim/client";
 
@@ -206,12 +207,16 @@ export class ProcessBridgeRuntime {
     }
   }
 
-  /** Stops the cycle, waits for an exchange in flight, unloads the models and takes a final snapshot. */
+  /**
+   * Stops the cycle, waits for an exchange in flight, de-energizes the feedback the PLCs
+   * hold, unloads the models and takes a final snapshot.
+   */
   async stop(factoryId: string): Promise<ProcessModuleSnapshot[]> {
     const running = this.require(factoryId);
     clearInterval(running.timer);
     this.running.delete(factoryId);
     await running.inFlight;
+    await running.bridge.release();
     const modules = running.modules.map((state) => toSnapshot(running, state));
     // The service may be gone; the bridge is stopped either way.
     await Promise.all(
@@ -236,6 +241,15 @@ export class ProcessBridgeRuntime {
       lastError: running.lastError,
       modules: running.modules.map((state) => toSnapshot(running, state)),
     };
+  }
+
+  /**
+   * How the feedback a module writes into its PLCs is doing (TASK-803): the module's quality
+   * while the bridge runs, STALE when it does not (the PLC holds old or released values).
+   */
+  feedbackQuality(factoryId: string, moduleId: string): TagQuality {
+    const state = this.running.get(factoryId)?.modules.find((candidate) => candidate.plan.moduleId === moduleId);
+    return state ? state.quality : "STALE";
   }
 
   /** A failing hook is recorded, never thrown: persistence trouble must not stop the loop. */

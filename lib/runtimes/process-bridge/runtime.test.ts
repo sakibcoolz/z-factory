@@ -471,6 +471,39 @@ describe("process bridge runtime", () => {
     await h.runtime.stop("factory-1");
   });
 
+  it("says how a module's feedback is doing, and releases it on stop (TASK-803)", async () => {
+    const h = harness();
+    await h.start();
+    h.plc.coils[0] = true;
+    h.plc.holding[0] = 7550;
+    await h.tick();
+    expect(h.runtime.feedbackQuality("factory-1", "module-1")).toBe("GOOD");
+    expect(h.plc.coils[8192]).toBe(true);
+
+    h.service.failing = "service down";
+    await h.tick();
+    expect(h.runtime.feedbackQuality("factory-1", "module-1")).toBe("STALE");
+    h.service.failing = null;
+    await h.tick();
+    h.plc.reachable = false;
+    await h.tick();
+    expect(h.runtime.feedbackQuality("factory-1", "module-1")).toBe("DISCONNECTED");
+    h.plc.reachable = true;
+    await h.tick(6);
+    expect(h.runtime.feedbackQuality("factory-1", "module-1")).toBe("GOOD");
+    expect(h.plc.coils[8192]).toBe(true);
+
+    await h.runtime.stop("factory-1");
+    // The PLC no longer runs on a process that is gone: running, pressure and alarm drop.
+    expect(h.plc.coils[8192]).toBe(false);
+    expect(h.plc.coils[8193]).toBe(false);
+    expect(decodeValue(h.plc.holding.slice(2048, 2050), { dataType: "FLOAT32" })).toBe(0);
+    // Its commands stay the program's: the bridge never writes them.
+    expect(h.plc.coils[0]).toBe(true);
+    expect(h.plc.holding[0]).toBe(7550);
+    expect(h.runtime.feedbackQuality("factory-1", "module-1")).toBe("STALE");
+  });
+
   it("refuses to start twice, and unloads what it loaded when a later module is refused", async () => {
     const h = harness({
       modules: [plan(), plan({ moduleId: "module-2", name: "Broken", config: config("module-2", 50, "BROKEN") })],

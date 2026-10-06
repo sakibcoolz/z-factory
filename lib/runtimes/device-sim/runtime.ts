@@ -2,6 +2,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { DomainError } from "@/lib/domain/errors";
 import type { RuntimeEventEnvelope } from "@/lib/domain/events";
+import type { TagQuality } from "@/lib/domain/tag";
 import { type BridgeOptions, type LinkChange, PlcBridge, type PlcIo, type SignalBinding } from "./bridge";
 import { type DeviceSnapshot, FactorySimulation, type SimEvent, type SimulationConfig } from "./engine";
 
@@ -114,12 +115,16 @@ export class DeviceSimulatorRuntime {
     }
   }
 
-  /** Stops the tick, waits for a cycle in flight and takes a final snapshot. */
+  /**
+   * Stops the tick, waits for a cycle in flight, de-energizes the feedback the PLCs hold
+   * and takes a final snapshot.
+   */
   async stop(factoryId: string): Promise<DeviceSnapshot[]> {
     const running = this.require(factoryId);
     clearInterval(running.timer);
     this.running.delete(factoryId);
     await running.inFlight;
+    await running.bridge.release();
     const devices = running.simulation.snapshot();
     await this.guard(running, () => running.hooks.onSnapshot?.(factoryId, devices, this.clock.date()));
     return devices;
@@ -144,6 +149,18 @@ export class DeviceSimulatorRuntime {
       lastError: running.lastError,
       devices: running.simulation.snapshot(),
     };
+  }
+
+  /**
+   * How the feedback a device writes into one PLC is doing (TASK-803): STALE while no
+   * simulation of the factory runs (the PLC holds old or released values), DISCONNECTED
+   * while the bridge cannot reach that PLC, BAD while the device's own signal is lost.
+   */
+  feedbackQuality(factoryId: string, deviceId: string, plcId: string): TagQuality {
+    const running = this.running.get(factoryId);
+    if (!running || !running.simulation.has(deviceId)) return "STALE";
+    if (running.bridge.linkUp(plcId) === false) return "DISCONNECTED";
+    return running.simulation.quality(deviceId) === "BAD" ? "BAD" : "GOOD";
   }
 
   /** A failing hook is recorded, never thrown: persistence trouble must not stop the simulation. */

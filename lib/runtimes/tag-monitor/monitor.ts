@@ -1,6 +1,6 @@
 import "server-only";
 import { DomainError, isDomainError } from "@/lib/domain/errors";
-import type { LiveTagReading } from "@/lib/domain/live";
+import { type FeedbackWriter, feedbackQuality, type LiveTagReading } from "@/lib/domain/live";
 import type { ModbusArea, TagQuality, TagRole } from "@/lib/domain/tag";
 import { decodeValue, type Encoding } from "@/lib/protocols/modbus/codec";
 
@@ -24,6 +24,8 @@ export type MonitoredTag = {
   encoding: Encoding;
   /** Device the tag carries a signal of, if any. */
   deviceId: string | null;
+  /** The simulator that fills the tag with feedback, if one does (TASK-803). */
+  writer?: FeedbackWriter | null;
 };
 
 export type TagRead = (area: ModbusArea, address: number, count: number) => Promise<Array<number | boolean>>;
@@ -51,6 +53,11 @@ export type MonitorStart = MonitoredPlc & {
   read: TagRead;
   pollMs?: number;
   hooks?: MonitorHooks;
+  /**
+   * How the writer of a feedback tag is doing, asked in every cycle: a good read of a tag
+   * whose writer is not GOOD takes the writer's quality. Without it reads stand as they are.
+   */
+  writerQuality?: (writer: FeedbackWriter) => TagQuality;
   /** `false`: no timer; the caller runs cycles with `tick()`. */
   autoTick?: boolean;
 };
@@ -91,6 +98,7 @@ export function planReads(tags: readonly MonitoredTag[]): Span[] {
 type Running = MonitoredPlc & {
   read: TagRead;
   hooks: MonitorHooks;
+  writerQuality: MonitorStart["writerQuality"];
   spans: Span[];
   pollMs: number;
   timer: ReturnType<typeof setInterval> | undefined;
@@ -136,6 +144,7 @@ export class TagMonitorRuntime {
       tags: config.tags,
       read: config.read,
       hooks: config.hooks ?? {},
+      writerQuality: config.writerQuality,
       spans: planReads(config.tags),
       pollMs: config.pollMs ?? DEFAULT_POLL_MS,
       timer: undefined,
@@ -219,6 +228,16 @@ export class TagMonitorRuntime {
       set(tag, { value: current?.value ?? null, quality, readAt: current?.readAt ?? null });
     };
 
+    const writers = new Map<string, TagQuality>();
+    /** A good read, as good as the tag's writer: asked once per writer and cycle. */
+    const readQuality = (tag: MonitoredTag): TagQuality => {
+      if (!tag.writer || !running.writerQuality) return "GOOD";
+      const key = tag.writer.kind === "DEVICE" ? `d:${tag.writer.deviceId}` : `m:${tag.writer.moduleId}`;
+      const known = writers.get(key) ?? running.writerQuality(tag.writer);
+      writers.set(key, known);
+      return feedbackQuality("GOOD", known);
+    };
+
     let reachable = true;
     for (const span of running.spans) {
       const tags = running.tags.filter(
@@ -233,7 +252,7 @@ export class TagMonitorRuntime {
         for (const tag of tags) {
           const words = raw.slice(tag.address - span.address, tag.address - span.address + tag.wordCount);
           try {
-            set(tag, { value: decodeValue(words, tag.encoding), quality: "GOOD", readAt });
+            set(tag, { value: decodeValue(words, tag.encoding), quality: readQuality(tag), readAt });
           } catch {
             degrade(tag, "BAD");
           }

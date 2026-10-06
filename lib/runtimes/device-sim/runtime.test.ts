@@ -384,6 +384,48 @@ describe("shared simulator runtime", () => {
     expect(runtime.status("factory")?.ticks).toBe(20);
   });
 
+  it("says how the feedback it writes is doing, and releases it on stop (TASK-803)", async () => {
+    const { plc, runtime, advance } = setup();
+    plc.coils[0] = true;
+    plc.holding[0] = 500;
+    expect(runtime.feedbackQuality("factory", "vfd", "plc")).toBe("GOOD");
+    await advance(3);
+    expect(plc.coils[8192]).toBe(true);
+    expect(plc.holding[1024]).toBeGreaterThan(0);
+    expect(runtime.feedbackQuality("factory", "vfd", "plc")).toBe("GOOD");
+
+    plc.reachable = false;
+    await advance(0.1);
+    expect(runtime.feedbackQuality("factory", "vfd", "plc")).toBe("DISCONNECTED");
+    plc.reachable = true;
+    await advance(2.1);
+    expect(runtime.feedbackQuality("factory", "vfd", "plc")).toBe("GOOD");
+
+    await runtime.stop("factory");
+    // De-energized like the wiring of a powered-down drive: not running, no speed, no pressure.
+    expect(plc.coils[8192]).toBe(false);
+    expect(plc.holding.slice(1024, 1026)).toEqual([0, 0]);
+    expect(float(plc, 2048)).toBe(0);
+    // What the PLC still holds has no simulation behind it.
+    expect(runtime.feedbackQuality("factory", "vfd", "plc")).toBe("STALE");
+    expect(runtime.feedbackQuality("other", "vfd", "plc")).toBe("STALE");
+  });
+
+  it("marks the feedback of a sensor that lost its signal BAD", async () => {
+    const runtime = new DeviceSimulatorRuntime();
+    runtime.start("factory", {
+      config: { factoryId: "factory", devices: [{ id: "pt", name: "PT-01", type: "SENSOR" }] },
+      bindings: [],
+      plcs: new Map(),
+      autoTick: false,
+    });
+    expect(runtime.feedbackQuality("factory", "pt", "plc")).toBe("GOOD");
+    runtime.simulation("factory").injectFault("pt", "BAD_QUALITY");
+    await runtime.tick("factory", 100);
+    expect(runtime.feedbackQuality("factory", "pt", "plc")).toBe("BAD");
+    await runtime.stop("factory");
+  });
+
   it("publishes service-originated events through the same hooks", async () => {
     const { runtime, events } = setup();
     const event = runtime.simulation("factory").injectFault("pump", "DRY_RUN");
@@ -404,12 +446,14 @@ describe("shared simulator runtime", () => {
       tickMs: 20,
     });
     await new Promise((resolve) => setTimeout(resolve, 400));
-    await runtime.stop("factory");
     // About 0.4 s at 10 Hz/s: a few hertz, driven by real elapsed time rather than tick count.
-    expect(plc.holding[1024]).toBeGreaterThan(15);
-    expect(plc.holding[1024]).toBeLessThan(80);
-    const frozen = plc.holding[1024];
+    const reached = plc.holding[1024] ?? 0;
+    await runtime.stop("factory");
+    expect(reached).toBeGreaterThan(15);
+    expect(reached).toBeLessThan(80);
+    // Stopping releases the feedback, and nothing writes it afterwards.
+    expect(plc.holding[1024]).toBe(0);
     await new Promise((resolve) => setTimeout(resolve, 100));
-    expect(plc.holding[1024]).toBe(frozen);
+    expect(plc.holding[1024]).toBe(0);
   });
 });

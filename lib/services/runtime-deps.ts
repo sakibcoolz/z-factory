@@ -74,6 +74,7 @@ export function getLiveDeps(): LiveDeps {
     bus: getEventBus(),
     monitor: getTagMonitor(),
     simulator: getDeviceSimulator(),
+    processBridge: getProcessBridge(),
     pollMs: env.TAG_POLL_MS,
     sampling: {
       minIntervalMs: env.TELEMETRY_MIN_INTERVAL_MS,

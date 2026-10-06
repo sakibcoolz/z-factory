@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DEVICE_SIGNALS, deviceSignalDirection } from "@/lib/domain/simulation";
 import { type AuthorityTag, isExternallyWritable, tagAuthority } from "@/lib/domain/tag-authority";
 
 const tag = (overrides: Partial<AuthorityTag>): AuthorityTag => ({
@@ -47,10 +48,29 @@ describe("who drives a tag (ADR-0015)", () => {
     expect(tagAuthority(tag({ logicalAddress: "%MX10.1", moduleSignalDirection: "ALARM" }))).toBe(
       "SIMULATION_FEEDBACK",
     );
-    // A module command the program drives into the process is the program's, not the bridge's.
-    expect(tagAuthority(tag({ logicalAddress: "%MX11.0", moduleSignalDirection: "OUTPUT" }))).toBe("PROGRAM_INTERNAL");
+    expect(tagAuthority(tag({ logicalAddress: "%MX10.2", sourceSignal: "running" }))).toBe("SIMULATION_FEEDBACK");
     expect(tagAuthority(tag({ logicalAddress: "%MW50" }))).toBe("PROGRAM_INTERNAL");
     expect(tagAuthority(tag({ logicalAddress: null }))).toBe("PROGRAM_INTERNAL");
+  });
+
+  it("keeps a command the program gives simulated equipment apart from feedback (TASK-803)", () => {
+    // A device command or a module command the program drives is its output, wherever it sits.
+    expect(tagAuthority(tag({ logicalAddress: "%MX11.0", sourceSignal: "run" }))).toBe("PROGRAM_OUTPUT");
+    expect(tagAuthority(tag({ logicalAddress: "%MW12", sourceSignal: "frequencySetpoint", role: "STATUS" }))).toBe(
+      "PROGRAM_OUTPUT",
+    );
+    expect(tagAuthority(tag({ logicalAddress: "%QX0.3", sourceSignal: "open" }))).toBe("PROGRAM_OUTPUT");
+    expect(tagAuthority(tag({ logicalAddress: "%MX11.1", moduleSignalDirection: "OUTPUT" }))).toBe("PROGRAM_OUTPUT");
+    // Its actual value comes back as feedback.
+    expect(tagAuthority(tag({ logicalAddress: "%MW13", sourceSignal: "actualFrequency" }))).toBe("SIMULATION_FEEDBACK");
+    expect(isExternallyWritable(tag({ logicalAddress: "%MX11.0", sourceSignal: "run" }))).toBe(false);
+  });
+
+  it("reads a device signal's direction from its key: a key flows the same way in every type", () => {
+    for (const signals of Object.values(DEVICE_SIGNALS)) {
+      for (const signal of signals) expect(deviceSignalDirection(signal.key), signal.key).toBe(signal.direction);
+    }
+    expect(deviceSignalDirection("nothing")).toBeUndefined();
   });
 
   it("lets normal control writes reach external command memory only", () => {
