@@ -159,6 +159,8 @@ describeRuntime("the MVP demo end to end with a real OpenPLC runtime", () => {
       plcs: [{ id: demo.plcId, name: "PLC-01", state: "RUNNING" }],
       simulatedDevices: 4,
       simulationNote: null,
+      processModules: 0,
+      processNote: null,
     });
     const plc = await db.deviceInstance.findUniqueOrThrow({ where: { id: demo.plcId }, include: { plcProfile: true } });
     expect(plc.dockerContainerId).toMatch(/^[0-9a-f]{64}$/);

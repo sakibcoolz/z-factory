@@ -56,3 +56,23 @@ export const moduleInterlockInputSchema = z.strictObject({
 });
 
 export const moduleInterlockUpdateSchema = moduleInterlockInputSchema.omit({ code: true }).partial();
+
+/** Binding one module signal to one PLC tag (TASK-605). */
+export const moduleBindingInputSchema = z.strictObject({
+  signalKey: key,
+  tagId: z.uuid(),
+});
+
+/** The bindings of a module as exported, reconstructed by PLC and tag names. */
+export const moduleIoImportSchema = z.strictObject({
+  schema: z.literal("z-factory.module-io"),
+  schemaVersion: z.literal(1),
+  generatedAt: z.string().optional(),
+  module: z
+    .object({ name: z.string(), type: z.string(), version: z.number().int(), profile: z.string().nullable() })
+    .partial({ name: true })
+    .loose(),
+  bindings: z
+    .array(z.object({ signal: key, plc: z.string().trim().min(1), tag: z.string().trim().min(1) }).loose())
+    .max(256),
+});

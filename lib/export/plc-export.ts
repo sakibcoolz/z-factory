@@ -61,6 +61,16 @@ export type ExportScheduleRow = {
   unit: string | null;
 };
 
+/** A process-module signal a tag of this PLC carries (docs/process-modules.md → Module PLC I/O Registry). */
+export type ExportModuleSignal = {
+  module: string;
+  moduleType: string;
+  signal: string;
+  direction: string;
+  tag: string;
+  programAddress: string;
+};
+
 export type PlcExportDocument = {
   schema: typeof PLC_EXPORT_SCHEMA;
   schemaVersion: typeof PLC_EXPORT_SCHEMA_VERSION;
@@ -119,6 +129,8 @@ export type PlcExportDocument = {
   };
   ioPoints: ExportIoPoint[];
   tags: ExportTag[];
+  /** Process-module signals carried by tags of this PLC (TASK-605). */
+  moduleSignals: ExportModuleSignal[];
   connectedDevices: ExportScheduleRow[];
   /** Relationships among the PLC and every device reachable from it. */
   relationships: Array<{ source: string; relationship: string; target: string; detail: string }>;

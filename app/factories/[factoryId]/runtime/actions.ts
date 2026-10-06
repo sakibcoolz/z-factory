@@ -25,11 +25,16 @@ export async function factoryRuntimeAction(
     if (operation === "start") {
       const result = await startFactory(deps, actor, factoryId);
       const plcs = `${result.plcs.length} PLC${result.plcs.length === 1 ? "" : "s"} running`;
-      return {
-        notice: result.simulationNote
-          ? `${plcs}. The device simulation was not started: ${result.simulationNote}`
-          : `${plcs}, ${result.simulatedDevices} simulated device${result.simulatedDevices === 1 ? "" : "s"} running.`,
-      };
+      const devices = `${result.simulatedDevices} simulated device${result.simulatedDevices === 1 ? "" : "s"} running`;
+      const modules =
+        result.processModules > 0
+          ? `, ${result.processModules} process module${result.processModules === 1 ? "" : "s"} running`
+          : "";
+      const notes = [
+        result.simulationNote ? `The device simulation was not started: ${result.simulationNote}` : null,
+        result.processNote ? `The process bridge was not started: ${result.processNote}` : null,
+      ].filter((note) => note !== null);
+      return { notice: `${plcs}, ${devices}${modules}.${notes.length > 0 ? ` ${notes.join(" ")}` : ""}` };
     }
     if (operation === "stop") {
       await stopFactory(deps, actor, factoryId);

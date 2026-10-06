@@ -1,8 +1,11 @@
 import "server-only";
 import { z } from "zod";
 import type { Actor } from "@/lib/auth/actor";
+import type { ProcessTagRecord } from "@/lib/db/repositories/process-bridge-repository";
 import { type ModuleRecord, processModuleRepository } from "@/lib/db/repositories/process-module-repository";
 import { DomainError } from "@/lib/domain/errors";
+import { buildModuleIo, type StoredModuleBinding } from "@/lib/domain/module-io-view";
+import type { ProcessSignalTag } from "@/lib/domain/process-bridge";
 import {
   appliesToProfile,
   checkInterlock,
@@ -135,6 +138,38 @@ function toDeviceView(assignment: ModuleRecord["devices"][number]): ModuleDevice
   };
 }
 
+export function toSignalTag(tag: ModuleRecord["mappings"][number]["tag"] | ProcessTagRecord): ProcessSignalTag {
+  return {
+    id: tag.id,
+    plcId: tag.plcInstanceId,
+    name: tag.name,
+    dataType: tag.dataType,
+    role: tag.role,
+    accessMode: tag.accessMode,
+    logicalAddress: tag.logicalAddress,
+    protocolArea: tag.protocolArea,
+    protocolAddress: tag.protocolAddress,
+    wordCount: tag.wordCount,
+    byteOrder: tag.byteOrder,
+    wordOrder: tag.wordOrder,
+    scale: tag.scale,
+    offset: tag.offset,
+    unit: tag.unit,
+    sourceDeviceInstanceId: tag.sourceDeviceInstanceId,
+  };
+}
+
+/** A module's stored bindings as the registry rules read them. */
+export function storedBindings(record: ModuleRecord): StoredModuleBinding[] {
+  return record.mappings.map((mapping) => ({
+    mappingId: mapping.id,
+    signalKey: mapping.moduleSignalDefinition.key,
+    plcName: mapping.tag.plc.deviceInstance.name,
+    tag: toSignalTag(mapping.tag),
+    ioPointId: mapping.tag.plcIoPointId,
+  }));
+}
+
 /** A stored module as its screen shows it, with the issues that keep it from being complete. */
 export function toModuleDetail(record: ModuleRecord): ModuleDetail {
   return toDetail(record);
@@ -155,6 +190,11 @@ function toDetail(record: ModuleRecord): ModuleDetail {
     })),
     interlocks,
   });
+  const io = buildModuleIo(type.signals, record.profile, storedBindings(record));
+  const bound = io.counts.INPUT.bound + io.counts.OUTPUT.bound + io.counts.ALARM.bound;
+  const invalid = io.counts.INPUT.invalid + io.counts.OUTPUT.invalid + io.counts.ALARM.invalid;
+  const requiredUnbound =
+    io.counts.INPUT.requiredUnbound + io.counts.OUTPUT.requiredUnbound + io.counts.ALARM.requiredUnbound;
   return {
     id: record.id,
     factoryId: record.factoryId,
@@ -167,6 +207,8 @@ function toDetail(record: ModuleRecord): ModuleDetail {
     signalCounts: countSignals(signals),
     complete: issues.length === 0,
     issues,
+    bindings: { bound, invalid, requiredUnbound },
+    readyToRun: issues.length === 0 && !io.blocking && type.simulatorModelType !== null,
     // Read through the type again, so a stored configuration never shows a setting the type does not declare.
     config: readConfig(type, record.configJson),
     configFields: type.configFields,
@@ -200,7 +242,8 @@ function toSummary(detail: ModuleDetail): ModuleSummary {
   return summary;
 }
 
-async function loadModule(db: PrismaClient, actor: Actor, moduleId: string): Promise<ModuleRecord> {
+/** A module of one of the actor's factories, with its type, devices, interlocks and bindings. */
+export async function loadModule(db: PrismaClient, actor: Actor, moduleId: string): Promise<ModuleRecord> {
   const record = isUuid(moduleId) ? await processModuleRepository.findModule(db, actor.ownerId, moduleId) : null;
   if (!record) throw notFound("process module");
   return record;

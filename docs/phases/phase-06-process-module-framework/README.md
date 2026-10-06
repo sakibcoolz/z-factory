@@ -16,7 +16,7 @@ Phase 06 starts only after the Phase 02–05 runtime, device-modeling, telemetry
 | TASK-602 Go simulation service foundation | DONE |
 | TASK-603 Simulator/Modbus closed-loop bridge | DONE |
 | TASK-604 Process module designer & validation | PLANNED |
-| TASK-605 Module PLC I/O registry & allocation | PLANNED |
+| TASK-605 Module PLC I/O registry & allocation | DONE |
 
 ## Key architecture rule
 A module such as a boiler does not hard-code or assume a fixed PLC I/O count. Its module type declares required/optional logical signals, and each module instance registers/binds those signals to actual PLC tags, I/O points or protocol mappings.

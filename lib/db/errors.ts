@@ -76,6 +76,14 @@ const CONSTRAINTS: Record<string, ConstraintRule> = {
     code: "CONFLICT",
     message: "The module already has an interlock with this code.",
   },
+  ModulePlcIoMapping_tagId_key: {
+    code: "OCCUPIED_ENDPOINT",
+    message: "This tag already carries a module signal.",
+  },
+  ModulePlcIoMapping_processModuleInstanceId_moduleSignalDefinitionId_key: {
+    code: "CONFLICT",
+    message: "This signal is already bound; release or rebind it.",
+  },
   ModuleSignalDefinition_direction_role_check: {
     code: "INVARIANT",
     message: "An OUTPUT signal is a command or a setpoint, and only an OUTPUT is.",

@@ -251,6 +251,19 @@ export function PlcReport({ document }: PlcReportProps) {
           ])}
           empty="No tags."
         />
+        {document.moduleSignals.length > 0 ? (
+          <Table
+            columns={["Process module", "Signal", "Direction", "Tag", "Program addr."]}
+            rows={document.moduleSignals.map((row) => [
+              `${row.module} (${row.moduleType})`,
+              row.signal,
+              row.direction.toLowerCase(),
+              row.tag,
+              row.programAddress,
+            ])}
+            empty="No process-module signals."
+          />
+        ) : null}
       </Section>
 
       <Section index={8}>

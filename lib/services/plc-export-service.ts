@@ -1,6 +1,7 @@
 import "server-only";
 import { createHash } from "node:crypto";
 import type { Actor } from "@/lib/auth/actor";
+import { processModuleRepository } from "@/lib/db/repositories/process-module-repository";
 import { plcRepository } from "@/lib/db/repositories/plc-repository";
 import { DomainError } from "@/lib/domain/errors";
 import {
@@ -233,6 +234,14 @@ export async function buildPlcExport(
     },
     ioPoints,
     tags,
+    moduleSignals: (await processModuleRepository.listPlcMappings(db, plcId)).map((mapping) => ({
+      module: mapping.processModuleInstance.name,
+      moduleType: mapping.processModuleInstance.processModuleType.code,
+      signal: mapping.moduleSignalDefinition.key,
+      direction: mapping.moduleSignalDefinition.direction,
+      tag: mapping.tag.name,
+      programAddress: mapping.tag.logicalAddress ?? "",
+    })),
     connectedDevices,
     relationships: edges.map((edge) => ({
       source: deviceName.get(edge.sourceId) ?? "?",

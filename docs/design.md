@@ -93,6 +93,8 @@ The Consumed PLC I/O Registry shows each logical signal, direction, required/opt
 
 The mapping UI must show only compatible and available PLC endpoints, just like device wiring. Required unmapped signals block runtime start; optional signals do not.
 
+Data for these two sections exists since TASK-605 (`getModuleIoRegistry`: rows with state BOUND / INVALID / UNBOUND and `blocking`, per-direction counts, per-PLC use, `readyToRun`; `listBindableTags`: every tag with its refusal, so the picker can list the free compatible ones and explain the rest). The screen itself is TASK-604.
+
 ## PLC-to-PLC communication UX (Phase 07)
 PLC details gains a Communication section with:
 - source/client PLC and target/server PLC

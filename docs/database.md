@@ -217,7 +217,7 @@ Rules:
 
 ## Process modules
 
-Process modules compose existing factory devices into a process-specific unit. They do not redefine catalog hardware and they reserve no PLC endpoint. Implemented by TASK-601 (migration `process_modules`), except `ModulePlcIoMapping`, which belongs to TASK-605.
+Process modules compose existing factory devices into a process-specific unit. They do not redefine catalog hardware and they reserve no PLC endpoint of their own: a module signal is bound to a normal tag. Implemented by TASK-601 (migration `process_modules`) and TASK-605 (`ModulePlcIoMapping`, migration `module_plc_io_mapping`).
 
 ### ProcessModuleType
 Reusable process template such as PUMP_HOUSE, TANK, MACHINE_CELL, CONVEYOR_CELL, HVAC_LOOP. Shared reference data, like the catalog: not owned by a factory.
@@ -262,12 +262,15 @@ Assigns an existing factory `DeviceInstance` to a role of the module.
 
 A device must belong to the same factory as the module. Unique: `(processModuleInstanceId, moduleRoleDefinitionId, deviceInstanceId)`. The row goes with the module or with the device; the device is never changed or deleted through it. A device may have roles in several modules.
 
-### ModulePlcIoMapping (planned, TASK-605)
-Binds one logical module signal to the normal PLC/tag/I/O model.
+### ModulePlcIoMapping (TASK-605)
+Binds one logical module signal to one PLC tag (docs/process-modules.md → Module PLC I/O Registry).
 
-`id, processModuleInstanceId, moduleSignalDefinitionId, plcInstanceId, tagId, plcIoPointId, metadataJson`
+`id, processModuleInstanceId, moduleSignalDefinitionId, plcInstanceId, tagId, metadataJson, createdAt`
 
-The mapping reuses existing tag/I/O compatibility, occupancy, access-mode, protocol-address and register-overlap rules; it never creates a parallel PLC address space. Not part of the schema yet.
+- The tag is the PLC endpoint: its located address, Modbus mapping, data type, scaling and access mode are the normal ones. The mapping adds no address space; the I/O point a tag sits on is read through `Tag.plcIoPointId`, so it is not stored twice.
+- Unique: `tagId` (a tag carries at most one module signal) and `(processModuleInstanceId, moduleSignalDefinitionId)` (a signal has at most one tag). `plcInstanceId` is the tag's PLC, kept for the per-PLC summary and the export (service rule).
+- Tag and module belong to the same factory (service rule). The rules of `lib/domain/process-bridge.ts` decide which tag a signal may take; they are applied when a mapping is made and again whenever the registry is read, so a tag that changed shows the binding as invalid.
+- The row goes with the module, the tag or the PLC (cascade); a signal definition with mappings cannot be deleted (restrict). Nothing else is changed through it.
 
 ### ModuleInterlock
 Process-specific interlock/validation metadata.
@@ -319,7 +322,7 @@ For high-volume history, partitioning/retention should be introduced first. Time
 Every factual vendor hardware profile keeps source URL plus verification metadata. Never fabricate pinouts, I/O counts, register maps, or electrical limits.
 
 ## Implementation (TASK-102)
-- Schema: `prisma/schema.prisma`; migrations: `prisma/migrations/` (`init`, `device_io_endpoint`, `factory_subnet_no_overlap`, `plc_api_host_port`, `tag_source_signal`, `catalog_capabilities`, `device_io_simulator_signal`, `device_canvas_position`, `catalog_3d_assets`, `catalog_asset_generation`, `process_modules`, `endpoint_wiring`, `device_capabilities`, `process_model_link`); generated client: `lib/generated/prisma/` (git-ignored).
+- Schema: `prisma/schema.prisma`; migrations: `prisma/migrations/` (`init`, `device_io_endpoint`, `factory_subnet_no_overlap`, `plc_api_host_port`, `tag_source_signal`, `catalog_capabilities`, `device_io_simulator_signal`, `device_canvas_position`, `catalog_3d_assets`, `catalog_asset_generation`, `process_modules`, `endpoint_wiring`, `device_capabilities`, `process_model_link`, `module_plc_io_mapping`); generated client: `lib/generated/prisma/` (git-ignored).
 - Primary keys are UUID v7 (`@default(uuid(7))`, PostgreSQL `uuid`), except `TelemetrySample.id` (`bigint` identity) and the one-to-one tables keyed by their owner (`ElectricalProfile`, `PlcInstanceProfile`, `DeviceRuntimeSnapshot`).
 - Catalog rows referenced by factory data are protected with `ON DELETE RESTRICT`; factory-owned rows cascade from `Factory`.
 - `DeviceInstance.dockerContainerId` is server-side only and never sent to the browser.

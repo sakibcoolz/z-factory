@@ -63,16 +63,20 @@ export type ModuleSummary = {
   factoryId: string;
   name: string;
   location: string | null;
-  /** Last stored state. A module runs only once a process runtime exists. */
+  /** Last stored state: RUNNING while the process bridge runs the module. */
   status: RuntimeState;
   profile: string | null;
   type: ModuleTypeRef;
   deviceCount: number;
   /** Signals of the selected profile. */
   signalCounts: SignalCounts;
-  /** No issue: every required role is filled and every interlock is sound. Signals are bound elsewhere. */
+  /** No issue: every required role is filled and every interlock is sound. Signals are counted below. */
   complete: boolean;
   issues: ModuleIssue[];
+  /** The module's PLC bindings (TASK-605): accepted, no longer accepted, and required signals without one. */
+  bindings: { bound: number; invalid: number; requiredUnbound: number };
+  /** Complete, every required signal bound to an accepted tag, and a process model to run it. */
+  readyToRun: boolean;
 };
 
 export type ModuleDetail = ModuleSummary & {
