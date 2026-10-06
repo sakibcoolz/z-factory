@@ -210,6 +210,14 @@ describeDb("catalog 3D assets and the factory scene", () => {
       line: "signal",
     });
     expect(scene.factory).toEqual(topology.factory);
+    // A wiring edge carries exactly its stored wires as conductors; a relationship that is not wiring has none (TASK-405).
+    const cable = scene.connections.find((connection) => connection.relationship === "WIRED_TO");
+    expect(cable?.conductors.map((conductor) => [conductor.kind, conductor.from, conductor.to])).toEqual([
+      ["SIGNAL", "PLC-01 / DO Qa.0", "XV-101 / Y1"],
+      ["SIGNAL", "XV-101 / ZSC", "PLC-01 / DI Ia.0"],
+      ["SIGNAL", "XV-101 / ZSO", "PLC-01 / DI Ia.1"],
+    ]);
+    expect(scene.connections.find((connection) => connection.sourceId === ids.motor1)?.conductors).toEqual([]);
 
     // A device stands where the designer has it: 240 canvas units are 2 m.
     const motor1 = scene.devices.find((item) => item.id === ids.motor1);

@@ -10,9 +10,15 @@ import { type OperationButton, OperationForm } from "@/components/ui/operation-f
 import { KeyValue } from "@/components/ui/primitives";
 import { StatePill } from "@/components/ui/state-pill";
 import type { LiveDeviceState } from "@/lib/domain/live";
-import { type FactorySceneView, SCENE_SCALE_RANGE } from "@/lib/domain/scene-view";
+import {
+  type FactorySceneView,
+  SCENE_SCALE_RANGE,
+  type SceneConnectionView,
+  type SceneDeviceView,
+} from "@/lib/domain/scene-view";
 import { routes } from "@/lib/navigation/routes";
 import type { OperationState } from "@/lib/plc/operation-state";
+import { describeConductors } from "@/lib/scene/conductors";
 import { connectionAppearance, deviceAppearance } from "@/lib/scene/state";
 import type { CameraView } from "./factory-canvas";
 
@@ -64,6 +70,43 @@ function webglAvailable(): boolean {
 }
 
 /**
+ * The wiring of the selected device, conductor by conductor (TASK-405): what the scene
+ * draws between it and each neighbour, read from the stored wires. A relationship that is
+ * not wiring is listed as such; no conductor is invented for it.
+ */
+function ConductorList({
+  device,
+  connections,
+  names,
+}: {
+  device: SceneDeviceView;
+  connections: readonly SceneConnectionView[];
+  names: ReadonlyMap<string, string>;
+}) {
+  const own = connections.filter(
+    (connection) => connection.sourceId === device.id || connection.targetId === device.id,
+  );
+  if (own.length === 0) return null;
+  return (
+    <ul className="flex flex-col gap-1 px-4 py-2 text-xs" aria-label={`Connections of ${device.name}`}>
+      {own.map((connection) => {
+        const otherId = connection.sourceId === device.id ? connection.targetId : connection.sourceId;
+        return (
+          <li key={connection.id} className="flex flex-col">
+            <span className="mono">{`${names.get(otherId) ?? "?"} · ${connection.label}`}</span>
+            <span className="zf-k whitespace-normal">
+              {connection.conductors.length > 0
+                ? describeConductors(connection.conductors)
+                : "relationship, no conductor"}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/**
  * 2q for a stored factory: the scene, a list of its devices, and what is selected. The
  * list does everything the canvas does, so the view can be used without a pointer and
  * without WebGL.
@@ -111,6 +154,7 @@ export function SceneView({ scene, streamUrl, transformAction, plcLinks, designe
   );
   const supported = useMemo(() => (typeof document === "undefined" ? true : webglAvailable()), []);
   const selected = scene.devices.find((device) => device.id === selectedId) ?? null;
+  const names = useMemo(() => new Map(scene.devices.map((device) => [device.id, device.name])), [scene.devices]);
   const withAsset = scene.devices.filter((device) => device.asset).length;
 
   const transformButtons = (scale: number): OperationButton[] => [
@@ -156,6 +200,7 @@ export function SceneView({ scene, streamUrl, transformAction, plcLinks, designe
           <span>— signal</span>
           <span>- - network</span>
           <span>· · feedback</span>
+          <span>≡ conductors</span>
           <span className="text-ok">running</span>
           <span className="text-fault-fg">fault</span>
           <span className="text-warn-fg">degraded · stale</span>
@@ -232,6 +277,7 @@ export function SceneView({ scene, streamUrl, transformAction, plcLinks, designe
                 ["Placing", <span key="v" className="mono">{`${selected.rotationDeg}° · ×${selected.scale}`}</span>],
               ]}
             />
+            <ConductorList device={selected} connections={scene.connections} names={names} />
             <div className="flex flex-col gap-2 px-4 py-2.5">
               <OperationForm
                 // The buttons belong to this device: another selection starts them afresh.

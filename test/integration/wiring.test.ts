@@ -108,6 +108,9 @@ describeDb("pin-to-pin wiring", () => {
       ["REV", "SIGNAL", "digital input · 24 V DC"],
       ["RUN", "SIGNAL", "digital input · 24 V DC"],
       ["RUNNING", "SIGNAL", "digital output · 24 V DC"],
+      ["U", "POWER", "supply output · 400 V AC"],
+      ["V", "POWER", "supply output · 400 V AC"],
+      ["W", "POWER", "supply output · 400 V AC"],
       ["COM", "COMMON", "0 V / common"],
       ["PE", "EARTH", "protective earth"],
     ]);

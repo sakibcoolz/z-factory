@@ -83,11 +83,19 @@ describeDb("the pump station demo factory", () => {
       "PLC-01 WIRED_TO VFD-01",
       "PT-101 MEASURES PUMP-01",
       "VFD-01 DRIVES MOTOR-01",
+      "VFD-01 WIRED_TO MOTOR-01",
     ]);
     // One wiring edge per device, with every wire on it: seven for the drive, one for the transmitter.
     const wires = (deviceName: string) =>
       topology.edges.find((edge) => edge.relationship === "WIRED_TO" && name(edge.targetId) === deviceName)?.wires;
     expect(wires("VFD-01")).toHaveLength(7);
+    // The motor cable: three phases, three conductors, the DRIVES relationship beside them.
+    const cable = topology.edges.find((edge) => edge.relationship === "WIRED_TO" && name(edge.targetId) === "MOTOR-01");
+    expect(cable?.wires.map((wire) => [wire.kind, wire.from.name, wire.to.name])).toEqual([
+      ["POWER", "VFD-01 / U", "MOTOR-01 / U"],
+      ["POWER", "VFD-01 / V", "MOTOR-01 / V"],
+      ["POWER", "VFD-01 / W", "MOTOR-01 / W"],
+    ]);
     expect(wires("PT-101")?.map((wire) => [wire.from.name, wire.tagName])).toEqual([["PT-101 / OUT", "PT_101_OUT"]]);
 
     // The drive and the transmitter are wired to channels of the installed modules.

@@ -200,6 +200,15 @@ describeDb("device catalog against PostgreSQL", () => {
     expect(of("Generic VFD, hardwired control")).toEqual([
       ["COM", "COMMON", 4],
       ["PE", "EARTH", 1],
+      ["U", "POWER", 1],
+      ["V", "POWER", 1],
+      ["W", "POWER", 1],
+    ]);
+    expect(of("Generic three-phase motor")).toEqual([
+      ["PE", "EARTH", 1],
+      ["U", "POWER", 1],
+      ["V", "POWER", 1],
+      ["W", "POWER", 1],
     ]);
     expect(of("Generic pressure transmitter, 4–20 mA")).toEqual([
       ["+24V", "POWER", 1],

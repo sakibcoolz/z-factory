@@ -6,6 +6,7 @@ import { Component, type ReactNode, type RefObject, Suspense, useEffect, useMemo
 import { Box3, type Material, MathUtils, type Mesh, Vector3 } from "three";
 import type { StateTone } from "@/lib/domain/runtime-state";
 import type { FactorySceneView, SceneAssetView, SceneDeviceView } from "@/lib/domain/scene-view";
+import { conductorPoints, conductorStyle } from "@/lib/scene/conductors";
 import { fitScale } from "@/lib/scene/placeholders";
 import { type ConnectionAppearance, type DeviceAppearance, sceneIsAnimated } from "@/lib/scene/state";
 import { DevicePlaceholder } from "./device-placeholder";
@@ -226,6 +227,52 @@ const DASH: Record<FactorySceneView["connections"][number]["line"], { dashed: bo
   feedback: { dashed: true, dash: 0.08, gap: 0.12 },
 };
 
+/** The colour of a line between two devices: red when either is faulted, green when both run, plain otherwise. */
+const lineColor = (tone: ConnectionAppearance["tone"], colors: SceneColors) =>
+  tone === "fault" ? colors.tone.flt : tone === "active" ? colors.tone.run : colors.line;
+
+/**
+ * The physical conductors of a wiring connection (TASK-405): one thin line per stored wire,
+ * side by side between the two devices, each drawn as its kind and coloured like the
+ * connection. Nothing is drawn that is not stored.
+ */
+function Conductors({
+  from,
+  to,
+  conductors,
+  appearance,
+  colors,
+}: {
+  from: SceneDeviceView;
+  to: SceneDeviceView;
+  conductors: FactorySceneView["connections"][number]["conductors"];
+  appearance: ConnectionAppearance | undefined;
+  colors: SceneColors;
+}) {
+  const tone = appearance?.tone ?? "idle";
+  const lines = conductorPoints(from.position, to.position, conductors.length);
+  return (
+    <>
+      {conductors.map((conductor, index) => {
+        const style = conductorStyle(conductor.kind);
+        const points = lines[index];
+        if (!points) return null;
+        return (
+          <Line
+            key={conductor.id}
+            points={points}
+            color={lineColor(tone, colors)}
+            lineWidth={tone === "idle" ? style.width : style.width + 1}
+            dashed={style.dashed}
+            dashSize={style.dash}
+            gapSize={style.gap}
+          />
+        );
+      })}
+    </>
+  );
+}
+
 /**
  * One connection on the floor. Its colour and movement come from the state of its two
  * ends: red when either is faulted, green and flowing when both run, plain otherwise.
@@ -260,7 +307,7 @@ function Connection({
         [from.position.x, 0.04, from.position.z],
         [to.position.x, 0.04, to.position.z],
       ]}
-      color={tone === "fault" ? colors.tone.flt : tone === "active" ? colors.tone.run : colors.line}
+      color={lineColor(tone, colors)}
       lineWidth={tone === "idle" ? 1.5 : 2.5}
       dashed={style.dashed}
       dashSize={style.dash}
@@ -349,7 +396,17 @@ export default function FactoryCanvas({
           const from = byId.get(connection.sourceId);
           const to = byId.get(connection.targetId);
           if (!from || !to) return null;
-          return (
+          // A wiring edge is its conductors; a relationship that is not wiring is one logical line.
+          return connection.conductors.length > 0 ? (
+            <Conductors
+              key={connection.id}
+              from={from}
+              to={to}
+              conductors={connection.conductors}
+              appearance={connections.get(connection.id)}
+              colors={colors}
+            />
+          ) : (
             <Connection
               key={connection.id}
               from={from}
