@@ -365,3 +365,20 @@ Dependencies from `getFactoryRuntimeDeps()` and `getGatewayDeps()`.
 |---|---|
 | `factoryRuntimeAction(factoryId, …)` with `operation` = `start` \| `stop` (`app/factories/[factoryId]/runtime/actions.ts`) | `startFactory` / `stopFactory`; answers when the operation has finished |
 | `createDemoFactoryAction(…)` (`app/factories/actions.ts`) | `createDemoFactory`, then opens the new factory's Runtime screen |
+
+
+### Simulation overrides (Phase 08)
+Planned server-side contract. Browser code calls Z-Factory actions/routes; only the server talks to the Go simulation service.
+
+Semantic operations:
+- set/replace an input override
+- clear an input override
+- inspect effective input mode/value
+- start/stop a scenario
+
+The Go API resource shape is planned around:
+`PUT /simulations/{simulationId}/devices/{deviceId}/inputs/{inputId}/override`
+and
+`DELETE /simulations/{simulationId}/devices/{deviceId}/inputs/{inputId}/override`.
+
+Only simulated input/process signals may be overridden. Local PLC outputs are not writable through this API.
