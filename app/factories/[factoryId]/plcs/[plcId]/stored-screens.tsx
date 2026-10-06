@@ -17,7 +17,7 @@ import { loadPlc } from "./load-plc";
 
 /**
  * Screens of a PLC stored in the database: overview, hardware, connections and I/O
- * mapping. The Pump House Demo PLC keeps its fixture screens until its sections are wired.
+ * mapping.
  */
 
 type Ids = { factoryId: string; plcId: string };

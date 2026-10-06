@@ -1,6 +1,6 @@
 # Phase 03 — Factory Designer, Device Modeling & PLC Export
 
-Status: **IN PROGRESS**
+Status: **DONE**
 
 | Task | Status |
 |---|---|
@@ -12,6 +12,6 @@ Status: **IN PROGRESS**
 | TASK-306 Factory overview device hierarchy | DONE |
 | TASK-307 Pin-to-pin wiring editor & validation | DONE |
 | TASK-308 Capability-driven programmable device UI & runtime | DONE |
-| TASK-309 Retire design fixtures | PLANNED |
+| TASK-309 Retire design fixtures | DONE |
 
 Exit criteria: users can create factory-specific devices from catalog models, configure compact/modular PLCs, connect exact compatible endpoints with validated pin-to-pin wiring, derive tags/I/O/protocol mappings from that single wiring source, program/configure supported controller classes through capability-driven UI, persist topology, and export a complete engineering snapshot.

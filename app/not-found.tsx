@@ -12,8 +12,8 @@ export default function NotFound() {
           <div className="zf-k">404</div>
           <h1 className="zf-h mt-1.5">Nothing here yet</h1>
           <p className="zf-sub mt-1.5 max-w-90">
-            This factory or device has no screen yet. Only the Pump House Demo is available while the app renders design
-            fixtures.
+            There is no factory, device or screen at this address. It may have been deleted, or the link is not one of
+            yours.
           </p>
         </div>
         <div>
