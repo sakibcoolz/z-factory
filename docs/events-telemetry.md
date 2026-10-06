@@ -118,6 +118,8 @@ The tag monitor reads every PLC with a started runtime every `TAG_POLL_MS`. A re
 | `BAD` | the PLC answered but refused the address range, or the value could not be decoded |
 | `DISCONNECTED` | the PLC did not answer (the last value is kept), or the PLC is not monitored (no value) |
 
+Feedback is only as good as what writes it (TASK-803, docs/device-simulation.md → Command bridge). A good read of a `SIMULATION_FEEDBACK` tag takes the quality of its writer: `STALE` while no simulation of the device runs or the process module's bridge is stopped or cannot advance the model, `DISCONNECTED` while that bridge cannot reach the PLC, `BAD` while the simulated sensor has lost its signal. The PLC may answer and still hold values nothing produces any more; the screen, the stream and the telemetry history say so instead of showing them as healthy. A change of writer quality alone is a change: it is published and sampled.
+
 ### Stream
 `GET /factories/[factoryId]/stream`, `text/event-stream`, same authorization as the factory's screens (404 otherwise).
 

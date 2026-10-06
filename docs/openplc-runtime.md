@@ -57,9 +57,9 @@ Every tag has one owner, computed by `tagAuthority` in `lib/domain/tag-authority
 
 | Authority | What it is | Who writes it |
 |---|---|---|
-| `PROGRAM_OUTPUT` | a tag on a DO/AO point (`%QX`/`%QW` channel), or any other `%Q` address that is not external command memory | the scan cycle only |
+| `PROGRAM_OUTPUT` | a tag on a DO/AO point (`%QX`/`%QW` channel), any other `%Q` address that is not external command memory, or `%M` memory through which the program commands simulated equipment (a device's command signal such as `run` or `frequencySetpoint`, a process module's OUTPUT signal; TASK-803) | the scan cycle only |
 | `PROGRAM_INPUT` | a tag on a DI/AI point (the `%MX`/`%MW` shadow of the channel), or a `%I` address | the field; in simulation the device simulator, through the bridge |
-| `SIMULATION_FEEDBACK` | `%M` memory a device signal or a process-module signal is delivered to | the device-simulator or process bridge |
+| `SIMULATION_FEEDBACK` | `%M` memory a device's feedback signal or a process module's INPUT/ALARM signal is delivered to | the device-simulator or process bridge |
 | `LINK_INPUT` | `%M` memory a READ mapping of a PLC link fills (TASK-702) | the PLC link, with a peer PLC's value |
 | `EXTERNAL_COMMAND` | a writable `COMMAND` or `SETPOINT` tag (`%Q` or `%M` memory that is not a channel) | a gateway or the UI; the program decides what follows |
 | `PROGRAM_INTERNAL` | everything else | the program |

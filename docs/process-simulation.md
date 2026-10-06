@@ -159,7 +159,9 @@ advance the model (its values are from an earlier cycle; the PLC keeps the last 
 nothing is invented); `DISCONNECTED` while a PLC the module exchanges with does not answer
 (it gets no feedback and its commands count as de-energized, as with the device
 simulator). A service that restarted and forgot an instance gets it loaded again on the
-next cycle. Changes are recorded as `PROCESS_QUALITY_CHANGED`.
+next cycle. Changes are recorded as `PROCESS_QUALITY_CHANGED`. The module's quality is also
+the quality of the feedback tags it writes, as the Live Tags screen shows them; with the
+bridge stopped they are `STALE` (TASK-803, docs/events-telemetry.md → Live tags).
 
 **Events.** `PROCESS_BRIDGE_STARTED`/`STOPPED` (factory level); `CONNECTION_UP`/`DOWN`
 with `link: process-bridge` per PLC; `PROCESS_STATE_CHANGED` for the model's own events
@@ -172,7 +174,9 @@ read from bridge memory; events are the history.
 **Lifecycle.** `startProcessBridge(deps, actor, factoryId)` plans from the stored bindings,
 validates, loads and starts; it needs `PROCESS_SIM_URL`/`PROCESS_SIM_TOKEN` and a configured
 Modbus endpoint on every mapped PLC (a PLC that is not running drives nothing until it comes
-up). `stopProcessBridge` unloads the models. `startFactory` starts the bridge after the device
+up). `stopProcessBridge` writes every feedback tag de-energized (false / 0) so that the PLC
+does not run on the values of a process that is gone (TASK-803; the PLC's commands are
+never written), then unloads the models. `startFactory` starts the bridge after the device
 simulation when the factory has modules with a model and bindings (a factory without them
 has nothing to start and nothing to report; a blocked module or a missing service is
 reported in `processNote`); `stopFactory` stops the bridge first. The module's stored
