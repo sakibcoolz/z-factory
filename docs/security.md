@@ -43,6 +43,12 @@ The MVP identifies one owner through `LOCAL_OWNER_ID` and does not authenticate 
 - **Limit:** Modbus TCP has no authentication. Anyone who can reach an endpoint's port can do what its mappings allow. Bind endpoints to a specific address, allow the port in the host firewall only from the device's address, and map only what the device needs.
 - The register map download carries the endpoint, the unit id and the mapped tags; no container id, management port or credential.
 
+## PLC-to-PLC links (TASK-703, ADR-0016)
+- The client PLC's own runtime polls the server PLC on the factory network; Z-Factory is not in the path and holds no Modbus connection on a link's behalf. Links never cross factories: refused by rule and unreachable by network.
+- A link writes only the server's external command memory (writable COMMAND/SETPOINT tags) and only values the client's program computes; a gateway's command to the client never reaches the server past the client's program (ADR-0015). The server's program still decides.
+- One writer per value across all links (database indexes). The plugin configuration is generated from validated mappings; nothing user-written reaches it as free text.
+- The health probe only reads the server's first mapped register through its published endpoint.
+
 ## Industrial-control warning
 Z-Factory is a simulation/development platform. It must not claim safety-rated behavior or be used as the sole safety-control layer for physical machinery.
 

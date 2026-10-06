@@ -257,6 +257,9 @@ Services in `lib/services/plc-communication-service.ts`. Every function takes th
 | change mapping | `updatePlcLinkMapping(db, actor, linkId, mappingId, { updateIntervalMs?, enabled? })` | a new link version |
 | remove mapping | `removePlcLinkMapping(db, actor, linkId, mappingId)` | the tags stay; a new link version |
 
+| link health | `startPlcLinkMonitor(deps, factoryId)`, `stopPlcLinkMonitor(deps, factoryId)`, `getPlcLinkHealth(deps, actor, factoryId)` | TASK-703: per enabled link `GOOD` / `STALE` / `DISCONNECTED` with the reason, since when and when last checked; `startFactory` / `stopFactory` start and stop watching; `listPlcLinkMappings(…, monitor)` gives each enabled mapping its link's quality |
+| runtime configuration | `modbusMasterPlan(db, clientPlcId)` | TASK-703: the Modbus master devices and points a client PLC is deployed with, and the link versions they are; used by `deployProgramVersion` |
+
 Every change records `PLC_LINK_CHANGED` (family LINK) on the source PLC with `action` created / updated / enabled / disabled / removed / mapping added / mapping changed / mapping removed and the version. The export (`z-factory.plc-link`) lists the mappings by tag names with the remote area and address.
 
 ### `plc export` (TASK-304)

@@ -25,6 +25,7 @@ Examples:
 - FAULT_INJECTED / FAULT_CLEARED
 - ALARM_RAISED / ALARM_ACKNOWLEDGED / ALARM_CLEARED
 - PLC_LINK_CHANGED (family LINK; a PLC-to-PLC link or one of its mappings created, changed or removed, with the link's version)
+- CONNECTION_DOWN / CONNECTION_UP with `link: plc-link` (TASK-703): a PLC-to-PLC link's quality changed; `deviceId` is the client PLC, `to` the server, `state` the new quality (`STALE`, `DISCONNECTED`, `GOOD`) and `message` the reason. They raise no alarm.
 - PROCESS_BRIDGE_STARTED / PROCESS_BRIDGE_STOPPED
 - PROCESS_STATE_CHANGED / PROCESS_QUALITY_CHANGED (family PROCESS)
 - PROCESS_ALARM_RAISED / PROCESS_ALARM_CLEARED
