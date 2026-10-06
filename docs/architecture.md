@@ -351,7 +351,7 @@ UI -> Z-Factory server -> Go simulation override API
    -> actual feedback -> PLC input
 ```
 
-The UI changes simulator runtime state, never PLC local outputs. The Go service exposes AUTO, MANUAL_OVERRIDE and SCENARIO semantics for supported simulated inputs. Program-generated PLC outputs are delivered to simulated devices through the bridge. Actual device/process feedback returns to PLC inputs. This is the canonical closed-loop testing model.
+The UI changes simulator runtime state, never PLC local outputs. The Go service exposes AUTO, MANUAL_OVERRIDE and SCENARIO semantics for supported simulated inputs (as built in TASK-801 for the models' measured outputs: `docs/process-simulation.md` → Overrides). Program-generated PLC outputs are delivered to simulated devices through the bridge. Actual device/process feedback returns to PLC inputs. This is the canonical closed-loop testing model.
 
 
 ## Z-Factory Thin Client Agent — Phase 05 follow-up (TASK-503)

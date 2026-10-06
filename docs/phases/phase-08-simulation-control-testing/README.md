@@ -1,6 +1,6 @@
 # Phase 08 — Simulation Control, Overrides & Closed-Loop Testing
 
-Status: **PLANNED**
+Status: **IN PROGRESS**
 
 ## Purpose
 Add an operator/test layer for the Go simulation service so engineers can deliberately drive simulated sensor/process inputs, observe PLC-program decisions, feed PLC outputs into simulated actuators/devices, and validate the full closed loop without bypassing PLC control authority.
@@ -53,7 +53,7 @@ Clearing an override returns that input to `AUTO`.
 
 | Task | Status |
 |---|---|
-| TASK-801 Simulation Override Runtime Contract & Go API | PLANNED |
+| TASK-801 Simulation Override Runtime Contract & Go API | DONE |
 | TASK-802 Simulation Override UI & Operator Controls | PLANNED |
 | TASK-803 PLC Output → Simulator Command Bridge | PLANNED |
 | TASK-804 Closed-Loop Test Scenarios, Events & E2E Validation | PLANNED |

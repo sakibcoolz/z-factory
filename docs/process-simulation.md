@@ -178,6 +178,53 @@ has nothing to start and nothing to report; a blocked module or a missing servic
 reported in `processNote`); `stopFactory` stops the bridge first. The module's stored
 `status` follows the bridge (RUNNING/STOPPED).
 
+## Overrides (Phase 08, TASK-801)
+A test changes what the PLC reads, never what it decides. Each model declares its
+**measured outputs** — the values a transmitter or switch would give the PLC — with unit and
+range (`sim.Overridable`, ranges from the parameters the instance was reset with):
+
+| Model | Measured outputs |
+|---|---|
+| `PUMP_HOUSE` | `DISCHARGE_PRESSURE` (bar, 0–2 × rated), `FLOW` (m3/h, 0–2 × rated), `DISCHARGE_VALVE_OPEN` (switch) |
+| `TANK` | `LEVEL` (%, 0–100), `HIGH_LEVEL` (switch) |
+
+Commands the PLC gives (model inputs), actuator states (`DUTY_RUNNING`, …) and the model's
+own alarms are never overridable.
+
+Every measured output has a mode:
+
+```text
+AUTO            -> effective = calculated (the model)
+MANUAL_OVERRIDE -> effective = the value a tester set, held until cleared
+SCENARIO        -> effective = a profile over simulated time: RAMP {from, to, durationS} (then held)
+                   or STEPS [{atS, value}] (the first at 0 s)
+```
+
+The model keeps calculating; `outputs` (what the bridge delivers to the PLC) carry the
+effective values; the model's own alarms follow the calculated values. An override survives
+ticks, stop and start; a reset, a reload or an unload ends it — it is runtime test state,
+never configuration. Setting and clearing record `OVERRIDE_SET` / `OVERRIDE_CLEARED` events
+with who asked (`source`); clearing an output that is not overridden is not an error.
+
+API (token-protected):
+
+| Request | Body / result |
+|---|---|
+| `GET /v1/instances/{id}/overrides` | `{ signals: [{ signal, unit, bool, min, max, mode, calculated, effective, value?, profile?, sinceTick, sinceTimeS, source? }] }` for every measured output |
+| `PUT /v1/instances/{id}/overrides/{signal}` | `{ mode, value?, profile?, source? }` → the signal's state; a command, an alarm or an actuator state → 422, a value out of range or of the wrong kind → 422, an unknown signal → 404 |
+| `DELETE /v1/instances/{id}/overrides/{signal}?source=` | back to AUTO → the signal's state |
+
+The snapshot lists the overridden signals under `overrides`. The contract's planned resource
+`/simulations/{simulationId}/devices/{deviceId}/inputs/{inputId}/override` is realised as
+`/v1/instances/{module instance}/overrides/{signal}`: an instance stands for one process
+module, and its measured outputs are the inputs the PLC reads.
+
+In Z-Factory, `setProcessOverride(deps, actor, moduleId, signal, { mode, value | profile })`,
+`clearProcessOverride` and `listProcessOverrides` (process-bridge-service) accept only an
+INPUT signal of a module running in the bridge, send the actor as the source, and record
+`PROCESS_OVERRIDE_SET` / `PROCESS_OVERRIDE_CLEARED`. The bridge delivers the effective value
+at its next cycle; nothing writes a PLC output.
+
 ## Observability
 Structured JSON logs (`log/slog`) for every request, instance lifecycle change and event.
 `GET /healthz` (no token): status, version, contract version, uptime, instance count,

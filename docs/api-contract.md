@@ -400,7 +400,7 @@ Dependencies from `getFactoryRuntimeDeps()` and `getGatewayDeps()`.
 
 
 ### Simulation overrides (Phase 08)
-Planned server-side contract. Browser code calls Z-Factory actions/routes; only the server talks to the Go simulation service.
+Browser code calls Z-Factory actions/routes; only the server talks to the Go simulation service. As built (TASK-801): `setProcessOverride(deps, actor, moduleId, signal, { mode: "AUTO" | "MANUAL_OVERRIDE" | "SCENARIO", value? , profile? })`, `clearProcessOverride(deps, actor, moduleId, signal)` and `listProcessOverrides(deps, actor, moduleId)` in `lib/services/process-bridge-service.ts`; refusals `process-override-signal` (a command or alarm), `process-bridge-not-running`, `process-sim-configuration` (range, kind, profile). The Go resources and semantics are in `docs/process-simulation.md` → Overrides. The scenario start/stop of the list below is TASK-804; the screen is TASK-802.
 
 Semantic operations:
 - set/replace an input override
