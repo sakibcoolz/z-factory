@@ -121,7 +121,7 @@ Phase 06 introduces an optional dedicated Go simulation service for advanced cou
 Process models are deterministic software/control-test approximations unless explicitly documented otherwise. They are not process-design, mechanical, electrical, thermodynamic, or safety certification.
 
 ## Implementation (TASK-601, TASK-605)
-The domain and its persistence exist, with the PLC I/O registry (TASK-605) and the process runtime (TASK-602, TASK-603; docs/process-simulation.md). The screens are TASK-604.
+The domain and its persistence exist, with the PLC I/O registry (TASK-605), the process runtime (TASK-602, TASK-603; docs/process-simulation.md) and the screens (TASK-604; docs/design.md → Process modules as built).
 
 ```text
 lib/domain/process-module.ts        pure rules: directions, profiles, configuration, roles, interlocks, issues
@@ -132,6 +132,8 @@ lib/process-modules/types.ts        the shipped types
 lib/process-modules/ingest.ts       writes type versions (npm run db:seed)
 lib/services/process-module-service.ts   types, module instances, device roles, interlocks
 lib/services/module-io-service.ts        the registry: bind, rebind, release, candidates, summary, export/import
+lib/services/module-designer-service.ts  what the screens show, composed from the above and the running bridge
+components/modules/                      list, new-module form, editor, pickers, topology
 ```
 
 ### Module types
@@ -171,7 +173,7 @@ An interlock is metadata of a module instance: while every condition in `when` h
 `getModule` returns the roles and signals of the selected profile, the devices in each role, the interlocks, signal counts per direction (required and optional) and the issues that keep the module from being complete: a required role without a device, a role with too many devices, a device whose category or profile no longer fits, an enabled interlock that no longer fits. `complete` covers roles and interlocks only. `bindings` counts the module's PLC bindings (accepted, invalid, required signals without one) and `readyToRun` says whether the module is complete, every required signal is bound to an accepted tag and its type names a process model.
 
 ### The PLC I/O registry (TASK-605)
-A module's signal is bound to one tag of one PLC of the same factory (`ModulePlcIoMapping`). The registry (`getModuleIoRegistry`) lists every consumed signal of the profile (INPUT, OUTPUT and ALARM; INTERNAL signals are listed apart and never bound) with its state:
+A module's signal is bound to one tag of one PLC of the same factory (`ModulePlcIoMapping`). Changing the profile is refused while a binding's signal has no place in the new profile; release it first. The registry (`getModuleIoRegistry`) lists every consumed signal of the profile (INPUT, OUTPUT and ALARM; INTERNAL signals are listed apart and never bound) with its state:
 
 - **BOUND** — a tag the rules accept.
 - **INVALID** — bound to a tag the rules no longer accept (its role changed, it was given to a device signal, it now overlaps). The rules run again every time the registry is read, so nothing silently feeds the bridge.

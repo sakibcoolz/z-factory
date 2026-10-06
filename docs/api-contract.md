@@ -195,7 +195,7 @@ Refusals carry `details.rule`, `details.from` and `details.to`: `wire-same-devic
 `unwireDevice` (`lib/services/plc-config-service.ts`) removes every wire between a PLC and one device; deleting a device uses it.
 
 ### `process-modules` (TASK-601)
-Services in `lib/services/process-module-service.ts`. Module types are shared reference data, not owned by a factory. Every function on a module takes the `Actor`; a module, factory or device of another owner is not found. There is no screen, route or server action yet (TASK-604). The PLC binding is the registry below.
+Services in `lib/services/process-module-service.ts`. Module types are shared reference data, not owned by a factory. Every function on a module takes the `Actor`; a module, factory or device of another owner is not found. The screens (TASK-604) are `/factories/[factoryId]/modules` and `/modules/[moduleId]`, with server actions in `app/factories/[factoryId]/modules/**/actions.ts` and the composed views in `lib/services/module-designer-service.ts` (`getModulesScreen`, `getModuleDesigner`). The PLC binding is the registry below.
 
 | Operation | Entry point | Rules |
 |---|---|---|
@@ -230,6 +230,10 @@ Services in `lib/services/module-io-service.ts` (docs/process-modules.md → The
 | bridge mappings | `listFactoryModuleMappings(db, actor, factoryId)` | the stored bindings as `{ moduleId, signalKey, tagId }`; `planProcessBridge` reads them itself |
 | export | `exportModuleIo(db, actor, moduleId)` | `z-factory.module-io` v1: module name, type, version, profile; bindings by signal, PLC name, tag name |
 | import | `importModuleIo(db, actor, moduleId, document)` | same type version and profile; PLCs and tags found by name in the factory; replaces the bindings, all or nothing |
+
+| Route | Returns |
+|---|---|
+| `GET /factories/[factoryId]/modules/[moduleId]/export/module-io.json` | the `exportModuleIo` document as a download; 404 for an unknown or foreign module |
 
 Refusals carry a rule in `details.rule`: the mapping rules of docs/process-simulation.md → Bridge (`module-signal-direction`, `module-signal-profile`, `signal-plc-driven`, `signal-address`, `signal-data-type`, `signal-range`, `signal-unit`, `modbus-mapping`, `tag-in-use`), plus `tag-mapped` (`OCCUPIED_ENDPOINT`), `signal-bound`, `signal-unbound`, `module-io-type`, `module-io-profile`, `module-io-tag`, `duplicate-signal`.
 

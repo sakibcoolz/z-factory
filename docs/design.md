@@ -93,7 +93,7 @@ The Consumed PLC I/O Registry shows each logical signal, direction, required/opt
 
 The mapping UI must show only compatible and available PLC endpoints, just like device wiring. Required unmapped signals block runtime start; optional signals do not.
 
-Data for these two sections exists since TASK-605 (`getModuleIoRegistry`: rows with state BOUND / INVALID / UNBOUND and `blocking`, per-direction counts, per-PLC use, `readyToRun`; `listBindableTags`: every tag with its refusal, so the picker can list the free compatible ones and explain the rest). The screen itself is TASK-604.
+Built in TASK-604 (see "Process modules as built" below) on the registry of TASK-605 (`getModuleIoRegistry`: rows with state BOUND / INVALID / UNBOUND and `blocking`, per-direction counts, per-PLC use, `readyToRun`; `listBindableTags`: every tag with its refusal, so the picker lists the free compatible ones and explains the rest). Trends/scenarios have no data yet and no section.
 
 ## PLC-to-PLC communication UX (Phase 07)
 PLC details gains a Communication section with:
@@ -181,8 +181,9 @@ Source: Claude Design project `2fc6a75c-7a5d-4a8c-a17c-17afa2d37f6c`, file `Z-Fa
 | 2p | PLC Export / Print | `/factories/[factoryId]/plcs/[plcId]/export`, `/export/report` (print) |
 | 2q | 3D Factory View | `/factories/[factoryId]/view-3d` (database) |
 | — | External gateways | `/factories/[factoryId]/gateways` (database) |
+| — | Process modules | `/factories/[factoryId]/modules`, per module `/modules/[moduleId]` (database) |
 
-Every screen reads the database: 2a–2c and the factory overview/edit (TASK-103), 2e the device catalog (TASK-301), 2f, 2g, 2h and 2j (TASK-302) together with the PLC connections screen `/factories/[factoryId]/plcs/[plcId]/connections`, 2d (designer) and 2o (topology) (TASK-303), 2p (export) (TASK-304), 2i, 2k and 2n (program, versions, simulator and runtime) (TASK-305), 2l and 2m (live tags and events) (TASK-401), 2q (3D view) (TASK-402), and the device screens (TASK-308). The design fixtures of TASK-104 (`factory_001`, `factory_003`, PLC `dev_001`) were retired in TASK-309; an unknown id returns the not-found screen.
+Every screen reads the database: 2a–2c and the factory overview/edit (TASK-103), 2e the device catalog (TASK-301), 2f, 2g, 2h and 2j (TASK-302) together with the PLC connections screen `/factories/[factoryId]/plcs/[plcId]/connections`, 2d (designer) and 2o (topology) (TASK-303), 2p (export) (TASK-304), 2i, 2k and 2n (program, versions, simulator and runtime) (TASK-305), 2l and 2m (live tags and events) (TASK-401), 2q (3D view) (TASK-402), the device screens (TASK-308), and the process-module screens (TASK-604). The design fixtures of TASK-104 (`factory_001`, `factory_003`, PLC `dev_001`) were retired in TASK-309; an unknown id returns the not-found screen.
 
 ### 3D view as built (TASK-402)
 For a stored factory, `/factories/[factoryId]/view-3d` shows a WebGL scene beside an inspector:
@@ -314,6 +315,15 @@ Differences from wireframes 2f, 2g, 2h and 2j:
 - **Map a tag:** the unmapped tags of the PLC (those PLC logic produces are marked read only), access, an optional name for the gateway.
 - **Connect to a PLC:** PLC, an address of this host from the allowed ones, port (a free one is suggested), unit id, read interval.
 - The page refreshes every 5 seconds while an endpoint is open. Nothing on it writes a PLC tag.
+
+### Process modules as built (TASK-604)
+`/factories/[factoryId]/modules` (list and "New module") and `/factories/[factoryId]/modules/[moduleId]` (the editor), reached from the factory overview. No wireframe exists; they follow the shell's conventions and the device screens.
+
+- **List:** module, type and version, profile, devices in roles, signals bound of consumed, a readiness pill (`ready to run`, or what is missing: issues, required unbound, invalid; `no process model` for a type without one) and the stored state.
+- **New module:** type (the newest version of each installed type), name, location, the type's profiles when it has any, and the type's settings as fields with unit, limits and default. Changing the type changes the fields; nothing process-specific is in the form itself. A refused name or setting is shown under the form; success opens the editor.
+- **Editor sections** (side bar, in the order of the UX above): Overview with four cells (profile, devices in roles, signals bound with required-unbound and invalid counts, process model and whether the bridge runs), settings (name, location, profile, the type's settings) and the module's issues; **Device roles** (role, the categories it takes, the devices in it with a link to each device's screen and Unassign, and a picker of the factory devices of a fitting category not yet in the role, disabled when the role is full); **Consumed PLC I/O** with totals per direction and per PLC, and the registry table: signal, direction and role, type and unit, state pill (`bound`, `invalid` with the reason, `required · unbound` in the fault colour, `optional · unbound`), the binding (PLC, tag, located address, type, scale, Modbus area and address) and the picker: free compatible tags first, every other tag disabled under "not possible" with the rule's reason and who holds it; Bind, or Move and Release for a bound signal; **Interlocks** (list with enable/disable/remove; a form for a one-condition interlock: code, name, severity, the output it blocks, the signal, operator by data type, value with unit); **Runtime** (Start/Stop process bridge for the factory, off until the module is ready or when the service is not configured; while running: quality pill, tick and simulated time, active alarms, and a table of live values per signal from bridge memory, refreshed every 2 s); **Topology** (an SVG of the module between its PLCs, each with the number of signals bound, and the devices in their roles; a required role without a device is drawn empty in the fault colour); **Export** (the `module-io.json` download and the import form, which replaces the bindings all or nothing).
+- **Delete** sits in the side bar's danger zone and asks first; the module's devices and tags stay.
+- Every write goes through the module service or the I/O registry; the screen offers only what they would accept and shows their refusal otherwise.
 
 ### 3D asset status in the catalog (TASK-403)
 A catalog model's screen has a **3D asset** section: a pill with what is rendered and what is going on (`3D v2`, `generic shape`, `… · generating`, `… · generation failed`), a sentence saying whether instances are drawn from a version or as the generic shape of the category, and a table of the stored versions (version, state, source with the provider's task id, date, and a note: the provider's progress, the file size, or why it failed or was retired). In the model tree a model with an asset is marked `3D`, one being generated `3D …`, one whose last generation failed `3D failed`; the status bar counts the models with an asset. The screen has no control that generates, retires or uploads anything: it names the command (`npm run assets`).
