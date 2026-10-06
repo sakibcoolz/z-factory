@@ -209,10 +209,10 @@ Generic models with supply terminals: the power supply (new category `POWER_SUPP
 
 The rules of a wire are in `lib/validation/wiring.ts`; see `docs/design.md` → Pin-to-pin wiring as built.
 
-## Programming and configuration capabilities
+## Programming and configuration capabilities (implemented in TASK-308; see docs/programmable-devices.md → Implementation)
 Programming behavior is model-specific and capability-driven.
 
-Catalog models may declare capabilities such as `PROGRAMMABLE`, `IEC_61131_3`, `SCRIPTABLE`, `PARAMETER_CONFIGURABLE`, `LOCAL_CONTROL`, `MODBUS_CLIENT`, `MODBUS_SERVER`, `DATA_LOGGING` and `REMOTE_IO`.
+Catalog models declare `capabilities` (`PROGRAMMABLE`, `IEC_61131_3`, `SCRIPTABLE`, `PARAMETER_CONFIGURABLE`, `LOCAL_CONTROL`, `REMOTE_CONTROL`, `DATA_LOGGING`, `MODBUS_CLIENT`, `MODBUS_SERVER`, `REMOTE_IO`, `FIRMWARE_DEPLOYABLE`), checked against the model's other facts when the catalog is parsed. The shipped sets are listed in `docs/programmable-devices.md`. A new category `RTU` holds the generic programmable RTU.
 
 Rules:
 - PLCs commonly expose a full program workflow when their simulation/runtime adapter supports it.
