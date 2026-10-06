@@ -1,6 +1,7 @@
 # TASK-801 — Simulation Override Runtime Contract & Go API
 
 Status: **PLANNED**
+Linear: [ZFA-39](https://linear.app/recruit-verse/issue/ZFA-39)
 
 ## Goal
 Create a controlled runtime API for overriding simulated sensor/process inputs without directly modifying PLC outputs.
