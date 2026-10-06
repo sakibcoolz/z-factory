@@ -149,6 +149,19 @@ Z-Factory Thin Client Agent (Go)
 
 The edge/cloud layer never replaces PLC logic. Remote commands are communication inputs; PLC logic and interlocks make the final control decision.
 
+## Phase 09 execution tasks
+
+| Task | Status | Scope |
+|---|---|---|
+| TASK-901 Web Factory TypeScript Cloud Foundation & Identity Model | TODO | Cloud app bootstrap, auth/RBAC, tenant/site/agent/PLC identity, PostgreSQL foundation, server-only MQTT boundary |
+| TASK-902 MQTT Broker Integration, Agent Onboarding & Connectivity | TODO | Secure MQTT, agent registration, topic isolation, heartbeat/last-seen and connectivity state |
+| TASK-903 Telemetry Ingestion, Cloud Persistence & Latest-State Projection | TODO | Telemetry/event/alarm ingestion, idempotency, durable history, latest-state and quality projection |
+| TASK-904 Web Factory Live Monitoring, Dashboards, Events & Alarms | TODO | Site/agent/PLC/module UI, live values, charts, alarms/events, stale/offline visibility |
+| TASK-905 Remote Command/Setpoint Lifecycle, Authorization & Audit | TODO | Authorized command UI, MQTT downlink, allow-list validation, idempotency, ACK lifecycle and audit |
+| TASK-906 Production Edge Deployment, Resilience, Security & Physical E2E | TODO | Real edge deployment, dynamic multi-PLC load, offline spool/replay, security and failure/recovery E2E |
+
+TASK-503 remains the source-of-truth design/build dependency for the Go Z-Factory Thin Client Agent.
+
 ## Exit criteria
 
 MVP 2 Phase 09 is complete when:
@@ -163,7 +176,3 @@ MVP 2 Phase 09 is complete when:
 - physical multi-PLC and failure/recovery E2E tests pass;
 - observability demonstrates worker, MQTT, queue and spool health;
 - PLC-local output authority defined by ADR-0015 remains intact.
-
-## Task planning
-
-Detailed Phase 09 execution tasks will be created as separate `TASK-9xx` documents before implementation starts. Phase 05 TASK-503 remains the source-of-truth design/build task for the Thin Client Agent and is a primary dependency of this MVP 2 phase.
