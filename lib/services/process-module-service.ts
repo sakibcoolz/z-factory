@@ -318,6 +318,16 @@ export async function updateModule(
         );
       }
     }
+    const orphan = record.mappings.find(
+      (mapping) => !signals.some((signal) => signal.key === mapping.moduleSignalDefinition.key),
+    );
+    if (orphan) {
+      throw new DomainError(
+        "CONFLICT",
+        `${orphan.moduleSignalDefinition.key} is bound to tag ${orphan.tag.name}, and the profile ${profile} does not have it. Release it first.`,
+        { rule: "module-profile-in-use", signalKey: orphan.moduleSignalDefinition.key },
+      );
+    }
   }
 
   await processModuleRepository.updateModule(db, record.id, {
