@@ -1,6 +1,7 @@
 # TASK-803 — PLC Output → Simulator Command Bridge
 
 Status: **PLANNED**
+Linear: [ZFA-41](https://linear.app/recruit-verse/issue/ZFA-41)
 
 ## Goal
 Make PLC-program-generated outputs drive the correct simulated actuator/device commands while preserving the PLC as control authority.
