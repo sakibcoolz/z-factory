@@ -127,6 +127,29 @@ PLC, RTU, drive and controller screens are not hard-coded from category names. T
 
 The program/configuration layer consumes TASK-307 canonical wiring and must not create a competing mapping source.
 
+## PLC I/O authority boundary
+ADR-0015 defines the control boundary.
+
+```text
+LOCAL PHYSICAL TARGET
+Field input -> PLC input image -> PLC program -> PLC output image -> field output
+
+VIRTUAL SIMULATION
+Simulator input -> simulation bridge -> PLC input image/memory -> PLC program
+PLC output image -> simulator/device model -> feedback -> PLC input image/memory
+
+REMOTE COMMAND
+Gateway/UI -> command/setpoint tag -> PLC program -> PLC output image -> device
+```
+
+Rules:
+- The PLC scan cycle owns local output state.
+- Modbus is not the default mechanism for driving a PLC's own physical output pin.
+- Runtime REST API manages the runtime/program; it does not drive field I/O.
+- External writes are limited to explicit command/setpoint/communication tags.
+- Physical I/O mapping is target-adapter-specific and separate from logical program/wiring.
+- Modbus remains valid where the actual industrial topology uses Modbus remote I/O or Modbus-capable devices.
+
 ## Control authority
 PLC runtime is the control authority.
 
