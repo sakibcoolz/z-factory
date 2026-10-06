@@ -30,7 +30,6 @@ jobs:
       DATABASE_URL: postgresql://zfactory:zfactory@localhost:5432/zfactory_test
       TEST_DATABASE_URL: postgresql://zfactory:zfactory@localhost:5432/zfactory_test
       TEST_DOCKER: "1"
-      PROCESS_SIM_BIN: ${{ runner.temp }}/process-sim
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -52,5 +51,8 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run db:deploy
+      # The runner context is not available in the job's env, so the harness binary is named here.
       - run: npm test
+        env:
+          PROCESS_SIM_BIN: ${{ runner.temp }}/process-sim
       - run: npm run build
