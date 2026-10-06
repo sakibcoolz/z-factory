@@ -344,3 +344,11 @@ A catalog model's screen has a **3D asset** section: a pill with what is rendere
 
 ### Activity bar
 FAC factories · CAT catalog · DSN designer (also PLC, topology, 3D, device configuration) · RUN runtime and simulator · TAG live tags · EVT events · EXP PLC export. Factory-scoped activities are disabled until a factory is open.
+
+
+## Simulation test controls (Phase 08)
+Simulator/debug UI will expose AUTO / MANUAL_OVERRIDE / SCENARIO for supported simulation inputs.
+
+An input row shows effective value, unit, source mode, override action, clear action and validation state. PLC outputs remain read-only in this test surface. The screen makes it explicit that an overridden input can cause the PLC program to change outputs.
+
+Closed-loop views must show command/setpoint separately from actual feedback.
