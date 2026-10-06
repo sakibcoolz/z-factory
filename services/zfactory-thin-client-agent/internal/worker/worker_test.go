@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sakibcoolz/z-factory/services/zfactory-thin-client-agent/internal/command"
 	"github.com/sakibcoolz/z-factory/services/zfactory-thin-client-agent/internal/config"
 	"github.com/sakibcoolz/z-factory/services/zfactory-thin-client-agent/internal/modbustest"
 	"github.com/sakibcoolz/z-factory/services/zfactory-thin-client-agent/internal/telemetry"
@@ -192,5 +193,87 @@ func TestASlowPLCDelaysOnlyItsOwnWorker(t *testing.T) {
 	}
 	if slowSink.count() > fastSink.count()/2 {
 		t.Fatalf("slow %d, fast %d", slowSink.count(), fastSink.count())
+	}
+}
+
+func TestWritesACheckedCommandAndReadsItBack(t *testing.T) {
+	server, err := modbustest.Start()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer server.Close()
+	d := deployment(t, "plc-1", server)
+	w := worker.New(d, worker.Options{})
+	speed, _ := d.Mapping("m-speed")
+	start, _ := d.Mapping("m-start")
+
+	results := make(chan worker.Result, 4)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { w.Run(ctx); close(done) }()
+	eventually(t, "online", func() bool { return w.Snapshot(false).State == worker.Online })
+
+	if err := w.Submit(command.Write{CommandID: "a", Mapping: speed, Words: []uint16{425}, Value: 42.5}, func(r worker.Result) { results <- r }); err != nil {
+		t.Fatal(err)
+	}
+	if r := <-results; r.Status != command.Applied || r.Observed != 42.5 {
+		t.Fatalf("speed: %+v", r)
+	}
+	if err := w.Submit(command.Write{CommandID: "b", Mapping: start, Bool: true, Value: true}, func(r worker.Result) { results <- r }); err != nil {
+		t.Fatal(err)
+	}
+	if r := <-results; r.Status != command.Applied || r.Observed != true {
+		t.Fatalf("start: %+v", r)
+	}
+	if got := server.Writes(); len(got) != 2 || got[0] != "registers 100=[425]" || got[1] != "coil 800=true" {
+		t.Fatalf("writes: %v", got)
+	}
+
+	// A refused write fails without breaking the connection.
+	server.Refuse(0x10, true)
+	_ = w.Submit(command.Write{CommandID: "c", Mapping: speed, Words: []uint16{1}}, func(r worker.Result) { results <- r })
+	if r := <-results; r.Status != command.Failed || r.Rule != "plc-refused" {
+		t.Fatalf("refused: %+v", r)
+	}
+	cancel()
+	<-done
+	// After the worker stopped a waiting command fails, unwritten.
+	_ = w.Submit(command.Write{CommandID: "d", Mapping: speed, Words: []uint16{1}}, func(r worker.Result) { results <- r })
+	select {
+	case r := <-results:
+		t.Fatalf("nothing runs after stop: %+v", r)
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+func TestRefusesCommandsWhileThePLCIsAwayOrBusy(t *testing.T) {
+	server, err := modbustest.Start()
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := deployment(t, "plc-1", server)
+	server.Close()
+	w := worker.New(d, worker.Options{BackoffMin: 20 * time.Millisecond, BackoffMax: 40 * time.Millisecond})
+	speed, _ := d.Mapping("m-speed")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go w.Run(ctx)
+	eventually(t, "the PLC to be missing", func() bool { return w.Snapshot(false).Failures > 0 })
+	results := make(chan worker.Result, 1)
+	_ = w.Submit(command.Write{CommandID: "a", Mapping: speed, Words: []uint16{1}}, func(r worker.Result) { results <- r })
+	if r := <-results; r.Status != command.Failed || r.Rule != "plc-not-connected" {
+		t.Fatalf("away: %+v", r)
+	}
+
+	// A worker that is not running takes at most its queue, then refuses.
+	idle := worker.New(d, worker.Options{})
+	busy := 0
+	for range 20 {
+		if err := idle.Submit(command.Write{Mapping: speed}, func(worker.Result) {}); err != nil {
+			busy++
+		}
+	}
+	if busy != 4 {
+		t.Fatalf("bounded command queue: %d refused", busy)
 	}
 }

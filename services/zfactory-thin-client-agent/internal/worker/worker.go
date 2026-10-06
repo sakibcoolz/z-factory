@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/sakibcoolz/z-factory/services/zfactory-thin-client-agent/internal/codec"
+	"github.com/sakibcoolz/z-factory/services/zfactory-thin-client-agent/internal/command"
 	"github.com/sakibcoolz/z-factory/services/zfactory-thin-client-agent/internal/config"
 	"github.com/sakibcoolz/z-factory/services/zfactory-thin-client-agent/internal/modbus"
 	"github.com/sakibcoolz/z-factory/services/zfactory-thin-client-agent/internal/telemetry"
@@ -125,6 +126,8 @@ type Worker struct {
 	io     sync.Mutex
 	client Client
 
+	commands chan job
+
 	mu         sync.Mutex
 	state      string
 	values     map[string]telemetry.Value
@@ -151,7 +154,94 @@ func New(deployment *config.Deployment, options Options) *Worker {
 		poll:       time.Duration(deployment.Connection.PollIntervalMs) * time.Millisecond,
 		state:      Disconnected,
 		values:     values,
+		commands:   make(chan job, commandQueue),
 	}
+}
+
+// commandQueue bounds the commands waiting for one PLC; more are refused as busy.
+const commandQueue = 16
+
+// Result is the outcome of a command write.
+type Result struct {
+	Status   string
+	Rule     string
+	Reason   string
+	Observed any
+}
+
+type job struct {
+	write command.Write
+	done  func(Result)
+}
+
+// Submit queues a checked command for this PLC without waiting; done is called once with
+// the outcome. It returns command.ErrBusy when the PLC already has too many waiting.
+func (w *Worker) Submit(write command.Write, done func(Result)) error {
+	select {
+	case w.commands <- job{write: write, done: done}:
+		return nil
+	default:
+		return command.ErrBusy
+	}
+}
+
+// commandLoop writes queued commands between polls; it ends with ctx. Commands still
+// waiting then fail: nothing is written after the worker stopped.
+func (w *Worker) commandLoop(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			for {
+				select {
+				case next := <-w.commands:
+					next.done(Result{Status: command.Failed, Rule: "plc-worker-stopped", Reason: "the PLC worker stopped before the write"})
+				default:
+					return
+				}
+			}
+		case next := <-w.commands:
+			next.done(w.execute(ctx, next.write))
+		}
+	}
+}
+
+// execute writes one command tag and reads it back. The PLC program decides what follows;
+// its feedback arrives with the next polls.
+func (w *Worker) execute(ctx context.Context, write command.Write) Result {
+	w.mu.Lock()
+	state := w.state
+	w.mu.Unlock()
+	if state != Online && state != Degraded {
+		return Result{Status: command.Failed, Rule: "plc-not-connected", Reason: "the PLC is " + state}
+	}
+	m := write.Mapping
+	w.io.Lock()
+	defer w.io.Unlock()
+	var observed any
+	var err error
+	if codec.IsBool(m.DataType) {
+		if err = w.client.WriteCoil(ctx, m.Address, write.Bool); err == nil {
+			var bits []bool
+			if bits, err = w.client.ReadBits(ctx, "COIL", m.Address, 1); err == nil {
+				observed = bits[0]
+			}
+		}
+	} else if err = w.client.WriteRegisters(ctx, m.Address, write.Words); err == nil {
+		var words []uint16
+		if words, err = w.client.ReadRegisters(ctx, "HOLDING_REGISTER", m.Address, m.WordCount); err == nil {
+			observed, err = codec.Decode(words, m.Encoding())
+		}
+	}
+	if err != nil {
+		w.fail(err)
+		if modbus.IsException(err) {
+			return Result{Status: command.Failed, Rule: "plc-refused", Reason: err.Error()}
+		}
+		// The connection is in an unknown state; the poll loop reconnects.
+		_ = w.client.Close()
+		return Result{Status: command.Failed, Rule: "plc-write-failed", Reason: err.Error()}
+	}
+	return Result{Status: command.Applied, Observed: observed}
 }
 
 // Deployment returns what the worker runs.
@@ -214,6 +304,12 @@ func (w *Worker) Run(ctx context.Context) {
 		w.degrade(w.deployment.Mappings, telemetry.Disconnected)
 	}()
 	log := w.options.Logger.With("plcId", w.deployment.PLCID, "plc", w.deployment.PLC.Name)
+	// The command writer lives exactly as long as this run, also when the run panics.
+	commandCtx, stopCommands := context.WithCancel(ctx)
+	var commands sync.WaitGroup
+	commands.Go(func() { w.commandLoop(commandCtx) })
+	defer commands.Wait()
+	defer stopCommands()
 
 	attempt := 0
 	for ctx.Err() == nil {

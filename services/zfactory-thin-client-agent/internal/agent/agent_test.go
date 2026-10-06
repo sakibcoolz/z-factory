@@ -217,9 +217,9 @@ func TestManyPLCsStayBounded(t *testing.T) {
 	eventually(t, fmt.Sprintf("%d workers online", n), func() bool { return online(a) == n })
 	time.Sleep(time.Second)
 	status := a.Status()
-	// One goroutine per worker in the agent, one per connection in the fake PLCs, and a
-	// fixed few: nothing grows with polls.
-	if goroutines := runtime.NumGoroutine() - baseline; goroutines > 2*n+20 {
+	// Two goroutines per worker in the agent (polling, command writes), one per connection
+	// in the fake PLCs, and a fixed few: nothing grows with polls.
+	if goroutines := runtime.NumGoroutine() - baseline; goroutines > 3*n+20 {
 		t.Fatalf("%d goroutines for %d PLCs", goroutines, n)
 	}
 	if status.Queue.Depth > status.Queue.Capacity {

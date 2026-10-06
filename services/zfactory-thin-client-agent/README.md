@@ -29,7 +29,15 @@ name and rename it to `plc-<name>.json`. Remove it from `active/` to stop that P
 | `-max-concurrent-polls` | `ZFACTORY_AGENT_MAX_CONCURRENT_POLLS` | `64` |
 | `-queue` | `ZFACTORY_AGENT_QUEUE` | `10000` |
 
+MQTT (optional): `-mqtt-url` / `ZFACTORY_AGENT_MQTT_URL` with `-site-id` and `-agent-id`;
+credentials by `-mqtt-username` and `-mqtt-password-file`, TLS by `-mqtt-ca-file`,
+`-mqtt-cert-file`, `-mqtt-key-file`. Topics and the command contract are in
+`docs/thin-client-agent.md` → MQTT. The MQTT tests need Docker:
+
+```sh
+ZFACTORY_AGENT_DOCKER=1 go test -race ./internal/uplink   # runs eclipse-mosquitto:2
+```
+
 Health: `GET /healthz`, `/v1/status`, `/v1/plcs/{plcId}`, `/metrics`.
 
-systemd: `packaging/zfactory-agent.service`. The MQTT uplink and command downlink are
-TASK-503b; the offline spool is TASK-503c.
+systemd: `packaging/zfactory-agent.service`. The offline spool is TASK-503c.

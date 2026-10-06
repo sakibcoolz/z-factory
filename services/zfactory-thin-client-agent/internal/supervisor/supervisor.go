@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/sakibcoolz/z-factory/services/zfactory-thin-client-agent/internal/command"
 	"github.com/sakibcoolz/z-factory/services/zfactory-thin-client-agent/internal/config"
 	"github.com/sakibcoolz/z-factory/services/zfactory-thin-client-agent/internal/worker"
 )
@@ -20,11 +21,17 @@ import (
 // Panics in a row after which a worker is reported degraded.
 const degradeAfterPanics = 3
 
+// Commander takes checked commands for one PLC; *worker.Worker implements it.
+type Commander interface {
+	Deployment() *config.Deployment
+	Submit(write command.Write, done func(worker.Result)) error
+}
+
 // Runner is what the supervisor runs; *worker.Worker implements it.
 type Runner interface {
+	Commander
 	Run(ctx context.Context)
 	Snapshot(withValues bool) worker.Snapshot
-	Deployment() *config.Deployment
 }
 
 type entry struct {
@@ -185,6 +192,17 @@ func (s *Supervisor) Status(plcID string) (Status, bool) {
 		return Status{}, false
 	}
 	return e.status(true), true
+}
+
+// Commander returns the worker of a PLC, to route a command to it.
+func (s *Supervisor) Commander(plcID string) (Commander, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	e, ok := s.entries[plcID]
+	if !ok {
+		return nil, false
+	}
+	return e.runner, true
 }
 
 // Counts returns how many workers run and how many were started and stopped so far.

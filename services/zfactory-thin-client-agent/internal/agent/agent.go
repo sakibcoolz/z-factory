@@ -17,6 +17,7 @@ import (
 	"github.com/sakibcoolz/z-factory/services/zfactory-thin-client-agent/internal/health"
 	"github.com/sakibcoolz/z-factory/services/zfactory-thin-client-agent/internal/supervisor"
 	"github.com/sakibcoolz/z-factory/services/zfactory-thin-client-agent/internal/telemetry"
+	"github.com/sakibcoolz/z-factory/services/zfactory-thin-client-agent/internal/uplink"
 	"github.com/sakibcoolz/z-factory/services/zfactory-thin-client-agent/internal/worker"
 )
 
@@ -35,6 +36,8 @@ type Settings struct {
 	Logger             *slog.Logger
 	// NewClient replaces the Modbus client (tests).
 	NewClient func(config.Connection) worker.Client
+	// Uplink connects to the cloud over MQTT; nil runs the agent without one.
+	Uplink *uplink.Settings
 }
 
 func (s *Settings) defaults() {
@@ -70,6 +73,7 @@ type Agent struct {
 	store      *deploy.Store
 	supervisor *supervisor.Supervisor
 	queue      *telemetry.Queue
+	uplink     *uplink.Uplink
 	listener   net.Listener
 	server     *http.Server
 	startedAt  time.Time
@@ -118,6 +122,16 @@ func Start(ctx context.Context, settings Settings) (*Agent, error) {
 	a.supervisor = supervisor.New(runCtx, func(d *config.Deployment) supervisor.Runner {
 		return worker.New(d, options)
 	}, settings.Logger, time.Second)
+	if settings.Uplink != nil {
+		uplinkSettings := *settings.Uplink
+		uplinkSettings.Version = settings.Version
+		a.uplink, err = uplink.Start(runCtx, uplinkSettings, a.queue, a.supervisor, settings.Logger)
+		if err != nil {
+			cancel()
+			_ = listener.Close()
+			return nil, err
+		}
+	}
 	a.server = &http.Server{
 		Handler: health.Handler(health.Source{
 			Version:    settings.Version,
@@ -125,24 +139,17 @@ func Start(ctx context.Context, settings Settings) (*Agent, error) {
 			Store:      store,
 			Supervisor: a.supervisor,
 			Queue:      a.queue,
-			Uplink: func() map[string]any {
-				return map[string]any{"configured": false, "discardedBatches": a.discarded.Load()}
-			},
+			Uplink:     a.uplinkStatus,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	go func() { _ = a.server.Serve(listener) }()
 
 	var loops sync.WaitGroup
-	loops.Add(2)
-	go func() {
-		defer loops.Done()
-		a.scanLoop(runCtx)
-	}()
-	go func() {
-		defer loops.Done()
-		a.drain(runCtx)
-	}()
+	loops.Go(func() { a.scanLoop(runCtx) })
+	if a.uplink == nil {
+		loops.Go(func() { a.drain(runCtx) })
+	}
 	go func() {
 		loops.Wait()
 		close(a.done)
@@ -183,8 +190,8 @@ func (a *Agent) scanLoop(ctx context.Context) {
 	}
 }
 
-// drain takes telemetry off the queue. Until an uplink is configured (TASK-503b) it is
-// counted and dropped, so the queue shows real backpressure only when there is a consumer.
+// drain takes telemetry off the queue when no uplink is configured: it is counted and
+// dropped, so the queue shows real backpressure only when there is a consumer.
 func (a *Agent) drain(ctx context.Context) {
 	for {
 		if _, ok := a.queue.Pop(ctx); !ok {
@@ -194,10 +201,18 @@ func (a *Agent) drain(ctx context.Context) {
 	}
 }
 
+func (a *Agent) uplinkStatus() map[string]any {
+	if a.uplink != nil {
+		return a.uplink.Status()
+	}
+	return map[string]any{"configured": false, "discardedBatches": a.discarded.Load()}
+}
+
 // Status returns what /v1/status shows.
 func (a *Agent) Status() health.AgentStatus {
 	return health.Source{
 		Version: a.settings.Version, StartedAt: a.startedAt, Store: a.store, Supervisor: a.supervisor, Queue: a.queue,
+		Uplink: a.uplinkStatus,
 	}.Status()
 }
 
@@ -209,6 +224,9 @@ func (a *Agent) Stop() error {
 		ctx, cancel := context.WithTimeout(context.Background(), a.settings.ShutdownTimeout)
 		defer cancel()
 		a.stopErr = errors.Join(a.supervisor.Shutdown(ctx), a.server.Shutdown(ctx))
+		if a.uplink != nil {
+			a.uplink.Stop()
+		}
 		a.settings.Logger.Info("agent stopped")
 	})
 	return a.stopErr
