@@ -391,6 +391,14 @@ Rules:
 - production secrets are not exported as plaintext JSON
 - `scripts/edge-client.mjs` remains a test/reference client; TASK-503 provides the deployable Go agent
 
+As built (TASK-503a, ADR-0017): `services/zfactory-thin-client-agent/` (binary `zfactory-agent`) and the per-PLC export `GET /factories/{factory}/plcs/{plc}/edge.json` (`exportEdgeDeployment`). Done so far:
+- checksummed deployment files with a staging/active/rejected lifecycle and hot reload by PLC;
+- one supervised Modbus worker per PLC, with a global poll limit and backoff;
+- a bounded telemetry queue;
+- a local health, status and metrics endpoint.
+
+The MQTT uplink and command downlink (503b) and the spool (503c) follow. Details: `docs/thin-client-agent.md`.
+
 
 ## Web Factory cloud application — Phase 09 / MVP 2
 

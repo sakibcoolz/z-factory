@@ -67,6 +67,22 @@ As built (TASK-804):
   - CHANGED and CLEARED events carrying the run;
   - a refused override of a command recorded as `PROCESS_OVERRIDE_REJECTED`, failing the run and leaving AUTO.
 
+## Thin Client Agent (TASK-503)
+As built (TASK-503a). `services/zfactory-thin-client-agent` runs `go test -race ./...`, with an in-memory Modbus server standing in for PLCs:
+- **Codec:** values and orders match Z-Factory's codec, and ranges are refused.
+- **Config:** every refusal rule; a checksum that verifies for compact and pretty files and fails for changed or truncated ones.
+- **Store:** promotion, update and removal by PLC; malformed, changed, duplicate, stale and reused-version files refused in isolation; temporary and too-fresh files never read; last-known-good when an active file breaks; duplicate active files ignored.
+- **Worker:** typed reads in few requests and no writes; a refused range marked BAD and DEGRADED; reconnect with backoff; a slow PLC holding up only itself.
+- **Supervisor:** targeted replace and stop; panic isolation, degraded after three panics.
+- **Agent:** 0/N workers; health, status, values and metrics; one PLC lost while the others keep polling; update, refusal and removal without a restart; no goroutine left after stop; and `TestManyPLCsStayBounded`, which takes `ZFACTORY_AGENT_LOAD_N`.
+
+`test/integration/edge-agent.test.ts` checks the export rules against PostgreSQL. With `TEST_DOCKER=1 AGENT_BIN=…`, the built agent runs from an exported file against a real OpenPLC runtime:
+- it reads the values Z-Factory reads;
+- it refuses a tampered file with `checksum`;
+- it reloads a new configuration version.
+
+CI builds the agent and passes `AGENT_BIN`.
+
 ## PLC-to-PLC communication (Phase 07)
 As built (TASK-701): `lib/domain/plc-communication.test.ts` covers the link rules (self, factory, controller, server capability by client end), the service name and the snapshot. `test/integration/plc-communication.test.ts` (PostgreSQL) creates links between catalog PLCs and an RTU, refuses self, cross-factory, non-controller, duplicate and out-of-range inputs, versions every change with the server's name following the roles, exports the link by names and in both PLCs' engineering exports, hides another owner's links, keeps the history after removal and removes the link with its PLC.
 

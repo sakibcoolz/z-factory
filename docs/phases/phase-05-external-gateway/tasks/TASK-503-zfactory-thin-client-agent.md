@@ -1,6 +1,7 @@
 # TASK-503 — Z-Factory Thin Client Agent: File-Driven Dynamic PLC Connectivity, Concurrency & MQTT Cloud Uplink
 
-Status: **TODO**
+Status: **IN PROGRESS** (503a done; 503b, 503c follow)
+Linear: [ZFA-43](https://linear.app/recruit-verse/issue/ZFA-43)
 
 Phase: **05 — External Gateway MVP**
 
@@ -300,3 +301,44 @@ The service runs independently from Next.js and imports no application TypeScrip
 - a central database inside the edge agent
 - automatically trusting arbitrary network-discovered devices
 - vendor-specific discovery beyond future adapters
+
+## Delivery (approved 2026-10-07)
+TASK-503 is delivered in three pull requests. The owner approved the dependencies `github.com/eclipse/paho.mqtt.golang` (MQTT) and `go.etcd.io/bbolt` (spool); the Modbus client is in-house (ADR-0017).
+
+| Slice | Scope | Status |
+|---|---|---|
+| 503a | Z-Factory edge-deployment export; agent core: file validation and lifecycle, hot reload, supervised workers, Modbus polling, bounded queue, health/metrics, systemd unit | DONE |
+| 503b | MQTT uplink (telemetry, state, heartbeat; shared bounded publisher pool) and command downlink (allow-list, validation, idempotency, acks) | TODO |
+| 503c | Offline spool with restart recovery and controlled replay; full E2E exported JSON → agent → Modbus → MQTT → command → PLC logic → feedback → ack | TODO |
+
+## As built (503a)
+Design and file format: `docs/thin-client-agent.md`; decision: `docs/adr/0017-thin-client-agent.md`.
+
+**Z-Factory side.**
+- `exportEdgeDeployment` and `GET /factories/{factory}/plcs/{plc}/edge.json`, also linked from the PLC's Export screen.
+- One checksummed file per PLC, with every mapped tag readable and only command and setpoint tags writable.
+
+**Agent, `services/zfactory-thin-client-agent/`:**
+- `config`: strict parsing, checksum, every validation rule;
+- `deploy`: staging/active/rejected lifecycle, atomic promotion, last-known-good, refusals with reasons;
+- `modbus`: an in-house client;
+- `codec`: mirrors Z-Factory's codec;
+- `worker`: polls in few requests, owns its states, backoff with jitter, BAD/DISCONNECTED/STALE quality;
+- `supervisor`: reconciles by PLC id, panic isolation;
+- `telemetry`: a bounded drop-oldest queue;
+- `health`: `/healthz`, `/v1/status`, `/v1/plcs/{id}`, `/metrics`;
+- `cmd/zfactory-agent`, plus `packaging/zfactory-agent.service`.
+
+Tests 1–8, 17, 18 and 19 of the list above are covered; 503b and 503c cover the rest.
+
+## Evidence (503a)
+- `go test -race ./...` passes: codec, config, deploy, worker, supervisor and agent.
+- `ZFACTORY_AGENT_LOAD_N=1000`: 1000 PLC workers online, 2010 goroutines including the fake PLCs' connections, 17 MiB heap, queue within capacity and nothing dropped.
+- `test/integration/edge-agent.test.ts`:
+  - Export rules against PostgreSQL: writable only `Start_Cmd` and `Speed_SP`; a valid checksum; no endpoint refused; a bad host refused; another owner gets 404.
+  - With a real OpenPLC runtime and the built agent:
+    - the agent reads `Start_Cmd`, `Speed_SP`, `Running`, `Speed_Ref` and `Run_Hours` equal to Z-Factory's reads;
+    - a file changed after export (a version bump and a READ turned WRITE) is refused with `checksum`;
+    - a new tag gives a new version that the agent reloads without a restart;
+    - nothing is written through the agent.
+- The Next.js checks (prettier, lint, `tsc`, build, full suite) are listed in the report.
