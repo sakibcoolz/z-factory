@@ -46,6 +46,7 @@ This file is mandatory reading for Claude Code, GitHub Copilot, OpenAI Codex, an
 - Factory devices are instances created from reusable catalog models. Instance names must be unique within the factory.
 - Device connections must reference valid PLC channels, tags, Modbus addresses, or device relationships and must reject incompatible wiring.
 - PLC logic remains the control authority. External gateways write PLC command/setpoint tags; they must not directly mutate motor/pump/VFD simulator state.
+- PLC scan-cycle owns local outputs (ADR-0015). Do not model normal local PLC output control as a Modbus write from Z-Factory. Modbus may transport commands/setpoints, simulator input/feedback, remote-I/O traffic or device communications; physical local I/O is driven by the target PLC runtime/hardware adapter.
 - Command/setpoint tags are distinct from feedback/status/alarm tags.
 - Live runtime state is not sourced from PostgreSQL. Runtime memory/simulator state is authoritative for live values; PostgreSQL stores configuration, important current state, commands, events, alarms, audit history, and selected/downsampled telemetry.
 - VFD simulation uses one generic simulator engine with factory-specific VFD instances unless an ADR changes the runtime model. MVP relation: one VFD -> one primary motor.
