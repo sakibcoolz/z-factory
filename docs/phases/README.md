@@ -11,6 +11,7 @@
 | 06 | Process Module Framework & Go Simulation Service | IN PROGRESS | Phase 02–05 foundations stable; ADR-0008 |
 | 07 | PLC-to-PLC Communication | PLANNED | Multi-PLC OpenPLC runtime + Modbus mapping stable |
 | 08 | Simulation Control, Overrides & Closed-Loop Testing | PLANNED | Go simulation + PLC bridge stable; ADR-0015 |
+| 09 | MVP 2 — Production Edge & Cloud Integration | PLANNED | Thin Client Agent + closed-loop test foundations ready |
 
 Cross-cutting requirements now included in the roadmap:
 - PostgreSQL + Prisma domain model
@@ -49,5 +50,7 @@ Phase 08 execution units:
 - TASK-802 Simulation override UI & operator controls
 - TASK-803 PLC output -> simulator command bridge
 - TASK-804 Closed-loop scenarios, events & E2E validation
+
+Phase 09 is the **MVP 2** delivery boundary for production edge and cloud integration. Detailed TASK-9xx execution units will be added before implementation starts. Its primary dependency is TASK-503 (Z-Factory Thin Client Agent), plus the Phase 08 closed-loop validation foundation.
 
 A phase can start only when prerequisites are met. Individual task files are the execution unit.
