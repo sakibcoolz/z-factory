@@ -34,4 +34,6 @@ Relevant tests pass locally/CI; new behavior has tests; failures and evidence ar
 ## Process simulation (Phase 06+)
 Advanced process models require deterministic tests with fixed configuration, initial state, command sequence and time steps. Cover model bounds, repeatability, PLC command/feedback mapping, scaling/data types, disconnect/stale quality, and integration with OpenPLC.
 
+As built (TASK-602): the service's own tests (`go test -race ./...` in `services/process-sim`) cover the model contract, repeatability (the same configuration and steps give byte-equal outputs and state), the dynamics and bounds of each model, the lifecycle (load, start, step, stop, continue, reset, unload, shutdown) and the HTTP API with its authentication and refusals. `test/integration/process-sim.test.ts` starts the built binary (`PROCESS_SIM_BIN`), drives it through the server's client, and restarts it to prove the service starts empty. PLC command/feedback mapping, scaling, quality and OpenPLC integration are TASK-603.
+
 Boiler Phase 07 tests must verify multi-zone temperature evolution and control-loop behavior without treating the model as thermodynamic or safety certification.

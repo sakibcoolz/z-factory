@@ -20,5 +20,25 @@ services:
       timeout: 3s
       retries: 30
 
+  # The process simulation service (ADR-0008, TASK-602): one container for every factory,
+  # bound to localhost, with the limits an internal runtime component gets. Started on
+  # request: `docker compose --profile sim up -d process-sim`, with PROCESS_SIM_TOKEN set.
+  process-sim:
+    profiles: ["sim"]
+    build: ./services/process-sim
+    environment:
+      PROCESS_SIM_TOKEN: ${PROCESS_SIM_TOKEN:?set PROCESS_SIM_TOKEN to a secret of at least 16 characters}
+      PROCESS_SIM_MAX_INSTANCES: ${PROCESS_SIM_MAX_INSTANCES:-256}
+    ports:
+      - "127.0.0.1:${PROCESS_SIM_PORT:-7700}:7700"
+    cpus: 1
+    mem_limit: 256m
+    pids_limit: 128
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
 volumes:
   postgres-data:

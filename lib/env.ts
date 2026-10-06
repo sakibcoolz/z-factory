@@ -56,6 +56,16 @@ const serverEnvSchema = z.object({
     .string()
     .regex(/^\S{16,200}$/, "use the key as Meshy shows it, without spaces")
     .optional(),
+  /**
+   * The process simulation service (ADR-0008, TASK-602): where it listens and the token it
+   * expects. Both optional: without them the application runs without process simulation.
+   * Only the server talks to the service; the token never reaches a browser.
+   */
+  PROCESS_SIM_URL: z
+    .url()
+    .regex(/^https?:\/\//, "use an http(s) address")
+    .optional(),
+  PROCESS_SIM_TOKEN: z.string().min(16, "use at least 16 characters").optional(),
   /** How often the tags of a running PLC are read for live values, in milliseconds. */
   TAG_POLL_MS: z.coerce.number().int().min(100).max(60_000).default(500),
   /** Telemetry: a tag is stored at most this often, in milliseconds. */
