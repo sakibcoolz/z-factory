@@ -380,3 +380,45 @@ Rules:
 - hot add/update/remove reconciles only affected workers
 - production secrets are not exported as plaintext JSON
 - `scripts/edge-client.mjs` remains a test/reference client; TASK-503 provides the deployable Go agent
+
+
+## Web Factory cloud application — Phase 09 / MVP 2
+
+**Web Factory** is the cloud-hosted TypeScript application that receives and presents the data produced by Z-Factory Thin Client Agents.
+
+```text
+PLCs
+  |
+  | Modbus / supported industrial protocols
+  v
+Z-Factory Thin Client Agent (Go)
+  |
+  | secure MQTT
+  v
+MQTT Broker
+  |
+  v
+Web Factory (TypeScript / Next.js / Node.js)
+  |-- server-side MQTT consumers
+  |-- telemetry/state/event ingestion
+  |-- cloud persistence
+  |-- latest-state projection
+  |-- dashboards / live UI
+  |-- auth / authorization
+  |-- command validation + audit
+  |-- server-side MQTT publisher
+  |
+  | command topic
+  v
+MQTT Broker -> Thin Client Agent -> allowed command/setpoint -> PLC logic
+```
+
+Rules:
+- Web Factory is a separate cloud application from the edge Go agent.
+- MQTT is server-to-server/agent transport; production browser clients do not receive broker credentials.
+- Thin Client telemetry, PLC state and agent heartbeat are consumed by Web Factory server-side.
+- Web Factory owns cloud persistence/history and user-facing monitoring views.
+- Web Factory may publish only authorized command/setpoint requests; the Thin Client independently re-validates the exported allow-list before Modbus write.
+- Command lifecycle is auditable through command ids and acknowledgements.
+- Browser/UI never connects directly to PLC Modbus endpoints.
+- PLC scan-cycle logic/interlocks remain the final authority for local outputs.
