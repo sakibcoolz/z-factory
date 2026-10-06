@@ -34,9 +34,10 @@ has no Z-Factory database.
 4. **Local observability only.** A read-only HTTP endpoint on 127.0.0.1 serves health,
    status, per-PLC values and Prometheus metrics.
 5. **Dependencies.** The Modbus TCP client is in-house, like the TypeScript one. MQTT
-   (TASK-503b) uses `github.com/eclipse/paho.mqtt.golang` and the offline spool (TASK-503c)
-   uses `go.etcd.io/bbolt`; both were approved by the owner. Nothing else is added without
-   asking.
+   (TASK-503b) uses `github.com/eclipse/paho.mqtt.golang` (v1.5.1, which brings
+   `gorilla/websocket`, `golang.org/x/net` and `golang.org/x/sync`). The offline spool
+   (TASK-503c) uses `go.etcd.io/bbolt`. Both were approved by the owner. Nothing else is
+   added without asking.
 
 ## Consequences
 - A deployment reaches the edge as a file copy. The agent never pulls configuration from

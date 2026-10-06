@@ -83,6 +83,17 @@ As built (TASK-503a). `services/zfactory-thin-client-agent` runs `go test -race 
 
 CI builds the agent and passes `AGENT_BIN`.
 
+As built (TASK-503b):
+- `internal/command` covers every command refusal and the idempotency cache.
+- `internal/worker` covers command writes: read-back, a refused write, not connected, the bounded queue, and nothing after stop.
+- `internal/uplink` runs against an `eclipse-mosquitto:2` container when `ZFACTORY_AGENT_DOCKER=1`, and CI sets it. It covers:
+  - telemetry through the shared publisher pool, retained state, heartbeat and the online/offline will;
+  - a setpoint ACCEPTED and APPLIED, written once, and a redelivery answered as a duplicate;
+  - nine refusals with their rules and no writes;
+  - a broker restart with polling uninterrupted, telemetry resumed and the command subscription intact;
+  - a removed PLC's retained state cleared;
+  - unsafe settings refused.
+
 ## PLC-to-PLC communication (Phase 07)
 As built (TASK-701): `lib/domain/plc-communication.test.ts` covers the link rules (self, factory, controller, server capability by client end), the service name and the snapshot. `test/integration/plc-communication.test.ts` (PostgreSQL) creates links between catalog PLCs and an RTU, refuses self, cross-factory, non-controller, duplicate and out-of-range inputs, versions every change with the server's name following the roles, exports the link by names and in both PLCs' engineering exports, hides another owner's links, keeps the history after removal and removes the link with its PLC.
 

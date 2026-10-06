@@ -1,6 +1,6 @@
 # TASK-503 — Z-Factory Thin Client Agent: File-Driven Dynamic PLC Connectivity, Concurrency & MQTT Cloud Uplink
 
-Status: **IN PROGRESS** (503a done; 503b, 503c follow)
+Status: **IN PROGRESS** (503a and 503b done; 503c follows)
 Linear: [ZFA-43](https://linear.app/recruit-verse/issue/ZFA-43)
 
 Phase: **05 — External Gateway MVP**
@@ -308,7 +308,7 @@ TASK-503 is delivered in three pull requests. The owner approved the dependencie
 | Slice | Scope | Status |
 |---|---|---|
 | 503a | Z-Factory edge-deployment export; agent core: file validation and lifecycle, hot reload, supervised workers, Modbus polling, bounded queue, health/metrics, systemd unit | DONE |
-| 503b | MQTT uplink (telemetry, state, heartbeat; shared bounded publisher pool) and command downlink (allow-list, validation, idempotency, acks) | TODO |
+| 503b | MQTT uplink (telemetry, state, heartbeat; shared bounded publisher pool) and command downlink (allow-list, validation, idempotency, acks) | DONE |
 | 503c | Offline spool with restart recovery and controlled replay; full E2E exported JSON → agent → Modbus → MQTT → command → PLC logic → feedback → ack | TODO |
 
 ## As built (503a)
@@ -342,3 +342,31 @@ Tests 1–8, 17, 18 and 19 of the list above are covered; 503b and 503c cover th
     - a new tag gives a new version that the agent reloads without a restart;
     - nothing is written through the agent.
 - The Next.js checks (prettier, lint, `tsc`, build, full suite) are listed in the report.
+
+## As built (503b)
+Design: `docs/thin-client-agent.md` → MQTT.
+- **Uplink** (`internal/uplink`, Paho):
+  - topics under `zfactory/{site}/{agent}/`;
+  - telemetry through a fixed publisher pool that waits while the broker is away;
+  - retained PLC state, cleared when a PLC is removed;
+  - a heartbeat, and an online/offline status with an MQTT will;
+  - a persistent session, and reconnects with a growing interval;
+  - credentials only by user name and password file, and TLS by CA and client certificate files;
+  - credentials in the broker URL, or a wildcard in a topic segment, are refused.
+- **Commands** (`internal/command`, the worker's command writer, `Supervisor.Commander`):
+  - strict envelope; a command is refused unless it targets a WRITE command or setpoint mapping of the running configuration version, before it expires, with a value of the right kind in range;
+  - ACCEPTED, then APPLIED with the read-back value, or FAILED;
+  - per-PLC idempotency (10 000 ids, 24 h) and a bounded per-PLC queue.
+
+Tests 11–15 of the list above are covered; 9 and 10 are covered without a spool. With the broker away polling continues, and the spool comes in 503c.
+
+## Evidence (503b)
+- `ZFACTORY_AGENT_DOCKER=1 go test -race ./...` passes, every package, with the MQTT test against `eclipse-mosquitto:2` passing three times in a row. Its scenario:
+  1. two PLCs publish through two shared publishers;
+  2. a setpoint is ACCEPTED, then APPLIED (register 100 = 425) and written once;
+  3. a duplicate is answered `APPLIED` with `duplicate`;
+  4. ten refusals carry their rules (not-writable, unknown-mapping, value-range, value-type, stale-config-version, command-expired, command-plc, command-json twice, unknown-plc), and only the one applied write reached PLC A, none PLC B;
+  5. the broker is restarted: polls continue, telemetry resumes, and a start command after the reconnect is APPLIED;
+  6. the removed PLC's retained state is cleared, and `offline` is published on stop.
+- `ZFACTORY_AGENT_LOAD_N=1000`: 3010 goroutines (two per worker plus one per fake PLC connection), 29 MiB heap, nothing dropped.
+- The full Next.js suite, including the edge E2E with the rebuilt agent, passes; the numbers are in the report.

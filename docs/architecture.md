@@ -397,7 +397,11 @@ As built (TASK-503a, ADR-0017): `services/zfactory-thin-client-agent/` (binary `
 - a bounded telemetry queue;
 - a local health, status and metrics endpoint.
 
-The MQTT uplink and command downlink (503b) and the spool (503c) follow. Details: `docs/thin-client-agent.md`.
+As built (TASK-503b): the MQTT uplink and command downlink:
+- telemetry, retained PLC state, heartbeat, and an online/offline will;
+- commands checked against the exported allow-list, configuration version and expiry, written once by command id, and answered ACCEPTED/REJECTED/APPLIED/FAILED.
+
+The spool (503c) follows. Details: `docs/thin-client-agent.md`.
 
 
 ## Web Factory cloud application — Phase 09 / MVP 2

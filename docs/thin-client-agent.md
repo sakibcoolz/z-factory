@@ -6,7 +6,7 @@ values to the cloud and passes cloud commands to their command and setpoint tags
 program stays the authority for its outputs (ADR-0015). Code: `services/zfactory-thin-client-agent/`.
 
 Delivery is in three steps:
-- **503a**, this document's "As built": the export, the files, the workers and health.
+- **503a**: the export, the files, the workers and health.
 - **503b**: the MQTT uplink, plus the command downlink with allow-list, idempotency and acks.
 - **503c**: the offline spool, restart recovery and the full E2E.
 
@@ -113,13 +113,70 @@ One worker per active PLC. The count follows the files and is never fixed.
 
 **Queue.** The telemetry queue (`-queue`, default 10 000 batches) is bounded: when full it drops the oldest batch and counts it, and producers never block. Until the MQTT uplink (503b), the batches are counted as discarded.
 
+## MQTT (TASK-503b)
+The uplink is optional: without `-mqtt-url` the agent runs as in 503a. MQTT settings are configuration of the agent host, never part of a deployment file.
+
+| Flag | Environment | Use |
+|---|---|---|
+| `-mqtt-url` | `ZFACTORY_AGENT_MQTT_URL` | `tcp://`, `mqtt://`, or TLS `mqtts://` `ssl://` `tls://`. A URL with credentials in it is refused |
+| `-site-id`, `-agent-id` | `ZFACTORY_AGENT_SITE_ID`, `ZFACTORY_AGENT_ID` | topic segments: `[A-Za-z0-9_-]{1,64}`; the agent id defaults to the host name |
+| `-mqtt-client-id` | `ZFACTORY_AGENT_MQTT_CLIENT_ID` | default `zfactory-agent-<site>-<agent>`; fixed, so the session persists |
+| `-mqtt-username`, `-mqtt-password-file` | `…_MQTT_USERNAME`, `…_MQTT_PASSWORD_FILE` | the password is read from a file, never from a flag, the environment or a log |
+| `-mqtt-ca-file`, `-mqtt-cert-file`, `-mqtt-key-file` | `…_MQTT_CA_FILE`, `…_CERT_FILE`, `…_KEY_FILE` | broker CA and client certificate (PEM); TLS 1.2 or later |
+| `-mqtt-telemetry-qos` | `…_MQTT_TELEMETRY_QOS` | 0 or 1 (default 1) |
+| `-mqtt-publishers` | `…_MQTT_PUBLISHERS` | telemetry publishers shared by all PLCs (default 4) |
+| `-heartbeat` | `ZFACTORY_AGENT_HEARTBEAT` | default 10 s |
+
+Topics are under `zfactory/{siteId}/{agentId}/`:
+
+| Topic | Direction | QoS / retained | Payload `schema` |
+|---|---|---|---|
+| `telemetry/{plcId}` | up | telemetry QoS, no | `zfactory.telemetry`: `plcId`, `configVersion`, `at`, `values` (`id`, `name`, `value`, `quality`, `at`) |
+| `state/{plcId}` | up | 1, retained | `zfactory.plc-state`: state, version, endpoint, last poll, last error, reconnects. Published on change and every minute; cleared (empty retained) when the PLC is removed |
+| `agent/heartbeat` | up | 0, no | `zfactory.agent-heartbeat`: version, uptime, workers by state, queue depth and drops, published count |
+| `agent/status` | up | 1, retained | `zfactory.agent-status`: `online` on connect, `offline` on stop and as the MQTT will |
+| `command/{plcId}` | down | 1 (subscribed) | `zfactory.command`, below |
+| `ack/{plcId}` | up | 1, no | `zfactory.command-ack`, below |
+
+**Connection.**
+- The agent connects in the background, retrying with a growing interval up to 30 s; the agent never waits for the broker.
+- The session is persistent (`cleanSession=false`), so the command subscription survives reconnects.
+- Paho calls the command handler on one goroutine; the handler never blocks, and no goroutine is created per message.
+
+**Telemetry.** A fixed pool of publishers takes batches off the shared queue. While the broker is away they wait: PLC polling goes on, and the queue drops its oldest batches. The spool of 503c keeps them instead.
+
+**Commands.** A command is:
+```json
+{ "schema": "zfactory.command", "version": 1, "commandId": "c-1029", "plcId": "…", "mappingId": "…",
+  "value": 42.5, "configVersion": 7, "issuedAt": "…", "expiresAt": "…", "requestedBy": "operator-1" }
+```
+
+It is refused (`REJECTED` with a `rule`) when:
+- it is not a valid command: `command-json`, `command-size` (16 KiB), `command-schema`, `command-id`;
+- it names another PLC than its topic: `command-plc`;
+- no such PLC is deployed: `unknown-plc`;
+- it is for another configuration version than the one that runs: `stale-config-version`;
+- it has expired, or expires more than 10 minutes ahead: `command-expired`, `command-expiry`;
+- its mapping does not exist: `unknown-mapping`;
+- its mapping is not a WRITE command or setpoint tag with authority `EXTERNAL_COMMAND`: `not-writable`;
+- its value is of the wrong kind or outside the exported range: `value-type`, `value-range`.
+
+A command that passes is acknowledged `ACCEPTED` and queued to its PLC's worker (16 waiting at most; beyond that `FAILED`/`plc-busy`, and it may be sent again). The worker:
+- writes the coil, or the encoded holding registers, between polls;
+- reads the tag back;
+- answers `APPLIED` with `observed` (the value read back).
+
+It answers `FAILED` with `plc-not-connected`, `plc-refused` (a Modbus exception) or `plc-write-failed`, and `plc-worker-stopped` for commands still waiting when the worker stops. What the program does next arrives with telemetry.
+
+Every command id is remembered per PLC (10 000, for 24 h): a command delivered again is answered again with its last acknowledgement (`duplicate: true`) and never written twice. Acknowledgements are not retained, and nothing that actuates is ever retained. Each outcome is logged with the command id, mapping, value and `requestedBy`.
+
 ## Health
 The health endpoint (`-health`, default `127.0.0.1:9180`) is read-only:
 
 | Path | Body |
 |---|---|
 | `GET /healthz` | `status` (`ok`, or `degraded` when a PLC is not online or an active file has a problem), version, uptime, workers |
-| `GET /v1/status` | agent (version, uptime, workers by state, started/stopped), files (active, promoted, recent rejections, problems), queue (depth, capacity, pushed, dropped), uplink, every PLC (state, endpoint, version, checksum, mappings, writable, polls, failures, reconnects, last poll, last error, panics) |
+| `GET /v1/status` | agent (version, uptime, workers by state, started/stopped), files (active, promoted, recent rejections, problems), queue (depth, capacity, pushed, dropped), uplink (configured, connected, broker without credentials, client id, topic root, published, errors, connects, connections lost, last error, command counts), every PLC (state, endpoint, version, checksum, mappings, writable, polls, failures, reconnects, last poll, last error, panics) |
 | `GET /v1/plcs/{plcId}` | one PLC with its values (`id`, `name`, `value`, `quality`, `at`) |
 | `GET /metrics` | Prometheus text: uptime, active configs, rejections, workers by state, queue depth and drops, and per PLC: up, polls, reconnects |
 
@@ -142,3 +199,19 @@ The health endpoint (`-health`, default `127.0.0.1:9180`) is read-only:
     - it refuses a tampered file;
     - it reloads a new configuration version without a restart.
 - **Not yet:** MQTT, commands, and the spool (503b, 503c).
+
+## As built (TASK-503b)
+- The MQTT uplink and command downlink above: packages `uplink` (Paho) and `command`, a command writer per worker, and `Commander` routing in the supervisor.
+- **Tests:**
+  - `internal/command`: every refusal rule and the idempotency cache.
+  - `internal/worker`: a write and its read-back, a refused write, not connected, the bounded queue, nothing written after stop.
+  - `internal/uplink` (`ZFACTORY_AGENT_DOCKER=1`, an `eclipse-mosquitto:2` container). It checks:
+    - both PLCs' telemetry through a shared pool of two publishers, retained state, heartbeat, `online`;
+    - a setpoint ACCEPTED then APPLIED and written once;
+    - a redelivered command answered as a duplicate and not written again;
+    - nine refusals, each with its rule, and nothing written; the other PLC untouched;
+    - the broker restarted: polling never stopped, telemetry resumed, and a command after the reconnect applied;
+    - a removed PLC's retained state cleared, and `offline` on stop;
+    - settings that would put a password in the URL or a wildcard in a topic refused.
+  - The load test with commands: 1000 PLCs, 3010 goroutines (two per worker plus the fake PLCs'), 29 MiB heap.
+- **Not yet:** the spool and its replay, restart recovery of telemetry, and the end-to-end test with a real OpenPLC runtime over MQTT (503c).
