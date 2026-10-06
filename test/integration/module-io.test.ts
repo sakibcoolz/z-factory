@@ -324,6 +324,23 @@ describeDb("module PLC I/O registry", () => {
     // DUTY_STANDBY has every SINGLE_PUMP signal, so the change is fine; it adds required signals.
     await updateModule(db, alice, moduleId, { profile: "DUTY_STANDBY" });
     expect((await getModuleIoRegistry(db, alice, moduleId)).readyToRun).toBe(false);
+    // A binding of a standby signal has no place in SINGLE_PUMP: the way back is refused until it is released.
+    await createTag(db, alice, plc2Id, {
+      name: "SB_Run_Cmd",
+      dataType: "BOOL",
+      role: "STATUS",
+      logicalAddress: "%QX0.1",
+    });
+    const standby = await db.tag.findFirstOrThrow({
+      where: { plcInstanceId: plc2Id, name: "SB_Run_Cmd" },
+      select: { id: true },
+    });
+    await bindModuleSignal(db, alice, moduleId, { signalKey: "STANDBY_RUN_CMD", tagId: standby.id });
+    expect((await fail(updateModule(db, alice, moduleId, { profile: "SINGLE_PUMP" })))?.details).toMatchObject({
+      rule: "module-profile-in-use",
+      signalKey: "STANDBY_RUN_CMD",
+    });
+    await releaseModuleSignal(db, alice, moduleId, "STANDBY_RUN_CMD");
     await updateModule(db, alice, moduleId, { profile: "SINGLE_PUMP" });
     expect((await getModuleIoRegistry(db, alice, moduleId)).readyToRun).toBe(true);
   });

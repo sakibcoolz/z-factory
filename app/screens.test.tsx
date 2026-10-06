@@ -8,6 +8,8 @@ import DeviceParametersPage from "@/app/factories/[factoryId]/devices/[deviceId]
 import NewDevicePage from "@/app/factories/[factoryId]/devices/new/[architecture]/page";
 import EventsPage from "@/app/factories/[factoryId]/events/page";
 import GatewaysPage from "@/app/factories/[factoryId]/gateways/page";
+import ModulePage from "@/app/factories/[factoryId]/modules/[moduleId]/page";
+import ModulesPage from "@/app/factories/[factoryId]/modules/page";
 import FactoryPage from "@/app/factories/[factoryId]/page";
 import ConnectionsPage from "@/app/factories/[factoryId]/plcs/[plcId]/connections/page";
 import ExportPage from "@/app/factories/[factoryId]/plcs/[plcId]/export/page";
@@ -50,6 +52,8 @@ const SCREENS: Array<[name: string, render: (id: string) => Promise<unknown>]> =
   ["live tags", (id) => (TagsPage as Page)({ params: params(id) as never })],
   ["events", (id) => (EventsPage as Page)({ params: params(id) as never })],
   ["gateways", (id) => (GatewaysPage as Page)({ params: params(id) as never })],
+  ["process modules", (id) => (ModulesPage as Page)({ params: params(id) as never })],
+  ["process module", (id) => (ModulePage as Page)({ params: params(id, { moduleId: id }) as never })],
   ["new PLC", (id) => (NewDevicePage as Page)({ params: params(id, { architecture: "compact" }) as never })],
   ["PLC overview", (id) => (PlcPage as Page)({ params: params(id, { plcId: id }) as never })],
   [

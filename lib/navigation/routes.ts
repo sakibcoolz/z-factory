@@ -42,6 +42,12 @@ export const routes = {
     const search = new URLSearchParams(Object.entries(query).filter(([, value]) => Boolean(value)));
     return `${factory(factoryId)}/events${search.size > 0 ? `?${search}` : ""}`;
   },
+  /** Process modules of the factory (TASK-604), and one module's editor. */
+  modules: (factoryId: string) => `${factory(factoryId)}/modules`,
+  module: (factoryId: string, moduleId: string) => `${factory(factoryId)}/modules/${encodeURIComponent(moduleId)}`,
+  /** The module's bindings by names, as a JSON download that `importModuleIo` reads. */
+  moduleIoFile: (factoryId: string, moduleId: string) =>
+    `${factory(factoryId)}/modules/${encodeURIComponent(moduleId)}/export/module-io.json`,
   /** Server-sent events: the factory's live channel. */
   stream: (factoryId: string) => `${factory(factoryId)}/stream`,
   plc,
