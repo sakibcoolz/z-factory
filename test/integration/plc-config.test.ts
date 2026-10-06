@@ -82,6 +82,7 @@ describeDb("PLC configuration against PostgreSQL", () => {
 
   it("offers PLC models by architecture for the create form", async () => {
     expect((await listPlcModels(db, "COMPACT")).map((model) => [model.modelName, model.io])).toEqual([
+      ["Generic RTU, IEC 61131-3", "8 DI · 4 DO · 4 AI"],
       ["TM241CE24T", "14 DI · 10 DO"],
       ["CPU 1214C DC/DC/DC", "14 DI · 10 DO · 2 AI"],
     ]);

@@ -6,21 +6,31 @@
  * - Modular PLCs take their I/O from modules installed in rack slots, unless the CPU
  *   itself documents onboard I/O.
  */
-import { type IoPointSource, PLC_CATEGORY_CODE, type PlcArchitecture } from "@/lib/domain/device";
+import type { IoPointSource, PlcArchitecture } from "@/lib/domain/device";
+import { CONTROLLER_CATEGORY_CODES, type DeviceCapability } from "@/lib/domain/device-capabilities";
 import { DomainError } from "@/lib/domain/errors";
 
+/**
+ * A programmable controller (a PLC, or an RTU that runs a program) declares COMPACT or
+ * MODULAR; no other model does. A PLC is always a programmable controller.
+ */
 export function assertModelArchitecture(model: {
   categoryCode: string;
   architectureType: PlcArchitecture | null;
+  capabilities: readonly DeviceCapability[];
 }): void {
-  const isPlc = model.categoryCode === PLC_CATEGORY_CODE;
-  if (isPlc && model.architectureType === null) {
-    throw new DomainError("VALIDATION", "A PLC model must declare a COMPACT or MODULAR architecture.", {
+  const controller =
+    CONTROLLER_CATEGORY_CODES.includes(model.categoryCode) && model.capabilities.includes("PROGRAMMABLE");
+  if (model.categoryCode === "PLC" && !controller) {
+    throw new DomainError("VALIDATION", "A PLC model is a programmable controller.", { rule: "plc-programmable" });
+  }
+  if (controller && model.architectureType === null) {
+    throw new DomainError("VALIDATION", "A programmable controller must declare a COMPACT or MODULAR architecture.", {
       rule: "plc-architecture-required",
     });
   }
-  if (!isPlc && model.architectureType !== null) {
-    throw new DomainError("VALIDATION", "Only PLC models declare an architecture.", {
+  if (!controller && model.architectureType !== null) {
+    throw new DomainError("VALIDATION", "Only programmable controllers declare an architecture.", {
       rule: "architecture-plc-only",
     });
   }

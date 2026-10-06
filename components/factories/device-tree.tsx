@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { RuntimeStatePill } from "@/components/ui/state-pill";
+import { controllerKind } from "@/lib/domain/device-capabilities";
 import { type DeviceTreeNode, flattenDeviceTree } from "@/lib/domain/device-tree";
 import type { FactoryDeviceView } from "@/lib/domain/plc-config-view";
 import { routes } from "@/lib/navigation/routes";
@@ -101,11 +102,13 @@ export function DeviceTree({ factoryId, nodes }: DeviceTreeProps) {
                         └
                       </span>
                     )}
-                    {device.architectureType ? (
-                      <Link href={routes.plc(factoryId, device.id)}>{device.name}</Link>
-                    ) : (
-                      <span>{device.name}</span>
-                    )}
+                    <Link
+                      href={
+                        device.architectureType ? routes.plc(factoryId, device.id) : routes.device(factoryId, device.id)
+                      }
+                    >
+                      {device.name}
+                    </Link>
                     {isRoot && descendants > 0 ? (
                       <span className="zf-tbl-count">
                         {devicesText(descendants)}
@@ -114,9 +117,7 @@ export function DeviceTree({ factoryId, nodes }: DeviceTreeProps) {
                     ) : null}
                   </span>
                 </td>
-                <td>
-                  {device.architectureType ? `PLC · ${device.architectureType.toLowerCase()}` : device.categoryName}
-                </td>
+                <td>{controllerKind(device) ?? device.categoryName}</td>
                 <td>{`${device.manufacturer} ${device.modelName}`}</td>
                 <td>{device.role ?? "—"}</td>
                 <td>

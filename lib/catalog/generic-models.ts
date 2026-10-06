@@ -13,7 +13,18 @@ const generic = (
   family: string,
   modelName: string,
   options: Partial<
-    Pick<Model, "controlCapability" | "runtimeSupport" | "terminals" | "ports" | "faults" | "electrical">
+    Pick<
+      Model,
+      | "controlCapability"
+      | "capabilities"
+      | "runtimeSupport"
+      | "terminals"
+      | "ports"
+      | "faults"
+      | "electrical"
+      | "architectureType"
+      | "builtInChannels"
+    >
   > = {},
 ): Model => ({
   manufacturer: GENERIC_MANUFACTURER,
@@ -69,6 +80,7 @@ export const genericModels: CatalogInput = {
   models: [
     generic("VFD", "Generic drives", "Generic VFD, hardwired control", {
       controlCapability: "PARAMETER_CONFIGURED",
+      capabilities: ["PARAMETER_CONFIGURABLE", "LOCAL_CONTROL"],
       terminals: [
         digital("RUN", "INPUT", "run"),
         digital("REV", "INPUT", "reverse"),
@@ -86,6 +98,7 @@ export const genericModels: CatalogInput = {
     // Commanded over the network. Not executable yet: the simulator has no Modbus device side.
     generic("VFD", "Generic drives", "Generic VFD, Modbus TCP", {
       controlCapability: "PROTOCOL_CONTROLLED",
+      capabilities: ["PARAMETER_CONFIGURABLE", "REMOTE_CONTROL", "MODBUS_SERVER"],
       runtimeSupport: "NONE",
       ports: ETHERNET_MODBUS,
     }),
@@ -123,6 +136,20 @@ export const genericModels: CatalogInput = {
     contact("SWITCH", "Generic switches", "Generic float switch, 24 V DC"),
     contact("SWITCH", "Generic switches", "Generic pressure switch, 24 V DC"),
     contact("PROXIMITY_SENSOR", "Generic proximity sensors", "Generic proximity sensor, 24 V DC PNP"),
+    // A programmable RTU: the same program, version and runtime workflow as a PLC, on the OpenPLC adapter.
+    generic("RTU", "Generic RTUs", "Generic RTU, IEC 61131-3", {
+      controlCapability: "PROGRAMMABLE",
+      capabilities: ["PROGRAMMABLE", "IEC_61131_3", "MODBUS_SERVER", "REMOTE_CONTROL", "DATA_LOGGING"],
+      runtimeSupport: "OPENPLC",
+      architectureType: "COMPACT",
+      ports: ETHERNET_MODBUS,
+      builtInChannels: [
+        { ioType: "DI", count: 8, signalType: "DC_24V" },
+        { ioType: "DO", count: 4, signalType: "DC_24V" },
+        { ioType: "AI", count: 4, signalType: "CURRENT_4_20MA", acceptedSignalTypes: ["CURRENT_0_20MA"] },
+      ],
+      electrical: DC_24V,
+    }),
     // Distribution: the terminals that are shared, each within the number of wires it takes.
     generic("POWER_SUPPLY", "Generic power supplies", "Generic 24 V DC power supply", {
       runtimeSupport: "NONE",
@@ -148,16 +175,19 @@ export const genericModels: CatalogInput = {
     }),
     generic("TEMPERATURE_CONTROLLER", "Generic controllers", "Generic temperature controller", {
       controlCapability: "PARAMETER_CONFIGURED",
+      capabilities: ["PARAMETER_CONFIGURABLE", "LOCAL_CONTROL"],
       runtimeSupport: "NONE",
       terminals: [digital("ENABLE", "INPUT"), digital("ALARM", "OUTPUT"), analog("PV", "OUTPUT", "CURRENT_4_20MA")],
     }),
     generic("REMOTE_IO", "Generic remote I/O", "Generic remote I/O station, Modbus TCP", {
       controlCapability: "PROTOCOL_CONTROLLED",
+      capabilities: ["REMOTE_IO", "MODBUS_SERVER"],
       runtimeSupport: "NONE",
       ports: ETHERNET_MODBUS,
     }),
     generic("GATEWAY", "Generic gateways", "Generic Modbus TCP gateway", {
       controlCapability: "PROTOCOL_CONTROLLED",
+      capabilities: ["MODBUS_CLIENT", "MODBUS_SERVER"],
       runtimeSupport: "NONE",
       ports: ETHERNET_MODBUS,
     }),

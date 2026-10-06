@@ -81,7 +81,7 @@ describeDb("factory topology against PostgreSQL", () => {
       "CPU 1511-1 PN",
       "TM241CE24T",
     ]);
-    expect(view.palette.reduce((count, group) => count + group.items.length, 0)).toBe(31);
+    expect(view.palette.reduce((count, group) => count + group.items.length, 0)).toBe(32);
     await expectDomainError(getTopology(db, bob, factoryId), "NOT_FOUND");
   });
 

@@ -16,6 +16,7 @@ const spec = (kind: PlaceholderSpec["kind"], width: number, height: number, dept
 const BY_CATEGORY: Record<string, PlaceholderSpec> = {
   // Controllers and drives: enclosures on the floor or modules on a rail.
   PLC: spec("cabinet", 0.8, 1.6, 0.5),
+  RTU: spec("module", 0.4, 0.6, 0.3),
   VFD: spec("cabinet", 0.5, 1.1, 0.4),
   SERVO_DRIVE: spec("cabinet", 0.4, 1.0, 0.4),
   SOFT_STARTER: spec("cabinet", 0.4, 0.9, 0.35),

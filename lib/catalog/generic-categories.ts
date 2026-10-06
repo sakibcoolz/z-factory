@@ -41,6 +41,7 @@ const motorDriven = (preferredDriveType: DriveType) => ({ requiresMotor: true, p
 export const GENERIC_CATEGORIES: readonly GenericCategory[] = [
   // Controllers and devices between PLC logic and field equipment.
   category("PLC", "PLC / programmable controller"),
+  category("RTU", "Remote terminal unit"),
   category("VFD", "Variable-frequency drive", "VFD"),
   category("SERVO_DRIVE", "Servo drive"),
   category("SOFT_STARTER", "Soft starter"),

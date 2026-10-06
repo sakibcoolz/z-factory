@@ -2,6 +2,7 @@
  * Maps the topology view onto what the canvas draws. Pure; importable anywhere.
  */
 import type { ConnectionRelationship } from "@/lib/domain/device";
+import { controllerKind } from "@/lib/domain/device-capabilities";
 import type { RuntimeState } from "@/lib/domain/runtime-state";
 import type { TopologyEdgeView, TopologyNodeView } from "@/lib/domain/topology-view";
 
@@ -40,10 +41,8 @@ export function edgeLabel(edge: Pick<TopologyEdgeView, "relationship" | "wires" 
 }
 
 /** Second line of a node: what kind of device it is. */
-export function nodeKind(node: Pick<TopologyNodeView, "categoryName" | "architectureType">): string {
-  return node.architectureType
-    ? `PLC · ${node.architectureType.toLowerCase()}`
-    : (node.categoryName.split(" / ")[0] ?? node.categoryName);
+export function nodeKind(node: Pick<TopologyNodeView, "categoryCode" | "categoryName" | "architectureType">): string {
+  return controllerKind(node) ?? node.categoryName.split(" / ")[0] ?? node.categoryName;
 }
 
 /** Edges that touch a device, for the inspector. */

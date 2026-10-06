@@ -33,8 +33,12 @@ export async function StoredCanvas({ factoryId, mode }: StoredCanvasProps) {
   const { factory, actor } = await loadFactory(factoryId);
   const view = await getTopology(getDb(), actor, factory.id);
   const designing = mode === "designer";
+  // Every device has a screen: a controller the PLC screens, any other device its own (TASK-308).
   const plcLinks = Object.fromEntries(
-    view.nodes.filter((node) => node.architectureType).map((node) => [node.id, routes.plc(factory.id, node.id)]),
+    view.nodes.map((node) => [
+      node.id,
+      node.architectureType ? routes.plc(factory.id, node.id) : routes.device(factory.id, node.id),
+    ]),
   );
   const faulted = view.nodes.filter((node) => node.runtimeStatus === "FAULTED").length;
 

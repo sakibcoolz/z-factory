@@ -267,9 +267,11 @@ describe("factory view and edit", () => {
     expect(screen.getByText("XV-900")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Show the devices connected to PLC-01" }));
-    // A peripheral is listed but has no screen of its own.
-    expect(screen.getByText("XV-101")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "XV-101" })).not.toBeInTheDocument();
+    // A peripheral has a screen of its own since TASK-308.
+    expect(screen.getByRole("link", { name: "XV-101" })).toHaveAttribute(
+      "href",
+      `/factories/${FACTORY_ID}/devices/01a10a0d-e48d-744e-ba58-dfb344f7e884`,
+    );
     expect(screen.getByRole("link", { name: "Add compact PLC" })).toHaveAttribute(
       "href",
       `/factories/${FACTORY_ID}/devices/new/compact`,

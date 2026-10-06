@@ -142,7 +142,7 @@ Services in `lib/services/plc-config-service.ts`; server actions in `app/factori
 | Operation | Entry point | Rules |
 |---|---|---|
 | PLC models for the form | `listPlcModels(db, architecture)` | catalog PLC models of one architecture |
-| create PLC | `createPlc(db, actor, { factoryId, deviceModelId, name, role })` | name unique in the factory; compact gets built-in I/O points, modular gets its rack |
+| create PLC | `createPlc(db, actor, { factoryId, deviceModelId, name, role })` | any programmable controller model (PLC or RTU); name unique in the factory; compact gets built-in I/O points, modular gets its rack |
 | delete PLC | `deletePlc(db, actor, plcId)` | refused while a runtime container exists |
 | configuration | `getPlcConfiguration(db, actor, plcId)` | hardware, rack and slots, every I/O point with device and tag, peripherals |
 | installable modules | `listInstallableModules(db, actor, plcId)` | only modules the catalog allows with the CPU |
@@ -166,7 +166,18 @@ Services in `lib/services/topology-service.ts`; server actions in `app/factories
 | link | `linkDevices(…, { fromId, toId, kind? })` | relationship derived by `linkOptions`; returns `CHOOSE` with options when several apply, and `WIRE` when the two are to be wired pin by pin: nothing is stored until a wire is (`wiring` below); a port link is a wire between two ports within what each port takes |
 | unlink | `unlinkDevices(…, { sourceId, targetId, relationship })` | a relationship edge is removed as one; `WIRED_TO` removes every wire between the two devices |
 
-### `wiring` (TASK-307, ADR-0014)
+### `device screens` (TASK-308)
+Services in `lib/services/device-detail-service.ts`; server action in `app/factories/[factoryId]/devices/[deviceId]/actions.ts`. Every function takes the `Actor`; a device of another owner is not found.
+
+| Operation | Entry point | Rules |
+|---|---|---|
+| device detail | `getDeviceDetail(db, actor, deviceId)` | identity, capabilities, the screens the model has (`deviceSections`), ports, wires, the controller tags carrying its signals (registers), parameters with their versions |
+| is controller | `isControllerDevice(db, actor, deviceId)` | a programmable controller's screens are the PLC screens |
+| save parameters | `saveDeviceParameters(db, actor, deviceId, values)` | model must be `PARAMETER_CONFIGURABLE` (`parameters-capability`) and have a parameter set (`parameters-undefined`); only its fields (`parameters-field`); values validated by the behaviour model (`simulation-params`); one immutable `ConfigurationVersion` per save; the device's simulation profile takes the values |
+
+Program workflow (`plc-runtime-service.ts`): `createProgramVersion`, `checkProgram` and `deployProgramVersion` refuse a model that is not `PROGRAMMABLE` + `IEC_61131_3` on the OpenPLC adapter (`program-capability`) and a program that is not Structured Text (`program-language`), before any side effect. `createPlc` and `listPlcModels` accept any programmable controller model (PLC or RTU).
+
+
 Services in `lib/services/wiring-service.ts`; server actions in `app/factories/[factoryId]/designer/actions.ts`. Every function takes the `Actor`; a factory of another owner is not found, and a device of another factory is not a device of this one. Rules in `lib/validation/wiring.ts`.
 
 An endpoint is `{ deviceId, type, id }` with `type = DEVICE_IO | PLC_IO_POINT | PROTOCOL_PORT` and the id of the terminal definition, the I/O point or the port.

@@ -29,6 +29,8 @@ Examples: PLC, VFD, MOTOR, PUMP, FAN, BLOWER, CONVEYOR, MIXER, COMPRESSOR, VALVE
 ### DeviceModel
 `id, familyId, modelName, sku, architectureType, runtimeSupport, controlCapability, lifecycleStatus, verificationStatus, sourceUrl, sourceTitle, sourceRevision, sourceRetrievedAt, verifiedAt, metadataJson, active3dAssetId, createdAt, updatedAt`
 
+`capabilities` (`DeviceCapability[]`, TASK-308) states what Z-Factory can do with the model: `PROGRAMMABLE`, `IEC_61131_3`, `SCRIPTABLE`, `PARAMETER_CONFIGURABLE`, `LOCAL_CONTROL`, `REMOTE_CONTROL`, `DATA_LOGGING`, `MODBUS_CLIENT`, `MODBUS_SERVER`, `REMOTE_IO`, `FIRMWARE_DEPLOYABLE`. Screens, checks and runtime adapters follow these; nothing is inferred from a category. A programmable controller (a `PLC` or `RTU` model with `PROGRAMMABLE`) declares `architectureType`; no other model does.
+
 `active3dAssetId` names the `Catalog3dAsset` version every instance of the model renders; null means the generic shape of the category.
 
 `verificationStatus = UNVERIFIED | VERIFIED | GENERIC`. `GENERIC` marks a simulated profile that makes no vendor claim. Unique: `(familyId, modelName)`.
@@ -211,6 +213,8 @@ Rules:
 ### ConfigurationVersion
 `id, factoryId, scopeType, scopeId, version, snapshotJson, createdAt, createdBy`
 
+`scopeType = FACTORY | PLC | IO_MAPPING | MODBUS_MAPPING | DEVICE_PARAMETERS`. `PLC` snapshots are written when a program is deployed; `DEVICE_PARAMETERS` versions (TASK-308) are the parameter sets saved for one device instance (`scopeId` = device id), numbered per device, immutable.
+
 ## Process modules
 
 Process modules compose existing factory devices into a process-specific unit. They do not redefine catalog hardware and they reserve no PLC endpoint. Implemented by TASK-601 (migration `process_modules`), except `ModulePlcIoMapping`, which belongs to TASK-605.
@@ -315,7 +319,7 @@ For high-volume history, partitioning/retention should be introduced first. Time
 Every factual vendor hardware profile keeps source URL plus verification metadata. Never fabricate pinouts, I/O counts, register maps, or electrical limits.
 
 ## Implementation (TASK-102)
-- Schema: `prisma/schema.prisma`; migrations: `prisma/migrations/` (`init`, `device_io_endpoint`, `factory_subnet_no_overlap`, `plc_api_host_port`, `tag_source_signal`, `catalog_capabilities`, `device_io_simulator_signal`, `device_canvas_position`, `catalog_3d_assets`, `catalog_asset_generation`, `process_modules`, `endpoint_wiring`); generated client: `lib/generated/prisma/` (git-ignored).
+- Schema: `prisma/schema.prisma`; migrations: `prisma/migrations/` (`init`, `device_io_endpoint`, `factory_subnet_no_overlap`, `plc_api_host_port`, `tag_source_signal`, `catalog_capabilities`, `device_io_simulator_signal`, `device_canvas_position`, `catalog_3d_assets`, `catalog_asset_generation`, `process_modules`, `endpoint_wiring`, `device_capabilities`); generated client: `lib/generated/prisma/` (git-ignored).
 - Primary keys are UUID v7 (`@default(uuid(7))`, PostgreSQL `uuid`), except `TelemetrySample.id` (`bigint` identity) and the one-to-one tables keyed by their owner (`ElectricalProfile`, `PlcInstanceProfile`, `DeviceRuntimeSnapshot`).
 - Catalog rows referenced by factory data are protected with `ON DELETE RESTRICT`; factory-owned rows cascade from `Factory`.
 - `DeviceInstance.dockerContainerId` is server-side only and never sent to the browser.

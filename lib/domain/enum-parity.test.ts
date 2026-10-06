@@ -17,6 +17,7 @@ import {
   TERMINAL_KINDS,
 } from "./device";
 import { PROGRAM_VERSION_STATUSES } from "./plc-runtime-view";
+import { DEVICE_CAPABILITIES } from "./device-capabilities";
 import { MODULE_SIGNAL_DIRECTIONS } from "./process-module";
 import { RUNTIME_STATES } from "./runtime-state";
 import { ACCESS_MODES, MODBUS_AREAS, TAG_DATA_TYPES, TAG_QUALITIES, TAG_ROLES } from "./tag";
@@ -35,6 +36,7 @@ describe("domain enums match the database schema", () => {
     ["ConnectionRelationship", CONNECTION_RELATIONSHIPS, prismaEnums.ConnectionRelationship],
     ["EndpointType", ENDPOINT_TYPES, prismaEnums.EndpointType],
     ["TerminalKind", TERMINAL_KINDS, prismaEnums.TerminalKind],
+    ["DeviceCapability", DEVICE_CAPABILITIES, prismaEnums.DeviceCapability],
     ["RuntimeState", RUNTIME_STATES, prismaEnums.RuntimeState],
     ["ProgramVersionStatus", PROGRAM_VERSION_STATUSES, prismaEnums.ProgramVersionStatus],
     ["TagRole", TAG_ROLES, prismaEnums.TagRole],

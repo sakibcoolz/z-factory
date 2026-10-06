@@ -62,9 +62,9 @@ describeDb("device catalog against PostgreSQL", () => {
     const before = await count();
     expect(before).toMatchObject({
       manufacturers: 4,
-      models: 31,
-      // 14 + 10 + 2 on the CPU 1214C, 14 + 10 on the TM241CE24T.
-      builtInChannels: 50,
+      models: 32,
+      // 14 + 10 + 2 on the CPU 1214C, 14 + 10 on the TM241CE24T, 8 + 4 + 4 on the generic RTU.
+      builtInChannels: 66,
       racks: 2,
       modules: 8,
       // 16 + 16 + 8 + 4 for each of the two modular families.
@@ -77,7 +77,7 @@ describeDb("device catalog against PostgreSQL", () => {
     const channelBefore = await db.builtInIoChannel.findFirstOrThrow({ where: { terminalLabel: "Ia.0" } });
 
     const result = await ingestCatalog(db, catalog);
-    expect(result).toEqual({ categories: before.categories, manufacturers: 4, models: 31, racks: 2, modules: 8 });
+    expect(result).toEqual({ categories: before.categories, manufacturers: 4, models: 32, racks: 2, modules: 8 });
     expect(await count()).toEqual(before);
     expect((await db.deviceModel.findMany({ select: { id: true }, orderBy: { id: "asc" } })).map((m) => m.id)).toEqual(
       idsBefore,
@@ -129,7 +129,7 @@ describeDb("device catalog against PostgreSQL", () => {
     expect(await db.moduleModel.count({ where: { OR: [{ sourceUrl: null }, { verifiedAt: null }] } })).toBe(0);
 
     const generic = await db.deviceModel.findMany({ where: { verificationStatus: "GENERIC" } });
-    expect(generic).toHaveLength(27);
+    expect(generic).toHaveLength(28);
     expect(generic.every((model) => !model.sku && !model.sourceUrl && !model.verifiedAt)).toBe(true);
   });
 
@@ -224,9 +224,9 @@ describeDb("device catalog against PostgreSQL", () => {
 
   it("lists the catalog as manufacturer, family and model with totals", async () => {
     const overview = await getCatalogOverview(db);
-    expect(overview.totals).toEqual({ models: 31, manufacturers: 4, verified: 4, generic: 27, withAsset: 0 });
+    expect(overview.totals).toEqual({ models: 32, manufacturers: 4, verified: 4, generic: 28, withAsset: 0 });
     expect(overview.manufacturers.map((manufacturer) => [manufacturer.name, manufacturer.modelCount])).toEqual([
-      ["Generic / simulated", 27],
+      ["Generic / simulated", 28],
       ["Rockwell Automation", 1],
       ["Schneider Electric", 1],
       ["Siemens", 2],
@@ -360,7 +360,7 @@ describeDb("device catalog against PostgreSQL", () => {
     const plc = await create(await modelId("TM241CE24T"), "PLC-01");
     expect(plc).toMatchObject({ runtimeType: "OPENPLC", simulatorType: "NONE" });
     expect(await db.plcInstanceProfile.count({ where: { deviceInstanceId: plc.id } })).toBe(1);
-    expect(await db.deviceModel.count()).toBe(31);
+    expect(await db.deviceModel.count()).toBe(32);
   });
 
   it("represents controller, drive and remote-I/O chains, and direct wiring without an intermediate device", async () => {

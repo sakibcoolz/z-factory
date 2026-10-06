@@ -57,6 +57,9 @@ Device detail navigation is generated from the exact catalog model's capabilitie
 
 A Program tab is never shown just because an item is called a controller. The model must explicitly support programmable logic.
 
+### Device screens as built (TASK-308)
+A device that is not a controller has screens of its own at `/factories/[factoryId]/devices/[deviceId]`: Overview, Connections, and, by the capabilities of its exact model, Parameters, Registers and Communications; Runtime, Live Tags and Events link to the factory's screens. The section list is `deviceSections(model)`: a screen the model has no capability for is not listed. Controllers (PLC and the generic RTU) keep the PLC screens, whose Program and Versions sections appear from the `PROGRAMMABLE` capability. The factory overview and the designer's inspector link every device to its screen. The Parameters screen is a table of the behaviour model's parameters with unit, limits and default; "Save as new version" stores an immutable version and lists the versions below. No wireframe exists for these screens; they follow the PLC screens' conventions.
+
 ### Pin-to-pin wiring as built (TASK-307, ADR-0014)
 The designer is the only screen that writes wiring.
 

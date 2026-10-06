@@ -8,6 +8,7 @@
 import { z } from "zod";
 import { GENERIC_CATEGORIES } from "@/lib/catalog/generic-categories";
 import { CONTROL_CAPABILITIES, SIGNAL_TYPES } from "@/lib/domain/catalog";
+import { CONTROLLER_CATEGORY_CODES, DEVICE_CAPABILITIES } from "@/lib/domain/device-capabilities";
 import {
   IO_DIRECTIONS,
   IO_POINT_TYPES,
@@ -128,6 +129,8 @@ const modelSchema = z.strictObject({
   architectureType: z.enum(["COMPACT", "MODULAR"]).optional(),
   runtimeSupport: z.enum(["OPENPLC", "DEVICE_SIM", "MODBUS_SIM", "EXTERNAL", "NONE"]),
   controlCapability: z.enum(CONTROL_CAPABILITIES),
+  /** What Z-Factory can do with the model: screens, checks and adapters follow these (TASK-308). */
+  capabilities: z.array(z.enum(DEVICE_CAPABILITIES)).default([]),
   lifecycleStatus: z.enum(["ACTIVE", "PHASED_OUT", "DISCONTINUED", "UNKNOWN"]).default("UNKNOWN"),
   verification: verificationSchema,
   electrical: electricalSchema.optional(),
@@ -205,14 +208,34 @@ function checkModel(model: CatalogModel, manufacturers: ReadonlySet<string>): vo
   if (generic && model.sku) throw fail("A generic model has no vendor order number.", where);
   if (!generic && !model.sku) throw fail("A vendor model needs its exact order number.", where);
 
+  // Capabilities are stated, and they agree with the other facts of the model.
+  const has = (capability: (typeof DEVICE_CAPABILITIES)[number]) => model.capabilities.includes(capability);
+  if (new Set(model.capabilities).size !== model.capabilities.length)
+    throw fail("A capability is listed twice.", where);
+  if ((model.controlCapability === "PROGRAMMABLE") !== has("PROGRAMMABLE")) {
+    throw fail("A programmable model lists the PROGRAMMABLE capability, and only such a model does.", where);
+  }
+  if (model.controlCapability === "PARAMETER_CONFIGURED" && !has("PARAMETER_CONFIGURABLE")) {
+    throw fail("A parameter-configured model lists the PARAMETER_CONFIGURABLE capability.", where);
+  }
+  if (model.runtimeSupport === "OPENPLC" && !(has("PROGRAMMABLE") && has("IEC_61131_3"))) {
+    throw fail("A model run by the OpenPLC adapter is programmable in an IEC 61131-3 language.", where);
+  }
+  if (model.ports.length === 0 && (has("MODBUS_CLIENT") || has("MODBUS_SERVER"))) {
+    throw fail("A model that speaks Modbus has a communication port.", where);
+  }
+  // A programmable controller declares its architecture; nothing else does.
   const isPlc = model.category === PLC_CATEGORY_CODE;
-  if (isPlc !== (model.architectureType !== undefined)) {
-    throw fail("A PLC model, and only a PLC model, declares its architecture.", where);
+  const controller = CONTROLLER_CATEGORY_CODES.includes(model.category) && has("PROGRAMMABLE");
+  if (isPlc && !controller) throw fail("A PLC model is a programmable controller.", where);
+  if (controller !== (model.architectureType !== undefined)) {
+    throw fail("A programmable controller, and only a programmable controller, declares its architecture.", where);
   }
   if (model.architectureType === "MODULAR" && model.builtInChannels.length > 0) {
     throw fail("A modular PLC takes its I/O from modules, not built-in channels.", where);
   }
-  if (!isPlc && model.builtInChannels.length > 0) throw fail("Only a PLC has built-in PLC channels.", where);
+  if (!controller && model.builtInChannels.length > 0)
+    throw fail("Only a controller has built-in PLC channels.", where);
 
   const labels = model.terminals.map((terminal) => terminal.terminalLabel);
   if (new Set(labels).size !== labels.length) throw fail("Terminal labels must be unique within a model.", where);

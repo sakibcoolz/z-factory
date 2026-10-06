@@ -10,12 +10,13 @@ import { ensureFactoryNetwork } from "@/lib/docker/networks";
 import { LOOPBACK_ADDRESS, type RuntimePolicy } from "@/lib/docker/policy";
 import { allocateHostPorts, assertPortBindings, listPublishedPorts } from "@/lib/docker/ports";
 import { OPENPLC_IMAGE_KEY } from "@/lib/docker/runtime-images";
+import { programSupport } from "@/lib/domain/device-capabilities";
 import { DomainError, isDomainError } from "@/lib/domain/errors";
 import type { EventSeverity } from "@/lib/domain/events";
 import type { RuntimeState } from "@/lib/domain/runtime-state";
 import type { ModbusArea } from "@/lib/domain/tag";
 import type { EventBus } from "@/lib/events/bus";
-import type { PrismaClient } from "@/lib/generated/prisma/client";
+import type { PrismaClient, ProgramLanguage } from "@/lib/generated/prisma/client";
 import {
   createOpenPlcContainer,
   deployProgram,
@@ -61,6 +62,28 @@ export async function loadPlc(db: PrismaClient, actor: Actor, plcId: string) {
     throw new DomainError("INCOMPATIBLE", "This device is not an OpenPLC-backed PLC.", { rule: "openplc-plc-only" });
   }
   return { device, profile: device.plcProfile };
+}
+
+/**
+ * The program workflow runs only for a model that is programmable in an IEC 61131-3
+ * language on the OpenPLC adapter, and only for a program in the language that adapter
+ * compiles. Checked before anything is compiled, stored or deployed (TASK-308).
+ */
+function assertProgrammable(device: PlcRecord, language: ProgramLanguage = "ST"): void {
+  const support = programSupport(device.deviceModel);
+  if (!support.supported) {
+    throw new DomainError("INCOMPATIBLE", support.reason, { rule: "program-capability" });
+  }
+  if (language !== support.language) {
+    throw new DomainError(
+      "INCOMPATIBLE",
+      `The OpenPLC adapter compiles Structured Text; this program is ${language}.`,
+      {
+        rule: "program-language",
+        language,
+      },
+    );
+  }
 }
 
 /** DNS name of the PLC inside its factory network, e.g. `S7-1200-1214C-01` → `s7-1200-1214c-01`. */
@@ -152,6 +175,7 @@ export async function createProgramVersion(
   input: { sourceText: string },
 ) {
   const { device } = await loadPlc(db, actor, plcId);
+  assertProgrammable(device);
   const sourceText = input.sourceText;
   if (typeof sourceText !== "string" || sourceText.trim() === "") {
     throw new DomainError("VALIDATION", "The program source is empty.", { rule: "program-source" });
@@ -183,7 +207,7 @@ export async function checkProgram(
   plcId: string,
   input: { sourceText: string },
 ): Promise<{ success: boolean; errors: CompileDiagnostic[]; warnings: CompileDiagnostic[] }> {
-  await loadPlc(db, actor, plcId);
+  assertProgrammable((await loadPlc(db, actor, plcId)).device);
   if (typeof input.sourceText !== "string" || input.sourceText.trim() === "") {
     throw new DomainError("VALIDATION", "The program source is empty.", { rule: "program-source" });
   }
@@ -332,6 +356,7 @@ export async function deployProgramVersion(
     throw new DomainError("CONFLICT", "The PLC has no program version to deploy.", { rule: "program-required" });
   const programVersion = await plcRepository.findProgramVersion(db, device.id, versionId);
   if (!programVersion) throw new DomainError("NOT_FOUND", "The program version does not exist.");
+  assertProgrammable(device, programVersion.language);
 
   const target = requireTarget(device);
   const client = openPlcClient(target, deps.runtimeSecret);

@@ -177,7 +177,7 @@ export function TopologyInspector(props: TopologyInspectorProps) {
       />
       {plcHref ? (
         <Link href={plcHref} className="zf-btn" data-size="sm">
-          Open PLC
+          {node.architectureType ? "Open PLC" : "Open device"}
         </Link>
       ) : null}
       {!readOnly ? (
