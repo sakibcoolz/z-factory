@@ -50,7 +50,6 @@ PostgreSQL                 Docker Engine
 - `lib/validation/`: Zod schemas for untrusted input plus pure compatibility, I/O occupancy and domain invariants. The rules of one wire between two endpoints are `lib/validation/wiring.ts` (ADR-0014).
 - `lib/export/`: engineering report/config package generation.
 - `lib/navigation/`: route builders; every screen URL is built here from Z-Factory IDs.
-- `lib/fixtures/`: static design fixtures behind the wireframe screens (TASK-104). Temporary: each fixture is replaced by its owning service/task and nothing outside `app/` and `components/` may depend on it.
 
 ## Frontend toolchain
 Next.js 16 (App Router, Turbopack) · React 19 · TypeScript 6 strict · Tailwind CSS 4 (theme tokens in `app/globals.css`) · React Flow 12 (`@xyflow/react`, designer canvas) · three.js with React Three Fiber 9 and drei 10 (3D view, loaded only on that screen) · Prisma 7 with the `pg` driver adapter · dockerode 5 · STruC++ 0.7 (separate process) · fflate · Zod 4 · ESLint 9 with `eslint-config-next` · Prettier 3 · Vitest 5 + Testing Library (jsdom). Screens are server components; client components are limited to interactive leaves (the factory form and delete confirmation) that receive server actions as props. Versions, commands and the environment contract are fixed in `docs/bootstrap.md`.

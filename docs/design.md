@@ -180,7 +180,7 @@ Source: Claude Design project `2fc6a75c-7a5d-4a8c-a17c-17afa2d37f6c`, file `Z-Fa
 | 2q | 3D Factory View | `/factories/[factoryId]/view-3d` (database) |
 | — | External gateways | `/factories/[factoryId]/gateways` (database) |
 
-Screens 2a–2c and the factory overview/edit read the database (TASK-103), and so does 2e, the device catalog (TASK-301). For stored factories 2f, 2g, 2h and 2j read the database too (TASK-302), together with the PLC connections screen `/factories/[factoryId]/plcs/[plcId]/connections`, and so do 2d (designer) and 2o (topology) (TASK-303), 2p (export) (TASK-304) 2i, 2k and 2n (program, versions, simulator and runtime) (TASK-305), 2l and 2m (live tags and events) (TASK-401), and 2q (3D view) (TASK-402). For the design fixtures, screens 2d and 2f–2q still read fixtures: `factory_001` (Pump House Demo, PLC `dev_001`) and, for 2g only, `factory_003`; they are reachable from the "Design fixtures" section of the factory explorer. Unknown IDs return the not-found screen.
+Every screen reads the database: 2a–2c and the factory overview/edit (TASK-103), 2e the device catalog (TASK-301), 2f, 2g, 2h and 2j (TASK-302) together with the PLC connections screen `/factories/[factoryId]/plcs/[plcId]/connections`, 2d (designer) and 2o (topology) (TASK-303), 2p (export) (TASK-304), 2i, 2k and 2n (program, versions, simulator and runtime) (TASK-305), 2l and 2m (live tags and events) (TASK-401), 2q (3D view) (TASK-402), and the device screens (TASK-308). The design fixtures of TASK-104 (`factory_001`, `factory_003`, PLC `dev_001`) were retired in TASK-309; an unknown id returns the not-found screen.
 
 ### 3D view as built (TASK-402)
 For a stored factory, `/factories/[factoryId]/view-3d` shows a WebGL scene beside an inspector:
@@ -298,10 +298,10 @@ The factory overview lists the devices as they are connected (TASK-306). A PLC i
 
 Differences from wireframes 2f, 2g, 2h and 2j:
 - No draft state and no "Next" step: each step is saved when submitted.
-- The channel panel is read-only; wiring is done from Connections, not by editing a pin.
-- Creating and connecting a peripheral is one action. Removing it deletes the device.
+- The channel panel is read-only; wiring is done in the designer, pin by pin (TASK-307), not by editing a pin.
+- Devices are placed in the designer and wired there; the Connections screen is a projection of that wiring (TASK-307).
 - Section list of the PLC: Overview, Hardware, Connections and I/O Mapping are wired. Export is wired since TASK-304; Program, Versions, Runtime and Simulator since TASK-305. Live Tags and Events open the factory's screens narrowed to the PLC (TASK-401). Logs is listed but not wired.
-- The Pump House Demo and the modular bench keep their fixture screens.
+- The Pump House Demo and the modular bench design fixtures are gone since TASK-309; "Create pump station demo" builds a stored factory instead (`docs/demo-runbook.md`).
 
 ### Gateways as built (TASK-501)
 `/factories/[factoryId]/gateways`, reached from the factory overview and the runtime screen. No wireframe exists for it; it follows the shell's conventions.
