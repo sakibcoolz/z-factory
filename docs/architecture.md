@@ -326,3 +326,19 @@ Docker socket/API access is privileged and MUST remain server-side. Production s
 
 ## Future split
 A separate simulation service is approved only for Phase 06+ by ADR-0008. The MVP remains the single Next.js application from ADR-0001. Any broader orchestration/backend split requires another ADR.
+
+
+## Simulation test-control boundary (Phase 08)
+Phase 08 adds controlled test input manipulation without weakening ADR-0015.
+
+```text
+UI -> Z-Factory server -> Go simulation override API
+   -> effective simulated input
+   -> bridge -> PLC input
+   -> PLC program
+   -> PLC output
+   -> bridge -> simulated actuator/process
+   -> actual feedback -> PLC input
+```
+
+The UI changes simulator runtime state, never PLC local outputs. The Go service exposes AUTO, MANUAL_OVERRIDE and SCENARIO semantics for supported simulated inputs. Program-generated PLC outputs are delivered to simulated devices through the bridge. Actual device/process feedback returns to PLC inputs. This is the canonical closed-loop testing model.
