@@ -1,6 +1,7 @@
 # TASK-804 — Closed-Loop Test Scenarios, Events & E2E Validation
 
 Status: **PLANNED**
+Linear: [ZFA-42](https://linear.app/recruit-verse/issue/ZFA-42)
 
 ## Goal
 Provide repeatable industrial simulation tests that prove PLC logic reacts correctly to controlled process conditions.
