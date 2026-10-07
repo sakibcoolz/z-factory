@@ -313,7 +313,7 @@ runtime / simulation / tag services --events--> event service --> RuntimeEvent, 
 - A stored state no runtime stands behind is not shown as live: a simulated device is stopped when no simulation runs, whatever was last stored, and the stored state is corrected.
 
 ### Factory lifecycle (TASK-502)
-`startFactory` brings a factory up in the order a plant is started: every PLC runtime, then live monitoring, then the device simulation, then the gateway endpoints. `stopFactory` takes the simulation down first, so the last device states are stored while the PLCs still answer, then the PLCs. Both only call the operations the single screens offer (`startPlc`, `startFactorySimulation`, `syncGatewayEndpoints`, …); there is no second way to start anything.
+`startFactory` brings a factory up in the order a plant is started: every PLC runtime, then live monitoring, then the device simulation, then the gateway endpoints. `stopFactory` takes the simulation down first, so the last device states are stored while the PLCs still answer, then the PLCs. Each PLC is brought to rest from its real container state (`settlePlcStopped`, TASK-208): a running container is stopped, while one that already exited, was removed, or was never created because the start failed leaves nothing to stop. Every PLC ends STOPPED and the factory's stored state is summarized again, so after a failed start the factory can be edited and deleted. Both only call the operations the single screens offer (`startPlc`, `startFactorySimulation`, `syncGatewayEndpoints`, …); there is no second way to start anything.
 
 ### External gateways (TASK-501, ADR-0013)
 ```text
