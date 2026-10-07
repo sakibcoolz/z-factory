@@ -5,7 +5,7 @@ The Phase 09 cloud application (ADR-0018). It receives what Z-Factory Thin Clien
 | Task | Scope | Status |
 |---|---|---|
 | TASK-901 | foundation: app, sign-in, roles, identity model, PLC registration, health | done |
-| TASK-902 | MQTT broker integration, agent onboarding, connectivity | planned |
+| TASK-902 | MQTT broker integration, agent onboarding, connectivity | done |
 | TASK-903 | telemetry ingestion, persistence, latest state | planned |
 | TASK-904 | monitoring dashboards, events, alarms | planned |
 | TASK-905 | remote command and setpoint lifecycle | planned |
@@ -17,9 +17,10 @@ The Phase 09 cloud application (ADR-0018). It receives what Z-Factory Thin Clien
 | `Organization` | a tenant; everything belongs to one |
 | `User`, `Membership` | a person who signs in, and their role in an organization: VIEWER, OPERATOR or ADMIN |
 | `Site` | a plant location. `siteKey` is the site id in the agents' MQTT topics (`zfactory/{siteKey}/…`), so it is unique across the broker |
-| `EdgeAgent` | a Thin Client Agent at a site. `agentKey` is its agent id in the topics, unique per site; it has a status and a last-seen time (TASK-902) |
+| `EdgeAgent` | a Thin Client Agent at a site. `agentKey` is its agent id in the topics, unique per site; it holds what the agent last reported (status, heartbeat, version), when Web Factory last heard from it live, and its broker client's user name, client id and issue/revoke times (never the password) |
+| `AgentConnectionEvent` | a change of an agent's reported status, recorded once when Web Factory sees it |
 | `Factory` | a Z-Factory factory as the deployments name it (`site.factoryId`), per site |
-| `Plc`, `PlcMapping` | a PLC an agent runs, registered from its deployment file, with its tags (READ, or WRITE for command and setpoint tags) and their ranges: the cloud's copy of the allow-list |
+| `Plc`, `PlcMapping` | a PLC an agent runs, registered from its deployment file, with its tags (READ, or WRITE for command and setpoint tags) and their ranges: the cloud's copy of the allow-list. `edgeState` and the other `edge…` fields are its worker's state as the agent last reported it |
 | `Module`, `PlcModule` | process modules a PLC carries signals of |
 | `AuditEvent` | who did what: sign-ins and refusals, users and roles, sites, agents and PLC registrations |
 
@@ -37,6 +38,39 @@ Registration is refused for:
 
 A newer version replaces the tags and modules. Uploading the same version again changes nothing.
 
+## Broker and agent onboarding
+ADR-0019. The broker is Mosquitto 2 with Dynamic Security (`apps/web-factory/broker/mosquitto.conf`). Web Factory keeps one server-side MQTT 5 connection and uses it both to read what agents publish and to administer the agents' broker clients.
+
+Onboarding an agent:
+1. An admin registers the agent on its site page with the agent id it runs with.
+2. On the agent's page, *Issue credentials* creates its broker client:
+   - user name `agent:{site}:{agent}`, bound to client id `zfactory-agent-{site}-{agent}`;
+   - a role that allows only its own topics: publishing telemetry, state, ack, heartbeat and status, and subscribing to commands.
+3. The password is shown once, with the agent's settings (`ZFACTORY_AGENT_MQTT_URL`, `…_SITE_ID`, `…_ID`, `…_MQTT_CLIENT_ID`, `…_MQTT_USERNAME`, `…_MQTT_PASSWORD_FILE`). Web Factory never stores it.
+4. *Issue a new password* rotates it and disconnects the agent until it restarts with the new file. *Revoke* disables the client: the agent is disconnected and refused.
+
+If the broker cannot be reached, nothing changes. Every step can be repeated.
+
+## Connectivity
+`lib/mqtt/ingest.ts` applies each agent's messages in order:
+- **Status:** `agent/status` sets the reported status. A change is recorded once as a connection event, timed by Web Factory.
+- **Heartbeat:** `agent/heartbeat` stores the counters and marks the agent online. A heartbeat queued behind another is replaced by the newer one.
+- **PLC state:** `state/{plcId}` stores the worker's state. An empty retained message marks the PLC `REMOVED`.
+- **Telemetry and acks:** they only refresh last-seen, at most every 5 s; storing them is TASK-903 and TASK-905.
+- **Retained messages:** the broker's latest word, applied but never counted as the agent being seen.
+- **Dropped messages,** counted by reason: a topic that is not an agent topic, a body naming another agent, an unregistered agent or PLC, revoked credentials, malformed JSON, more than 1 MiB.
+
+The pages project connectivity from this with the heartbeat interval (`WEB_FACTORY_AGENT_HEARTBEAT_S`, 10 s by default):
+
+| State | When |
+|---|---|
+| UNKNOWN | never heard from |
+| ONLINE | reported online, heard from within 2.5 intervals, every PLC worker online, nothing spooled |
+| DEGRADED | online, but late (2.5 to 6 intervals), a PLC worker not online, or telemetry spooled at the edge |
+| OFFLINE | reported offline (or its will), credentials revoked, or silent for 6 intervals |
+
+A PLC shows its worker's reported state while its agent is reachable, and UNKNOWN ("last reported …") while it is not.
+
 ## Sign-in and sessions
 - **Sign-in:** e-mail and password, through Auth.js credentials (`auth.ts`).
 - **Session:** a signed cookie of at most 8 hours that carries the user id and session version, checked against the database on every request (`lib/auth/session.ts`).
@@ -49,27 +83,31 @@ A newer version replaces the tags and modules. Uploading the same version again 
 | Path | Who | What |
 |---|---|---|
 | `/login` | anyone | sign in |
-| `/orgs/{id}` | members | sites with agent, PLC and factory counts; admins create sites |
-| `/sites/{id}` | members | agents with status and PLCs; admins register agents |
-| `/agents/{id}` | members | agent id, topic root, PLCs with version and writable count; admins upload deployment files |
-| `/plcs/{id}` | members | factory, PLC id, configuration version and checksum, Modbus endpoint, modules, tags with access and range |
+| `/orgs/{id}` | members | sites with agent, PLC and factory counts and agents per connectivity state; admins create sites and see the broker connection |
+| `/sites/{id}` | members | agents with connectivity, last seen and PLCs; admins register agents |
+| `/agents/{id}` | members | connectivity with its reasons, last seen, version, the last heartbeat, PLCs with their reported connection and last poll, the connection history; admins issue, rotate and revoke broker credentials and upload deployment files |
+| `/plcs/{id}` | members | factory, PLC id, configuration version and checksum, Modbus endpoint, reported connection, modules, tags with access and range |
 | `/orgs/{id}/users` | admins | members, roles, enable/disable, add users, the audit log |
 | `/account` | members | change one's own password; this ends one's sessions |
 
-Something the actor cannot see, or that belongs to another organization, is a 404.
+Something the actor cannot see, or that belongs to another organization, is a 404. While Web Factory is not connected to the broker, the pages say statuses may be out of date.
 
 ## Operations
 - `GET /api/health`: liveness.
-- `GET /api/ready`: the database answers and has the schema (503 otherwise).
+- `GET /api/ready`: the database answers and has the schema (503 otherwise). It also reports `mqtt` as `connected`, `disconnected` or `not-configured`, without failing readiness.
+- Broker connection: logged on connect and loss. A `broker stats` line every minute carries the connection and ingest counters (received, applied, coalesced, transitions, errors, drops by reason).
 - Logs: JSON lines on stdout (`lib/log.ts`); no password or secret is ever logged.
 - Environment (`lib/env.ts`, `.env.example`):
   - `WEB_FACTORY_DATABASE_URL` and `AUTH_SECRET` (32 characters or more);
   - `AUTH_URL` or `AUTH_TRUST_HOST` behind a proxy;
-  - `WEB_FACTORY_MQTT_URL`, `…_USERNAME`, `…_PASSWORD_FILE`, `…_CA_FILE`. The broker URL may not hold credentials.
+  - `WEB_FACTORY_MQTT_URL`, `…_USERNAME`, `…_PASSWORD_FILE`, `…_CA_FILE`, `…_CLIENT_ID`. The broker URL may not hold credentials. The account needs Dynamic Security administration and read access to `zfactory/#`;
+  - `WEB_FACTORY_MQTT_AGENT_URL`: the broker as agents reach it, shown when credentials are issued (default: `WEB_FACTORY_MQTT_URL`);
+  - `WEB_FACTORY_AGENT_HEARTBEAT_S`: the agents' heartbeat interval.
+- Broker for development: `docker run -d --name web-factory-broker -e MOSQUITTO_DYNSEC_PASSWORD=… -p 127.0.0.1:1883:1883 -v "$PWD/broker/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro" eclipse-mosquitto:2`, from `apps/web-factory`. Then point `WEB_FACTORY_MQTT_URL=mqtt://127.0.0.1:1883` at it, with user name `admin` and the same password in a file.
 - First admin: `WEB_FACTORY_ADMIN_PASSWORD_FILE=… npm run create-admin -- --org … --slug … --email … --name …`. It is refused once any user exists.
 
 ## As built (TASK-901)
-The app, the identity model and migration `identity_foundation`, sign-in, roles, PLC registration, health, the MQTT boundary (`lib/mqtt/boundary.ts`: settings and topic roots only; the client is TASK-902), and CI steps.
+The app, the identity model and migration `identity_foundation`, sign-in, roles, PLC registration, health, the MQTT boundary, and CI steps.
 
 Tests (`npm test`; integration tests use `WEB_FACTORY_TEST_DATABASE_URL`):
 - Unit: password hashing, the role order, the environment rules, the deployment contract.
@@ -80,3 +118,25 @@ Tests (`npm test`; integration tests use `WEB_FACTORY_TEST_DATABASE_URL`):
   - the same version unchanged;
   - refused: a tampered file, wrong JSON or schema, a writable program output, an older or reused version, a viewer, another agent's PLC, a factory of another site;
   - an update to a newer version, and the audit trail.
+
+## As built (TASK-902)
+Migration `agent_connectivity`; the message contract (`lib/domain/agent-messages.ts`), broker access (`lib/domain/broker-access.ts`) and the projection (`lib/domain/connectivity.ts`); the broker connection, Dynamic Security control and ingestor (`lib/mqtt/`); onboarding (`lib/services/onboarding-service.ts`); the screens above; the broker configuration; CI runs the broker tests with the agent binary.
+
+Tests:
+- Unit: topic parsing, the agent's message schemas, an agent's broker rights, every connectivity state and the heartbeat interval.
+- Database (`test/connectivity.test.ts`):
+  - online, degraded and offline from status, heartbeat, PLC state and silence;
+  - a status change recorded once however often delivered, including the will;
+  - retained messages never refreshing last seen;
+  - removed and unknown PLCs; drops by reason;
+  - last seen throttled from telemetry; heartbeat coalescing;
+  - credentials: admins only, shown once and never stored or audited, rotation, nothing changed when the broker is down, revocation, client-id clashes.
+- Broker, with Docker (`test/broker.test.ts`; `WEB_FACTORY_TEST_DOCKER=1`, with `AGENT_BIN` for the real agent), against a real Mosquitto with Dynamic Security:
+  - onboarding; a wrong password or client id refused;
+  - online from what the agent publishes;
+  - every other agent's topic, `zfactory/#` and the control topic refused (reason 135), and nothing ingested;
+  - Web Factory's reconnect replaying retained state without new events or a false sign of life;
+  - a broker restart, then reconnects of Web Factory and the agent;
+  - offline from the will;
+  - the real agent online with issued credentials and offline on SIGTERM;
+  - revocation disconnecting the agent and refusing it.

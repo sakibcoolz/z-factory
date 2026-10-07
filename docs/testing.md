@@ -109,7 +109,11 @@ As built (TASK-901): `apps/web-factory` runs its own `npm test`.
 - **Integration** (`WEB_FACTORY_TEST_DATABASE_URL`, migrated by the global setup):
   - identity: bootstrap, neutral sign-in refusals and lockout, roles of viewers and operators, tenant isolation, sessions ending on role, status or password change, the last admin kept;
   - registration: topic-segment ids, registration and update from deployment files, every refusal, the audit trail.
-- **CI:** creates `web_factory_test`, then runs lint, typecheck, migrations, tests and build for the app.
+As built (TASK-902):
+- **Unit:** agent topics and message schemas, an agent's broker rights, the connectivity projection.
+- **Integration** (`test/connectivity.test.ts`): ingesting status, heartbeat and PLC state; a status change recorded once; retained messages; drops by reason; throttling and coalescing; issuing, rotating and revoking credentials with a fake broker.
+- **Broker** (`test/broker.test.ts`, Docker: `WEB_FACTORY_TEST_DOCKER=1` or `TEST_DOCKER=1`; the real agent with `AGENT_BIN`): a real Mosquitto with Dynamic Security from `broker/mosquitto.conf`. It covers onboarding, topic authorization (reason 135), reconnect and broker restart without duplicated state, the will, the real agent, and revocation. Every container is removed.
+- **CI:** creates `web_factory_test`, then runs lint, typecheck, migrations, tests (with Docker and the agent binary) and build for the app.
 - **Root project:** excludes `apps/` from its typecheck, lint and tests.
 
 ## PLC-to-PLC communication (Phase 07)
