@@ -121,6 +121,10 @@ As built (TASK-904):
 - **Unit:** the alarm rules.
 - **Integration** (`test/monitoring.test.ts`): the alarm sweep (idempotent and concurrent), acknowledgement permissions and audit, alarm lists, live views per scope with tenant isolation, factory and module navigation, and the SSE route (session mocked).
 - **End to end:** alarms from the real agent's alarm tag and from a lost PLC.
+As built (TASK-905):
+- **Unit:** command checks, the envelope, transitions.
+- **Integration** (`test/commands.test.ts`): issue, refusals, request keys, broker failure, acknowledgements, timeouts, telemetry confirmation, isolation.
+- **End to end:** the real agent writes a setpoint once (the simulated PLC counts writes), answers a redelivery as a duplicate, and refuses a forged command and a stale version.
 - **CI:** creates `web_factory_test`, then runs lint, typecheck, migrations, tests (with Docker and the agent binary) and build for the app.
 - **Root project:** excludes `apps/` from its typecheck, lint and tests.
 

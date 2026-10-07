@@ -97,6 +97,11 @@ Phases 00 to 05, the MVP, are done. One thing was not exercised: an external gat
   - **Charts:** built-in SVG telemetry charts.
   - **Alarms:** raised by PLC alarm tags, PLC connections and agents, with severity and history; operators and admins acknowledge.
   - **Unknown:** stale and disconnected data are always marked, never shown as healthy.
+- TASK-905 done (ZFA-48): remote commands and setpoints (ADR-0022).
+  - **Who and what:** operators and admins send them, from the PLC page, to registered command and setpoint tags only.
+  - **Checks:** Web Factory checks them before publishing and the agent's allow-list again.
+  - **Tracking:** every attempt is recorded and audited, with its lifecycle up to the agent's read-back and telemetry confirmation.
+  - **No double actuation:** a resubmitted form is one command, and a redelivered command is never written twice.
 - Phase 09 created as **MVP 2 — Production Edge & Cloud Integration** (PLANNED). It defines the next delivery boundary after the current foundations: deploy the Go Z-Factory Thin Client Agent on physical/industrial edge hardware, dynamically manage exported per-PLC configurations, operate multiple PLC workers with bounded concurrency and fault isolation, send telemetry/state/heartbeat to cloud over secure MQTT, receive validated command/setpoint messages, survive cloud outages with local store-and-forward, and prove physical multi-PLC failure/recovery E2E behaviour. TASK-503 remains the primary Thin Client Agent dependency; detailed TASK-9xx execution units will be created before Phase 09 implementation starts.
 
 - Phase 09 MVP 2 now includes **Web Factory**, a cloud-hosted TypeScript web application. Thin Client Agents publish PLC telemetry/state/heartbeat through secure MQTT; Web Factory consumes those topics server-side, keeps cloud telemetry/events/alarms/command history and latest-state views, provides factory/site/agent/PLC/module dashboards, and publishes authorized command/setpoint requests back through MQTT. MQTT credentials and PLC/Modbus access remain server/agent-side rather than in the browser. The Thin Client re-validates writable mappings, and PLC program/interlocks remain authoritative for physical outputs.

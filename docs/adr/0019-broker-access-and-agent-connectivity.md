@@ -1,6 +1,6 @@
 # ADR-0019 — Broker Access and Agent Connectivity
 
-Status: **ACCEPTED** (TASK-902, 2026-10-07). Amended by ADR-0020: Web Factory's broker session is now persistent, with a stable client id, instead of clean.
+Status: **ACCEPTED** (TASK-902, 2026-10-07). Amended by ADR-0020: Web Factory's broker session is now persistent, with a stable client id, instead of clean. Amended by ADR-0022: Web Factory gives its own client the role `web-factory-commands`, which allows publishing commands only.
 
 ## Context
 Z-Factory Thin Client Agents publish telemetry, PLC state, a heartbeat and an online/offline status to an MQTT broker, and receive commands from it (ADR-0017). Web Factory (ADR-0018) must consume these on the server and show which agents and PLCs are connected. Many agents of many organizations share one broker, so no agent may read or write another agent's topics, and an administrator must be able to cut an agent off. The agent already supports a user name, a password file, TLS and client certificates.
