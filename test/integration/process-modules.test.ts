@@ -570,7 +570,7 @@ describeDb("process modules", () => {
     await assignModuleDevice(db, alice, unit.id, { roleKey: "DUTY_PUMP", deviceId: await device("PUMP", "P-101") });
     await createModule(db, alice, { factoryId: otherFactoryId, typeId: pumpHouseId, name: "PH-1" });
 
-    await deleteFactory(db, alice, factoryId);
+    await deleteFactory(db, alice, factoryId, async () => ({ containers: [], networks: [] }));
 
     expect(await db.processModuleInstance.count()).toBe(1);
     expect(await db.moduleDevice.count()).toBe(0);

@@ -24,12 +24,20 @@ vi.mock("@/lib/db/client", async (importOriginal) => ({
   getDb: () => testDb.current,
 }));
 vi.mock("@/lib/auth/actor", () => actorMock);
+// Deleting through the action removes the factory's Docker resources; recorded here, run for real in docker-runtime.
+const dockerCleanup = vi.hoisted(() => ({
+  removeFactoryResources: vi.fn(async () => ({ containers: [] as string[], networks: [] as string[] })),
+}));
+vi.mock("@/lib/docker/factory-resources", () => dockerCleanup);
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/navigation", () => ({
   redirect: (path: string) => {
     throw new Error(`NEXT_REDIRECT ${path}`);
   },
 }));
+
+/** A factory with nothing in Docker. */
+const noResources = async () => ({ containers: [], networks: [] });
 
 const alice = { ownerId: "alice" };
 const bob = { ownerId: "bob" };
@@ -156,7 +164,7 @@ describeDb("factory CRUD against PostgreSQL", () => {
     expect((await getFactory(db, alice, mine.id)).name).toBe("Pump House");
     await expectDomainError(getFactory(db, bob, mine.id), "NOT_FOUND");
     await expectDomainError(updateFactory(db, bob, mine.id, input({ name: "Hijacked" })), "NOT_FOUND");
-    await expectDomainError(deleteFactory(db, bob, mine.id), "NOT_FOUND");
+    await expectDomainError(deleteFactory(db, bob, mine.id, noResources), "NOT_FOUND");
     expect((await getFactory(db, alice, mine.id)).name).toBe("Pump House");
   });
 
@@ -207,14 +215,46 @@ describeDb("factory CRUD against PostgreSQL", () => {
     await createDeviceInstance(db, { factoryId: created.id, deviceModelId: model.id, name: "VFD-01" });
     expect((await getFactory(db, alice, created.id)).deviceCount).toBe(1);
 
+    const asked: string[] = [];
+    const remover = async (factoryId: string) => {
+      asked.push(factoryId);
+      return { containers: ["zf-plc-01"], networks: [`zfactory_${factoryId}`] };
+    };
     await db.factory.update({ where: { id: created.id }, data: { runtimeStatus: "RUNNING" } });
-    await expectDomainError(deleteFactory(db, alice, created.id), "CONFLICT", "delete-requires-stopped");
+    await expectDomainError(deleteFactory(db, alice, created.id, remover), "CONFLICT", "delete-requires-stopped");
+    // A running factory's runtimes are never touched.
+    expect(asked).toEqual([]);
 
     await db.factory.update({ where: { id: created.id }, data: { runtimeStatus: "STOPPED" } });
-    await deleteFactory(db, alice, created.id);
+    // Its Docker resources go first, then its record (TASK-206).
+    expect(await deleteFactory(db, alice, created.id, remover)).toEqual({
+      containers: ["zf-plc-01"],
+      networks: [`zfactory_${created.id}`],
+    });
+    expect(asked).toEqual([created.id]);
     expect(await db.factory.count()).toBe(0);
     expect(await db.deviceInstance.count()).toBe(0);
     expect(await db.deviceModel.count()).toBe(1);
+  });
+
+  it("keeps a factory whose Docker resources cannot be removed, and says why (TASK-206)", async () => {
+    const created = await createFactory(db, alice, input());
+    const model = await createGenericModel(db, "VFD", "Generic VFD");
+    await createDeviceInstance(db, { factoryId: created.id, deviceModelId: model.id, name: "VFD-01" });
+    const unreachable = async () => {
+      throw new DomainError("RUNTIME_FAILURE", "The Docker Engine is not reachable.", { action: "list containers" });
+    };
+    const error = await deleteFactory(db, alice, created.id, unreachable).then(
+      () => undefined,
+      (reason: unknown) => reason as DomainError,
+    );
+    expect(error).toBeInstanceOf(DomainError);
+    expect(error?.code).toBe("RUNTIME_FAILURE");
+    expect(error?.message).toContain("The factory was not deleted");
+    expect(error?.details.rule).toBe("delete-runtime-cleanup");
+    // Nothing was deleted: the record still finds its containers and network later.
+    expect(await db.factory.count()).toBe(1);
+    expect(await db.deviceInstance.count()).toBe(1);
   });
 
   it("suggests a subnet no factory on the host uses", async () => {
@@ -270,6 +310,7 @@ describeDb("factory CRUD against PostgreSQL", () => {
     );
     expect((await getFactory(db, alice, created.id)).name).toBe("Renamed");
     await expect(deleteFactoryAction(created.id, {})).rejects.toThrow("NEXT_REDIRECT /factories");
+    expect(dockerCleanup.removeFactoryResources).toHaveBeenLastCalledWith(expect.anything(), created.id);
     expect(await db.factory.count()).toBe(0);
   });
 });

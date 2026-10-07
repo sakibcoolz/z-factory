@@ -11,6 +11,7 @@ import {
   startRuntimeContainer,
   stopRuntimeContainer,
 } from "@/lib/docker/containers";
+import { removeFactoryResources } from "@/lib/docker/factory-resources";
 import { ensureFactoryNetwork, removeFactoryNetwork } from "@/lib/docker/networks";
 import { DEFAULT_LIMITS, type RuntimePolicy } from "@/lib/docker/policy";
 import { DomainError, type DomainErrorCode } from "@/lib/domain/errors";
@@ -221,4 +222,86 @@ describeDocker("docker runtime lifecycle against a real engine", () => {
 
     expect((await foreign.inspect()).State.Status).toBe("created");
   }, 120_000);
+});
+
+describeDocker("deleting a factory removes its Docker resources, and only its own (TASK-206)", () => {
+  let docker: Docker;
+  const factoryA = randomUUID();
+  const factoryB = randomUUID();
+  const netA = `zfactory_test_${runId.slice(0, 8)}_a`;
+  const netB = `zfactory_test_${runId.slice(0, 8)}_b`;
+  const containerA = `zf-${factoryA}-plc-01`;
+  const containerB = `zf-${factoryB}-plc-01`;
+  const strayName = `zf-test-${runId.slice(0, 8)}-unmanaged`;
+  const plc = (factory: string, network: string, port: number) => ({
+    factoryId: factory,
+    deviceId: randomUUID(),
+    networkName: network,
+    serviceName: "plc-01",
+    image: "test-runtime",
+    ports: [{ containerPort: 5020, hostPort: port }],
+    limits: { cpus: 0.25, memoryMb: 32 },
+  });
+  const exists = async (inspect: () => Promise<unknown>) =>
+    inspect().then(
+      () => true,
+      (error: { statusCode?: number }) => (error.statusCode === 404 ? false : Promise.reject(error)),
+    );
+
+  beforeAll(async () => {
+    docker = createDockerClient(process.env.DOCKER_HOST ?? "unix:///var/run/docker.sock");
+    await ensureFactoryNetwork(
+      docker,
+      { factoryId: factoryA, name: netA, subnetCidr: await freeSubnet(docker) },
+      policy,
+    );
+    await ensureFactoryNetwork(
+      docker,
+      { factoryId: factoryB, name: netB, subnetCidr: await freeSubnet(docker) },
+      policy,
+    );
+    for (const [factory, network, port] of [
+      [factoryA, netA, 15941],
+      [factoryB, netB, 15942],
+    ] as const) {
+      const { containerId: created } = await createRuntimeContainer(docker, plc(factory, network, port), policy);
+      await startRuntimeContainer(docker, created);
+    }
+    // Labelled with factory A's id but not managed by Z-Factory: never removed.
+    await docker.createContainer({
+      name: strayName,
+      Image: "busybox:1.37",
+      Cmd: ["sleep", "600"],
+      Labels: { "zfactory.factory-id": factoryA, [RUN_LABEL]: runId },
+    });
+  }, 120_000);
+
+  afterAll(async () => {
+    const filters = { label: [`${RUN_LABEL}=${runId}`] };
+    for (const container of await docker.listContainers({ all: true, filters })) {
+      await docker.getContainer(container.Id).remove({ force: true, v: true });
+    }
+    for (const network of await docker.listNetworks({ filters })) {
+      await docker.getNetwork(network.Id).remove();
+    }
+  }, 60_000);
+
+  it("refuses while a runtime of the factory still runs", async () => {
+    await expectDomainError(removeFactoryResources(docker, factoryA), "CONFLICT", "factory-runtime-active");
+    expect(await exists(() => docker.getContainer(containerA).inspect())).toBe(true);
+    expect(await exists(() => docker.getNetwork(netA).inspect())).toBe(true);
+  });
+
+  it("removes the stopped factory's containers and network, and nothing else", async () => {
+    await stopRuntimeContainer(docker, containerA, 1);
+    expect(await removeFactoryResources(docker, factoryA)).toEqual({ containers: [containerA], networks: [netA] });
+    expect(await exists(() => docker.getContainer(containerA).inspect())).toBe(false);
+    expect(await exists(() => docker.getNetwork(netA).inspect())).toBe(false);
+    // Another factory's runtime and network, and an unmanaged container, are untouched.
+    expect((await docker.getContainer(containerB).inspect()).State.Running).toBe(true);
+    expect(await exists(() => docker.getNetwork(netB).inspect())).toBe(true);
+    expect(await exists(() => docker.getContainer(strayName).inspect())).toBe(true);
+    // Again: nothing left to remove.
+    expect(await removeFactoryResources(docker, factoryA)).toEqual({ containers: [], networks: [] });
+  }, 60_000);
 });

@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireActor } from "@/lib/auth/actor";
 import { getDb } from "@/lib/db/client";
+import { getDocker } from "@/lib/docker/client";
+import { removeFactoryResources } from "@/lib/docker/factory-resources";
 import { isDomainError } from "@/lib/domain/errors";
 import { routes } from "@/lib/navigation/routes";
 import { type OperationState, toOperationState } from "@/lib/plc/operation-state";
@@ -20,7 +22,8 @@ import {
 
 /**
  * Factory mutations. Each action passes the authorization boundary (`requireActor`)
- * first and validates in the service; none of them starts Docker or touches runtime state.
+ * first and validates in the service. None of them starts Docker or changes runtime state;
+ * deleting a stopped factory removes its leftover runtime containers and network.
  */
 
 function logUnexpected(action: string, error: unknown) {
@@ -80,7 +83,8 @@ export async function deleteFactoryAction(
 ): Promise<DeleteFactoryState> {
   try {
     const actor = await requireActor();
-    await deleteFactory(getDb(), actor, factoryId);
+    // Its PLC containers and network go with it (TASK-206).
+    await deleteFactory(getDb(), actor, factoryId, (id) => removeFactoryResources(getDocker(), id));
   } catch (error) {
     logUnexpected("factory.delete", error);
     return { message: toErrorMessage(error) };
