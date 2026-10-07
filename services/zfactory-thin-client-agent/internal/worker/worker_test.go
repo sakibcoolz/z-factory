@@ -213,13 +213,13 @@ func TestWritesACheckedCommandAndReadsItBack(t *testing.T) {
 	go func() { w.Run(ctx); close(done) }()
 	eventually(t, "online", func() bool { return w.Snapshot(false).State == worker.Online })
 
-	if err := w.Submit(command.Write{CommandID: "a", Mapping: speed, Words: []uint16{425}, Value: 42.5}, func(r worker.Result) { results <- r }); err != nil {
+	if err := w.Submit(command.Write{CommandID: "a", Mapping: speed, Words: []uint16{425}, Value: 42.5, ExpiresAt: later()}, func(r worker.Result) { results <- r }); err != nil {
 		t.Fatal(err)
 	}
 	if r := <-results; r.Status != command.Applied || r.Observed != 42.5 {
 		t.Fatalf("speed: %+v", r)
 	}
-	if err := w.Submit(command.Write{CommandID: "b", Mapping: start, Bool: true, Value: true}, func(r worker.Result) { results <- r }); err != nil {
+	if err := w.Submit(command.Write{CommandID: "b", Mapping: start, Bool: true, Value: true, ExpiresAt: later()}, func(r worker.Result) { results <- r }); err != nil {
 		t.Fatal(err)
 	}
 	if r := <-results; r.Status != command.Applied || r.Observed != true {
@@ -231,14 +231,14 @@ func TestWritesACheckedCommandAndReadsItBack(t *testing.T) {
 
 	// A refused write fails without breaking the connection.
 	server.Refuse(0x10, true)
-	_ = w.Submit(command.Write{CommandID: "c", Mapping: speed, Words: []uint16{1}}, func(r worker.Result) { results <- r })
+	_ = w.Submit(command.Write{CommandID: "c", Mapping: speed, Words: []uint16{1}, ExpiresAt: later()}, func(r worker.Result) { results <- r })
 	if r := <-results; r.Status != command.Failed || r.Rule != "plc-refused" {
 		t.Fatalf("refused: %+v", r)
 	}
 	cancel()
 	<-done
 	// After the worker stopped a waiting command fails, unwritten.
-	_ = w.Submit(command.Write{CommandID: "d", Mapping: speed, Words: []uint16{1}}, func(r worker.Result) { results <- r })
+	_ = w.Submit(command.Write{CommandID: "d", Mapping: speed, Words: []uint16{1}, ExpiresAt: later()}, func(r worker.Result) { results <- r })
 	select {
 	case r := <-results:
 		t.Fatalf("nothing runs after stop: %+v", r)
@@ -260,7 +260,7 @@ func TestRefusesCommandsWhileThePLCIsAwayOrBusy(t *testing.T) {
 	go w.Run(ctx)
 	eventually(t, "the PLC to be missing", func() bool { return w.Snapshot(false).Failures > 0 })
 	results := make(chan worker.Result, 1)
-	_ = w.Submit(command.Write{CommandID: "a", Mapping: speed, Words: []uint16{1}}, func(r worker.Result) { results <- r })
+	_ = w.Submit(command.Write{CommandID: "a", Mapping: speed, Words: []uint16{1}, ExpiresAt: later()}, func(r worker.Result) { results <- r })
 	if r := <-results; r.Status != command.Failed || r.Rule != "plc-not-connected" {
 		t.Fatalf("away: %+v", r)
 	}
@@ -269,11 +269,111 @@ func TestRefusesCommandsWhileThePLCIsAwayOrBusy(t *testing.T) {
 	idle := worker.New(d, worker.Options{})
 	busy := 0
 	for range 20 {
-		if err := idle.Submit(command.Write{Mapping: speed}, func(worker.Result) {}); err != nil {
+		if err := idle.Submit(command.Write{Mapping: speed, ExpiresAt: later()}, func(worker.Result) {}); err != nil {
 			busy++
 		}
 	}
 	if busy != 4 {
 		t.Fatalf("bounded command queue: %d refused", busy)
+	}
+}
+
+// later is a deadline far enough ahead for any test command to be written.
+func later() time.Time { return time.Now().Add(time.Minute) }
+
+// TASK-907: a command is written only before its deadline, also after waiting in the
+// queue or for the connection; one that waited past it fails and writes nothing.
+
+// deadlineRig runs a worker against a test PLC and submits commands to it.
+func deadlineRig(t *testing.T) (*modbustest.Server, config.Mapping, config.Mapping, func(command.Write) worker.Result) {
+	t.Helper()
+	server, speed, start, submit, _ := deadlineWorker(t)
+	return server, speed, start, submit
+}
+
+func deadlineWorker(t *testing.T) (*modbustest.Server, config.Mapping, config.Mapping, func(command.Write) worker.Result, *worker.Worker) {
+	t.Helper()
+	server, err := modbustest.Start()
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := deployment(t, "plc-1", server)
+	w := worker.New(d, worker.Options{})
+	speed, _ := d.Mapping("m-speed")
+	start, _ := d.Mapping("m-start")
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { w.Run(ctx); close(done) }()
+	t.Cleanup(func() { cancel(); <-done; server.Close() })
+	eventually(t, "online", func() bool { return w.Snapshot(false).State == worker.Online })
+	submit := func(write command.Write) worker.Result {
+		result := make(chan worker.Result, 1)
+		if err := w.Submit(write, func(r worker.Result) { result <- r }); err != nil {
+			t.Fatal(err)
+		}
+		return <-result
+	}
+	return server, speed, start, submit, w
+}
+
+func expiredResult(r worker.Result) bool {
+	return r.Status == command.Failed && r.Rule == command.RuleExpired
+}
+
+func TestWritesACommandStillWithinItsDeadline(t *testing.T) {
+	server, speed, _, submit := deadlineRig(t)
+	if r := submit(command.Write{CommandID: "valid", Mapping: speed, Words: []uint16{425}, Value: 42.5, ExpiresAt: later()}); r.Status != command.Applied || r.Observed != 42.5 {
+		t.Fatalf("valid: %+v", r)
+	}
+	if writes := server.Writes(); len(writes) != 1 {
+		t.Fatalf("one write: %v", writes)
+	}
+}
+
+func TestNeverWritesACommandWithoutADeadline(t *testing.T) {
+	server, _, start, submit := deadlineRig(t)
+	// It never came through command.Check: nothing unchecked reaches the PLC.
+	if r := submit(command.Write{CommandID: "unchecked", Mapping: start, Bool: true}); !expiredResult(r) {
+		t.Fatalf("unchecked: %+v", r)
+	}
+	if writes := server.Writes(); len(writes) != 0 {
+		t.Fatalf("written: %v", writes)
+	}
+}
+
+func TestNeverWritesACommandThatExpiredInTheQueue(t *testing.T) {
+	server, speed, start, _, w := deadlineWorker(t)
+	// Each request takes 300 ms (under the 500 ms timeout): the first command holds the queue.
+	server.SetDelay(300 * time.Millisecond)
+	first, queued := make(chan worker.Result, 1), make(chan worker.Result, 1)
+	if err := w.Submit(command.Write{CommandID: "slow", Mapping: speed, Words: []uint16{100}, Value: 10.0, ExpiresAt: later()}, func(r worker.Result) { first <- r }); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Submit(command.Write{CommandID: "queued", Mapping: start, Bool: true, ExpiresAt: time.Now().Add(150 * time.Millisecond)}, func(r worker.Result) { queued <- r }); err != nil {
+		t.Fatal(err)
+	}
+	if r := <-first; r.Status != command.Applied {
+		t.Fatalf("slow: %+v", r)
+	}
+	if r := <-queued; !expiredResult(r) {
+		t.Fatalf("expired in the queue: %+v", r)
+	}
+	if got := server.Writes(); len(got) != 1 || got[0] != "registers 100=[100]" {
+		t.Fatalf("only the valid command was written: %v", got)
+	}
+}
+
+func TestNeverWritesACommandThatExpiredWaitingForTheConnection(t *testing.T) {
+	server, _, start, submit, _ := deadlineWorker(t)
+	server.SetDelay(300 * time.Millisecond)
+	// A poll is in flight and holds the connection for ~300 ms; the command arrives now,
+	// passes the first check, and its deadline passes while it waits for the connection.
+	received := server.Received()
+	eventually(t, "a poll in flight", func() bool { return server.Received() > received })
+	if r := submit(command.Write{CommandID: "locked", Mapping: start, Bool: true, ExpiresAt: time.Now().Add(100 * time.Millisecond)}); !expiredResult(r) {
+		t.Fatalf("expired waiting for the connection: %+v", r)
+	}
+	if got := server.Writes(); len(got) != 0 {
+		t.Fatalf("an expired command was written: %v", got)
 	}
 }

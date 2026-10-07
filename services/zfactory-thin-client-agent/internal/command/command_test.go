@@ -51,6 +51,10 @@ func TestAcceptsACommandToACommandOrSetpointTag(t *testing.T) {
 	if rule != "" || write.Mapping.Name != "Speed_SP" || len(write.Words) != 1 || write.Words[0] != 425 {
 		t.Fatalf("speed: %+v %s", write, rule)
 	}
+	// The cloud's absolute deadline travels with the write, unchanged (TASK-907).
+	if !write.ExpiresAt.Equal(now.Add(30 * time.Second).Truncate(time.Second)) {
+		t.Fatalf("deadline %v, want %v", write.ExpiresAt, now.Add(30*time.Second))
+	}
 	write, rule = check(t, message(func(e map[string]any) { e["mappingId"], e["value"] = "m-start", true }), "plc-1")
 	if rule != "" || !write.Bool || write.Mapping.Area != "COIL" {
 		t.Fatalf("start: %+v %s", write, rule)

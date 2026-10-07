@@ -26,7 +26,9 @@ type Server struct {
 	Holding  [65536]uint16
 	Input    [65536]uint16
 
-	delay    time.Duration
+	delay time.Duration
+	// received counts requests as they arrive, before any delay; requests counts answers.
+	received int
 	refuse   map[byte]bool
 	requests int
 	writes   []string
@@ -77,6 +79,14 @@ func (s *Server) Refuse(function byte, refuse bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.refuse[function] = refuse
+}
+
+// Received is how many requests arrived so far, counted before the answer's delay: a
+// request in flight is already counted (TASK-907 tests a command waiting behind it).
+func (s *Server) Received() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.received
 }
 
 // Requests counts the requests answered so far.
@@ -160,6 +170,7 @@ func (s *Server) serve(conn net.Conn) {
 			return
 		}
 		s.mu.Lock()
+		s.received++
 		delay := s.delay
 		s.mu.Unlock()
 		if delay > 0 {

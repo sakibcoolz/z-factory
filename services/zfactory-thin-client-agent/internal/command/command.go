@@ -83,10 +83,18 @@ func refuse(rule, format string, args ...any) *Refusal {
 	return &Refusal{Rule: rule, Reason: fmt.Sprintf(format, args...)}
 }
 
+// RuleExpired is the rule of a command refused for its deadline: REJECTED when it arrives
+// expired, FAILED when it expires while it waits for the PLC (TASK-907). Either way
+// nothing is written.
+const RuleExpired = "command-expired"
+
 // Write is a checked command: one mapping and the value to put there.
 type Write struct {
 	CommandID string
 	Mapping   config.Mapping
+	// ExpiresAt is the command's absolute deadline as the cloud set it. The worker checks
+	// it again right before writing: a command that waited past it is never written.
+	ExpiresAt time.Time
 	// Bool for a coil; Words (already encoded) for registers.
 	Bool  bool
 	Words []uint16
@@ -135,7 +143,7 @@ func Check(e Envelope, topicPLC string, d *config.Deployment, now time.Time) (Wr
 		return Write{}, refuse("stale-config-version", "the command is for configuration %d, the PLC runs %d", e.ConfigVersion, d.ConfigVersion)
 	}
 	if e.ExpiresAt.IsZero() || !now.Before(e.ExpiresAt) {
-		return Write{}, refuse("command-expired", "the command expired or has no expiresAt")
+		return Write{}, refuse(RuleExpired, "the command expired or has no expiresAt")
 	}
 	if e.ExpiresAt.Sub(now) > MaxLifetime {
 		return Write{}, refuse("command-expiry", "expiresAt is more than %s ahead", MaxLifetime)
@@ -148,7 +156,7 @@ func Check(e Envelope, topicPLC string, d *config.Deployment, now time.Time) (Wr
 	if !mapping.Writable() || mapping.Authority != "EXTERNAL_COMMAND" || (mapping.Role != "COMMAND" && mapping.Role != "SETPOINT") {
 		return Write{}, refuse("not-writable", "%s is not a command or setpoint tag; the PLC program decides it", mapping.Name)
 	}
-	write := Write{CommandID: e.CommandID, Mapping: mapping}
+	write := Write{CommandID: e.CommandID, Mapping: mapping, ExpiresAt: e.ExpiresAt}
 	if codec.IsBool(mapping.DataType) {
 		var value bool
 		if err := json.Unmarshal(e.Value, &value); err != nil {

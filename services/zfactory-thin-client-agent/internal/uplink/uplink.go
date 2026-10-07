@@ -135,6 +135,8 @@ type counters struct {
 	published, publishErrors, connects, connectionsLost                  atomic.Uint64
 	spooled, spoolErrors, lost, replayedOut                              atomic.Uint64
 	received, accepted, rejected, applied, failed, duplicates, ackErrors atomic.Uint64
+	// expired counts commands that failed because their deadline passed while they waited (TASK-907).
+	expired atomic.Uint64
 }
 
 // Uplink is a running MQTT connection.
@@ -548,6 +550,9 @@ func (u *Uplink) onCommand(_ mqtt.Client, message mqtt.Message) {
 			u.counters.applied.Add(1)
 		} else {
 			u.counters.failed.Add(1)
+			if result.Rule == command.RuleExpired {
+				u.counters.expired.Add(1)
+			}
 		}
 		u.commands.Update(ack)
 		u.answer(ack, plcID)
@@ -614,7 +619,7 @@ func (u *Uplink) Status() map[string]any {
 		"commands": map[string]uint64{
 			"received": c.received.Load(), "accepted": c.accepted.Load(), "rejected": c.rejected.Load(),
 			"applied": c.applied.Load(), "failed": c.failed.Load(), "duplicates": c.duplicates.Load(),
-			"ackErrors": c.ackErrors.Load(),
+			"ackErrors": c.ackErrors.Load(), "expired": c.expired.Load(),
 		},
 	}
 }
