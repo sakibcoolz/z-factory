@@ -423,3 +423,42 @@ export async function listAudit(db: Db, actor: Actor, organizationId: string, li
     include: { actor: { select: { email: true } } },
   });
 }
+
+/** A factory with its modules and PLCs (TASK-904 navigation). */
+export async function getFactory(db: Db, actor: Actor, factoryId: string) {
+  const factory = isUuid(factoryId)
+    ? await db.factory.findUnique({
+        where: { id: factoryId },
+        include: {
+          site: true,
+          modules: { orderBy: { name: "asc" }, include: { _count: { select: { plcs: true } } } },
+          plcs: { orderBy: { name: "asc" }, include: { agent: true, _count: { select: { mappings: true } } } },
+        },
+      })
+    : null;
+  if (!factory) throw notFound("factory");
+  const access = await requireMembership(db, actor, factory.organizationId, "view").catch((error: unknown) => {
+    if (error instanceof DomainError && error.code === "NOT_FOUND") throw notFound("factory");
+    throw error;
+  });
+  return { factory, ...access };
+}
+
+/** A process module and the PLCs that carry its signals. */
+export async function getModule(db: Db, actor: Actor, moduleId: string) {
+  const found = isUuid(moduleId)
+    ? await db.module.findUnique({
+        where: { id: moduleId },
+        include: {
+          factory: { include: { site: true } },
+          plcs: { include: { plc: { include: { agent: true, _count: { select: { mappings: true } } } } } },
+        },
+      })
+    : null;
+  if (!found) throw notFound("module");
+  const access = await requireMembership(db, actor, found.factory.organizationId, "view").catch((error: unknown) => {
+    if (error instanceof DomainError && error.code === "NOT_FOUND") throw notFound("module");
+    throw error;
+  });
+  return { module: found, ...access };
+}

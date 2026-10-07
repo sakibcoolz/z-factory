@@ -1,43 +1,38 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ActionForm } from "@/components/action-form";
-import { ago, BrokerBanner, ConnectivityPill, PlcStatePill } from "@/components/connectivity";
+import { ago, BrokerBanner } from "@/components/connectivity";
 import { CredentialsForm } from "@/components/credentials-form";
+import { LiveAgent } from "@/components/live-agent";
 import { can } from "@/lib/auth/roles";
 import { requireActor } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
 import { brokerStatus, connectivityLimits } from "@/lib/mqtt/boundary";
+import { toJson } from "@/lib/live/json";
+import type { AgentLiveView } from "@/lib/live/types";
 import { load } from "@/lib/page";
+import { liveView } from "@/lib/services/live-service";
 import { getAgent } from "@/lib/services/site-service";
 import { issueCredentialsAction, registerDeploymentAction, revokeCredentialsAction } from "../../actions";
 
 export const metadata: Metadata = { title: "Agent" };
 export const dynamic = "force-dynamic";
 
-type Heartbeat = {
-  uptimeS?: number;
-  workers?: number;
-  byState?: Record<string, number>;
-  queue?: { depth?: number; dropped?: number };
-  spooled?: number;
-  published?: number;
-};
-
-function uptime(seconds: number | undefined): string {
-  if (seconds === undefined) return "—";
-  if (seconds < 3600) return `${Math.floor(seconds / 60)} min`;
-  if (seconds < 86_400) return `${Math.floor(seconds / 3600)} h ${Math.floor((seconds % 3600) / 60)} min`;
-  return `${Math.floor(seconds / 86_400)} d ${Math.floor((seconds % 86_400) / 3600)} h`;
-}
-
 export default async function AgentPage({ params }: { params: Promise<{ agentId: string }> }) {
   const { agentId } = await params;
   const actor = await requireActor();
-  const { agent, organization, role, topicRoot, plcs, connectivity, credentials, events } = await load(
-    getAgent(getDb(), actor, agentId, connectivityLimits()),
+  const limits = connectivityLimits();
+  const { agent, organization, role, topicRoot, plcs, credentials, events } = await load(
+    getAgent(getDb(), actor, agentId, limits),
   );
-  const heartbeat = (agent.heartbeatJson ?? null) as Heartbeat | null;
+  const live = toJson(await liveView(getDb(), actor, { kind: "agent", id: agent.id }, limits)) as AgentLiveView;
   const admin = can(role, "manageSites");
+  const registered = Object.fromEntries(
+    plcs.map((plc) => [
+      plc.id,
+      { factory: plc.factory, configVersion: plc.configVersion, mappings: plc.mappings, writable: plc.writable },
+    ]),
+  );
   return (
     <>
       <div>
@@ -54,97 +49,10 @@ export default async function AgentPage({ params }: { params: Promise<{ agentId:
           <dd className="mono">{agent.agentKey}</dd>
           <dt>MQTT topics</dt>
           <dd className="mono">{topicRoot}/…</dd>
-          <dt>Status</dt>
-          <dd>
-            <ConnectivityPill state={connectivity.state} />
-            {connectivity.reasons.length > 0 ? (
-              <span className="muted"> — {connectivity.reasons.join("; ")}</span>
-            ) : null}
-          </dd>
-          <dt>Last seen</dt>
-          <dd>{ago(agent.lastSeenAt)}</dd>
-          <dt>Agent version</dt>
-          <dd className="mono">{agent.agentVersion ?? "—"}</dd>
         </dl>
       </div>
       <BrokerBanner broker={brokerStatus()} />
-      <section className="card">
-        <h2>Heartbeat</h2>
-        {heartbeat ? (
-          <dl className="kv">
-            <dt>Received</dt>
-            <dd>{ago(agent.lastHeartbeatAt)}</dd>
-            <dt>Uptime</dt>
-            <dd>{uptime(heartbeat.uptimeS)}</dd>
-            <dt>PLC workers</dt>
-            <dd>
-              {heartbeat.workers ?? 0}
-              {heartbeat.byState && Object.keys(heartbeat.byState).length > 0
-                ? ` (${Object.entries(heartbeat.byState)
-                    .map(([state, count]) => `${count} ${state.toLowerCase()}`)
-                    .join(", ")})`
-                : null}
-            </dd>
-            <dt>Telemetry queue</dt>
-            <dd>
-              {heartbeat.queue?.depth ?? 0} waiting, {heartbeat.queue?.dropped ?? 0} dropped
-            </dd>
-            <dt>Spooled offline</dt>
-            <dd>{heartbeat.spooled ?? 0}</dd>
-            <dt>Published</dt>
-            <dd>{heartbeat.published ?? 0}</dd>
-          </dl>
-        ) : (
-          <p className="muted">No heartbeat received yet.</p>
-        )}
-      </section>
-      <section className="card">
-        <h2>PLCs</h2>
-        {plcs.length === 0 ? (
-          <p className="muted">No PLC registered yet.</p>
-        ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>PLC</th>
-                  <th>Factory</th>
-                  <th>Version</th>
-                  <th>Connection</th>
-                  <th>Last poll</th>
-                  <th>Tags</th>
-                  <th>Writable</th>
-                </tr>
-              </thead>
-              <tbody>
-                {plcs.map((plc) => (
-                  <tr key={plc.id}>
-                    <td>
-                      <Link href={`/plcs/${plc.id}`}>{plc.name}</Link>
-                    </td>
-                    <td>{plc.factory}</td>
-                    <td className="mono">
-                      v{plc.configVersion}
-                      {plc.edge.configVersion !== null && plc.edge.configVersion !== plc.configVersion ? (
-                        <span className="pill warn" title="The agent runs another version than the one registered">
-                          agent runs v{plc.edge.configVersion}
-                        </span>
-                      ) : null}
-                    </td>
-                    <td>
-                      <PlcStatePill state={plc.edge.state} />
-                      {plc.edge.note ? <span className="muted"> {plc.edge.note}</span> : null}
-                    </td>
-                    <td>{ago(plc.edge.lastPollAt)}</td>
-                    <td>{plc.mappings}</td>
-                    <td>{plc.writable}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+      <LiveAgent initial={live} registered={registered} canAcknowledge={can(role, "command")} />
       <section className="card">
         <h2>Connection history</h2>
         {events.length === 0 ? (

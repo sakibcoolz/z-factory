@@ -1,12 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ActionForm } from "@/components/action-form";
-import { ago, BrokerBanner, ConnectivityPill } from "@/components/connectivity";
+import { BrokerBanner } from "@/components/connectivity";
+import { LiveSite } from "@/components/live-site";
 import { can } from "@/lib/auth/roles";
 import { requireActor } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
 import { brokerStatus, connectivityLimits } from "@/lib/mqtt/boundary";
+import { toJson } from "@/lib/live/json";
+import type { SiteLiveView } from "@/lib/live/types";
 import { load } from "@/lib/page";
+import { liveView } from "@/lib/services/live-service";
 import { getSite } from "@/lib/services/site-service";
 import { createAgentAction } from "../../actions";
 
@@ -16,7 +20,14 @@ export const dynamic = "force-dynamic";
 export default async function SitePage({ params }: { params: Promise<{ siteId: string }> }) {
   const { siteId } = await params;
   const actor = await requireActor();
-  const { site, organization, role, agents } = await load(getSite(getDb(), actor, siteId, connectivityLimits()));
+  const limits = connectivityLimits();
+  const { site, organization, role } = await load(getSite(getDb(), actor, siteId, limits));
+  const live = toJson(await liveView(getDb(), actor, { kind: "site", id: site.id }, limits)) as SiteLiveView;
+  const factories = await getDb().factory.findMany({
+    where: { siteId: site.id },
+    orderBy: { name: "asc" },
+    include: { _count: { select: { plcs: true, modules: true } } },
+  });
   return (
     <>
       <div>
@@ -29,39 +40,22 @@ export default async function SitePage({ params }: { params: Promise<{ siteId: s
         <span className="mono muted">site id {site.siteKey}</span>
       </div>
       <BrokerBanner broker={brokerStatus()} />
-      <section className="card">
-        <h2>Thin Client Agents</h2>
-        {agents.length === 0 ? (
-          <p className="muted">No agent registered yet.</p>
+      <LiveSite initial={live} canAcknowledge={can(role, "command")} />
+      <section className="card" aria-label="Factories">
+        <h2>Factories</h2>
+        {factories.length === 0 ? (
+          <p className="muted">No factory yet: one appears with the first PLC registered from it.</p>
         ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Agent</th>
-                  <th>Agent id</th>
-                  <th>Status</th>
-                  <th>Last seen</th>
-                  <th>PLCs</th>
-                </tr>
-              </thead>
-              <tbody>
-                {agents.map((agent) => (
-                  <tr key={agent.id}>
-                    <td>
-                      <Link href={`/agents/${agent.id}`}>{agent.name}</Link>
-                    </td>
-                    <td className="mono">{agent.agentKey}</td>
-                    <td title={agent.connectivity.reasons.join("; ")}>
-                      <ConnectivityPill state={agent.connectivity.state} />
-                    </td>
-                    <td>{ago(agent.lastSeenAt)}</td>
-                    <td>{agent.plcs.map((plc) => plc.name).join(", ") || "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ul className="plain">
+            {factories.map((factory) => (
+              <li key={factory.id}>
+                <Link href={`/factories/${factory.id}`}>{factory.name}</Link>{" "}
+                <span className="muted">
+                  · {factory._count.plcs} PLCs · {factory._count.modules} modules
+                </span>
+              </li>
+            ))}
+          </ul>
         )}
       </section>
       {can(role, "manageSites") ? (

@@ -49,6 +49,7 @@ export function getMqttRuntime(): MqttRuntime | null {
       capacity: env.WEB_FACTORY_TELEMETRY_QUEUE,
       writers: env.WEB_FACTORY_TELEMETRY_WRITERS,
     },
+    { limits: connectivityLimits() },
   );
   return globalForMqtt.webFactoryMqtt;
 }

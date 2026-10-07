@@ -117,6 +117,10 @@ As built (TASK-903):
 - **Unit:** the telemetry contract, latest-state walk, quality projection and time limits.
 - **Integration** (`test/telemetry.test.ts`): storage from the MQTT handler on; duplicates and replays; out-of-order batches; events; drops; the bounded queue; partitions; tenant isolation and query limits.
 - **End to end** (`test/telemetry-e2e.test.ts`, Docker and `AGENT_BIN`): simulated Modbus PLCs (`test/modbus-server.ts`), the real agent, a real Mosquitto. It covers PLCs added at run time, a PLC lost, and a broker outage replayed without duplicates.
+As built (TASK-904):
+- **Unit:** the alarm rules.
+- **Integration** (`test/monitoring.test.ts`): the alarm sweep (idempotent and concurrent), acknowledgement permissions and audit, alarm lists, live views per scope with tenant isolation, factory and module navigation, and the SSE route (session mocked).
+- **End to end:** alarms from the real agent's alarm tag and from a lost PLC.
 - **CI:** creates `web_factory_test`, then runs lint, typecheck, migrations, tests (with Docker and the agent binary) and build for the app.
 - **Root project:** excludes `apps/` from its typecheck, lint and tests.
 

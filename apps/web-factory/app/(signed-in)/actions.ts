@@ -9,6 +9,7 @@ import { isDomainError } from "@/lib/domain/errors";
 import type { FormState } from "@/lib/form-state";
 import { log } from "@/lib/log";
 import { agentBrokerUrl, forgetAgent, forgetPlcs, getBrokerAdmin } from "@/lib/mqtt/boundary";
+import { acknowledgeAlarm } from "@/lib/services/alarm-service";
 import { issueAgentCredentials, revokeAgentCredentials } from "@/lib/services/onboarding-service";
 import { createAgent, createSite, registerDeployment } from "@/lib/services/site-service";
 import { addMember, changeOwnPassword, setMemberActive, setMemberRole } from "@/lib/services/user-service";
@@ -137,6 +138,16 @@ export async function revokeCredentialsAction(agentId: string, _state: FormState
       return "Credentials revoked; the agent was disconnected.";
     },
     [`/agents/${agentId}`],
+  );
+}
+
+export async function acknowledgeAlarmAction(alarmId: string, _state: FormState) {
+  const actor = await requireActor();
+  // The live views pick the change up; nothing to revalidate.
+  return run(
+    "alarm.acknowledge",
+    async () => ((await acknowledgeAlarm(getDb(), actor, alarmId)).changed ? "Acknowledged." : "Already acknowledged."),
+    [],
   );
 }
 
