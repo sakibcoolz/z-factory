@@ -29,6 +29,14 @@ const dockerCleanup = vi.hoisted(() => ({
   removeFactoryResources: vi.fn(async () => ({ containers: [] as string[], networks: [] as string[] })),
 }));
 vi.mock("@/lib/docker/factory-resources", () => dockerCleanup);
+// The actions check subnets against the Docker host; these are the host's networks here.
+const dockerHost = vi.hoisted(() => ({
+  networks: [] as Array<{ name: string; subnets: string[]; labels: Record<string, string> }>,
+}));
+vi.mock("@/lib/docker/networks", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/docker/networks")>()),
+  listHostNetworks: vi.fn(async () => dockerHost.networks),
+}));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/navigation", () => ({
   redirect: (path: string) => {
@@ -38,6 +46,14 @@ vi.mock("next/navigation", () => ({
 
 /** A factory with nothing in Docker. */
 const noResources = async () => ({ containers: [], networks: [] });
+/** A Docker host with these networks, and one that cannot be reached. */
+const hostWith =
+  (...networks: Array<{ name: string; subnets: string[]; labels?: Record<string, string> }>) =>
+  async () =>
+    networks.map((network) => ({ labels: {}, ...network }));
+const unreachableHost = async (): Promise<never> => {
+  throw new DomainError("RUNTIME_FAILURE", "The Docker Engine is not reachable.");
+};
 
 const alice = { ownerId: "alice" };
 const bob = { ownerId: "bob" };
@@ -81,6 +97,7 @@ describeDb("factory CRUD against PostgreSQL", () => {
   beforeEach(async () => {
     await resetDb(db);
     actorMock.requireActor.mockReset().mockResolvedValue(alice);
+    dockerHost.networks = [];
   });
   afterAll(async () => {
     await db.$disconnect();
@@ -261,6 +278,104 @@ describeDb("factory CRUD against PostgreSQL", () => {
     expect(await suggestFactorySubnet(db)).toBe("172.20.1.0/24");
     await createFactory(db, bob, input());
     expect(await suggestFactorySubnet(db)).toBe("172.20.2.0/24");
+  });
+
+  it("refuses a subnet that is free in the database but taken on the Docker host (TASK-207)", async () => {
+    const orphan = hostWith({ name: "zfactory_deleted", subnets: ["172.20.1.0/24"] });
+    await expectDomainError(createFactory(db, alice, input(), orphan), "CONFLICT", "docker-subnet-overlap");
+    // Any overlap counts, whoever made the network.
+    await expectDomainError(
+      createFactory(db, alice, input(), hostWith({ name: "other-project", subnets: ["172.20.0.0/16"] })),
+      "CONFLICT",
+      "docker-subnet-overlap",
+    );
+    expect(await db.factory.count()).toBe(0);
+
+    expect((await createFactory(db, alice, input({ subnetCidr: "172.20.2.0/24" }), orphan)).subnetCidr).toBe(
+      "172.20.2.0/24",
+    );
+    // A clash with another factory is still named as such.
+    await expectDomainError(
+      createFactory(db, alice, input({ slug: "other", subnetCidr: "172.20.2.0/24" }), orphan),
+      "CONFLICT",
+      "subnet-overlap",
+    );
+  });
+
+  it("checks a changed subnet against the Docker host, except the factory's own network (TASK-207)", async () => {
+    const created = await createFactory(db, alice, input());
+    const host = hostWith(
+      {
+        name: created.dockerNetworkName,
+        subnets: ["172.20.1.0/24"],
+        labels: { "zfactory.managed": "true", "zfactory.factory-id": created.id },
+      },
+      { name: "zfactory_deleted", subnets: ["172.20.5.0/24"] },
+    );
+
+    await expectDomainError(
+      updateFactory(db, alice, created.id, input({ subnetCidr: "172.20.5.0/24" }), host),
+      "CONFLICT",
+      "docker-subnet-overlap",
+    );
+    // Its own network is not a clash: moving within it is allowed.
+    expect((await updateFactory(db, alice, created.id, input({ subnetCidr: "172.20.1.0/25" }), host)).subnetCidr).toBe(
+      "172.20.1.0/25",
+    );
+    // Docker is asked only when the subnet changes.
+    expect(
+      (
+        await updateFactory(
+          db,
+          alice,
+          created.id,
+          input({ name: "Renamed", subnetCidr: "172.20.1.0/25" }),
+          unreachableHost,
+        )
+      ).name,
+    ).toBe("Renamed");
+  });
+
+  it("says so when the Docker host cannot be asked, instead of passing the subnet (TASK-207)", async () => {
+    const error = await createFactory(db, alice, input(), unreachableHost).then(
+      () => undefined,
+      (reason: unknown) => reason,
+    );
+    expect(error).toBeInstanceOf(DomainError);
+    expect((error as DomainError).code).toBe("RUNTIME_FAILURE");
+    expect((error as DomainError).details).toMatchObject({ rule: "subnet-check-unavailable", field: "subnetCidr" });
+    expect((error as DomainError).message).toMatch(
+      /^The Docker Engine is not reachable\. The subnet could not be checked/,
+    );
+    expect(await db.factory.count()).toBe(0);
+
+    const created = await createFactory(db, alice, input());
+    await expectDomainError(
+      updateFactory(db, alice, created.id, input({ subnetCidr: "172.20.2.0/24" }), unreachableHost),
+      "RUNTIME_FAILURE",
+      "subnet-check-unavailable",
+    );
+    expect((await getFactory(db, alice, created.id)).subnetCidr).toBe("172.20.1.0/24");
+  });
+
+  it("suggests a subnet free on the Docker host too, and falls back to the database without it (TASK-207)", async () => {
+    const orphan = hostWith({ name: "zfactory_deleted", subnets: ["172.20.1.0/24", "172.20.2.0/23"] });
+    expect(await suggestFactorySubnet(db, orphan)).toBe("172.20.4.0/24");
+    expect(await suggestFactorySubnet(db, unreachableHost)).toBe("172.20.1.0/24");
+  });
+
+  it("create and update actions check the Docker host and show the clash on the subnet field (TASK-207)", async () => {
+    dockerHost.networks = [{ name: "zfactory_deleted", subnets: ["172.20.1.0/24"], labels: {} }];
+    const state = await createFactoryAction(emptyState, form(input()));
+    expect(state.fieldErrors.subnetCidr).toBe("This subnet overlaps a network that already exists on the Docker host.");
+    expect(await db.factory.count()).toBe(0);
+
+    const created = await createFactory(db, alice, input({ subnetCidr: "172.20.2.0/24" }));
+    const updateState = await updateFactoryAction(created.id, emptyState, form(input({ subnetCidr: "172.20.1.0/24" })));
+    expect(updateState.fieldErrors.subnetCidr).toBe(
+      "This subnet overlaps a network that already exists on the Docker host.",
+    );
+    expect((await getFactory(db, alice, created.id)).subnetCidr).toBe("172.20.2.0/24");
   });
 
   it("create action: persists for the actor and redirects to the new factory", async () => {

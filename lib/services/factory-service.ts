@@ -2,7 +2,9 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import type { Actor } from "@/lib/auth/actor";
 import { factoryRepository } from "@/lib/db/repositories/factory-repository";
-import { DomainError } from "@/lib/domain/errors";
+import { assertSubnetAvailable, type ExistingNetwork } from "@/lib/docker/networks";
+import { isManaged, LABEL_FACTORY_ID } from "@/lib/docker/labels";
+import { DomainError, isDomainError } from "@/lib/domain/errors";
 import type { RuntimeState } from "@/lib/domain/runtime-state";
 import type { PrismaClient } from "@/lib/generated/prisma/client";
 import { assertSubnetFree, suggestSubnet } from "@/lib/validation/network";
@@ -72,17 +74,62 @@ export async function getFactory(db: PrismaClient, actor: Actor, factoryId: stri
   return toView(factory);
 }
 
-/** Default subnet offered on the create form: the first /24 no factory on this host uses. */
-export async function suggestFactorySubnet(db: PrismaClient): Promise<string | undefined> {
-  return suggestSubnet(await factoryRepository.listSubnets(db));
+/** Lists the networks on the Docker host; `listHostNetworks` with the server's client in the app. */
+export type HostNetworkReader = () => Promise<ExistingNetwork[]>;
+
+/**
+ * The Docker networks a factory's subnet must not overlap (TASK-207): every network on
+ * the host except the factory's own. If Docker cannot be asked, the subnet cannot be
+ * checked, and saying so is better than passing it to fail at start.
+ */
+async function hostNetworksFor(read: HostNetworkReader, factoryId?: string): Promise<ExistingNetwork[]> {
+  let networks: ExistingNetwork[];
+  try {
+    networks = await read();
+  } catch (error) {
+    if (!isDomainError(error)) throw error;
+    throw new DomainError(
+      error.code,
+      `${error.message} The subnet could not be checked against the networks on the Docker host, so the factory was not saved.`,
+      { ...error.details, rule: "subnet-check-unavailable", field: "subnetCidr" },
+    );
+  }
+  return networks.filter((network) => !(isManaged(network.labels) && network.labels[LABEL_FACTORY_ID] === factoryId));
 }
 
-export async function createFactory(db: PrismaClient, actor: Actor, input: unknown): Promise<FactoryView> {
+/**
+ * Default subnet offered on the create form: the first /24 that no factory and, when
+ * Docker can be asked, no network on the host uses. If Docker cannot be asked, the offer
+ * is made from the database alone, and saving the factory says why it cannot be checked.
+ */
+export async function suggestFactorySubnet(
+  db: PrismaClient,
+  hostNetworks?: HostNetworkReader,
+): Promise<string | undefined> {
+  const subnets = await factoryRepository.listSubnets(db);
+  const host = hostNetworks ? await hostNetworks().catch(() => []) : [];
+  return suggestSubnet([...subnets, ...host.flatMap((network) => network.subnets)]);
+}
+
+/**
+ * `hostNetworks` checks the subnet against the Docker host as well as the other factories
+ * (TASK-207). The app always passes it; tests and harnesses that run without Docker omit
+ * it, and then only the database is checked.
+ */
+export async function createFactory(
+  db: PrismaClient,
+  actor: Actor,
+  input: unknown,
+  hostNetworks?: HostNetworkReader,
+): Promise<FactoryView> {
   const data = parseInput(factoryInputSchema, input);
   const id = randomUUID();
+  // Asked before the transaction, so no transaction waits on Docker.
+  const host = hostNetworks ? await hostNetworksFor(hostNetworks) : [];
 
   return db.$transaction(async (transaction) => {
     assertSubnetFree(data.subnetCidr, await factoryRepository.listSubnets(transaction));
+    assertSubnetAvailable(data.subnetCidr, host);
     await factoryRepository.create(transaction, {
       id,
       ownerId: actor.ownerId,
@@ -108,8 +155,15 @@ export async function updateFactory(
   actor: Actor,
   factoryId: string,
   input: unknown,
+  hostNetworks?: HostNetworkReader,
 ): Promise<FactoryView> {
   const data = parseInput(factoryUpdateSchema, input);
+  // Docker is asked only when the subnet changes, and before the transaction.
+  const before = await factoryRepository.findById(db, actor.ownerId, factoryId);
+  const host =
+    hostNetworks && before && data.subnetCidr !== before.subnetCidr
+      ? await hostNetworksFor(hostNetworks, factoryId)
+      : undefined;
 
   return db.$transaction(async (transaction) => {
     const current = await factoryRepository.findById(transaction, actor.ownerId, factoryId);
@@ -124,6 +178,8 @@ export async function updateFactory(
         });
       }
       assertSubnetFree(data.subnetCidr, await factoryRepository.listSubnets(transaction, factoryId));
+      if (hostNetworks)
+        assertSubnetAvailable(data.subnetCidr, host ?? (await hostNetworksFor(hostNetworks, factoryId)));
     }
 
     await factoryRepository.update(transaction, actor.ownerId, factoryId, {
@@ -163,7 +219,7 @@ export async function deleteFactory(
 
   await assertStopped(db);
   let removed;
-  
+
   try {
     removed = await removeResources(factoryId);
   } catch (error) {

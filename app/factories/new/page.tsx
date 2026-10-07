@@ -6,6 +6,8 @@ import { OperationForm } from "@/components/ui/operation-form";
 import { SectionRule } from "@/components/ui/primitives";
 import { requireActor } from "@/lib/auth/actor";
 import { getDb } from "@/lib/db/client";
+import { getDocker } from "@/lib/docker/client";
+import { listHostNetworks } from "@/lib/docker/networks";
 import { routes } from "@/lib/navigation/routes";
 import { suggestFactorySubnet } from "@/lib/services/factory-service";
 import { createDemoFactoryAction, createFactoryAction } from "../actions";
@@ -17,7 +19,7 @@ export const dynamic = "force-dynamic";
 /** 2c — Create Factory: identity and Docker network. */
 export default async function NewFactoryPage() {
   await requireActor();
-  const suggestedSubnet = (await suggestFactorySubnet(getDb())) ?? "";
+  const suggestedSubnet = (await suggestFactorySubnet(getDb(), () => listHostNetworks(getDocker()))) ?? "";
 
   return (
     <AppShell title="Z-FACTORY" activity="factories" status={{ tone: "off", left: ["draft"] }}>

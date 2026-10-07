@@ -3,12 +3,13 @@ import { randomUUID } from "node:crypto";
 import type Docker from "dockerode";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDockerClient } from "@/lib/docker/client";
+import { listHostNetworks } from "@/lib/docker/networks";
 import { DEFAULT_LIMITS } from "@/lib/docker/policy";
 import { RUNTIME_IMAGES } from "@/lib/docker/runtime-images";
 import { DomainError, type DomainErrorCode } from "@/lib/domain/errors";
 import type { PrismaClient } from "@/lib/generated/prisma/client";
 import { createDeviceInstance } from "@/lib/services/device-service";
-import { createFactory } from "@/lib/services/factory-service";
+import { createFactory, suggestFactorySubnet, updateFactory } from "@/lib/services/factory-service";
 import {
   createProgramVersion,
   deployProgramVersion,
@@ -327,4 +328,40 @@ describeRuntime("PLC runtime service with PostgreSQL and a real Docker Engine", 
     expect(await listProgramVersions(db, alice, plcId)).toHaveLength(3);
     expect(await docker.listContainers({ all: true, filters: { label: [`${RUN_LABEL}=${runId}`] } })).toEqual([]);
   }, 400_000);
+
+  it("checks a factory's subnet against the networks on the real Docker host (TASK-207)", async () => {
+    const host = () => listHostNetworks(docker);
+    // A network no factory record knows about, as a deleted factory or another project leaves.
+    const straySubnet = await freeSubnet(docker);
+    await docker.createNetwork({
+      Name: `zf-test-stray-${runId.slice(0, 8)}`,
+      Driver: "bridge",
+      IPAM: { Config: [{ Subnet: straySubnet }] },
+      Labels: { [RUN_LABEL]: runId },
+    });
+
+    await expectDomainError(
+      createFactory(db, bob, { name: "Stray", slug: "stray", subnetCidr: straySubnet }, host),
+      "CONFLICT",
+      "docker-subnet-overlap",
+    );
+    expect(await db.factory.count({ where: { ownerId: "bob" } })).toBe(0);
+    const suggested = await suggestFactorySubnet(db, host);
+    expect(suggested && (await host()).some((network) => network.subnets.some((s) => cidrsOverlap(suggested, s)))).toBe(
+      false,
+    );
+
+    // The factory's own network, still on the host after the runtime was removed, is not a clash.
+    const own = await db.factory.findUniqueOrThrow({ where: { id: factoryId } });
+    expect((await host()).some((network) => network.name === own.dockerNetworkName)).toBe(true);
+    const input = { name: own.name, slug: own.slug, subnetCidr: own.subnetCidr };
+    expect((await updateFactory(db, alice, factoryId, { ...input, name: "Pump House 2" }, host)).name).toBe(
+      "Pump House 2",
+    );
+    await expectDomainError(
+      updateFactory(db, alice, factoryId, { ...input, subnetCidr: straySubnet }, host),
+      "CONFLICT",
+      "docker-subnet-overlap",
+    );
+  }, 60_000);
 });
