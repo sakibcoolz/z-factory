@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ago, PlcStatePill } from "@/components/connectivity";
+import { ago, PlcStatePill, QualityPill } from "@/components/connectivity";
 import { requireActor } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
 import { connectivityLimits } from "@/lib/mqtt/boundary";
 import { load } from "@/lib/page";
+import { getLatest, getPlcEvents } from "@/lib/services/telemetry-service";
 import { getPlc } from "@/lib/services/site-service";
 
 export const metadata: Metadata = { title: "PLC" };
@@ -16,7 +17,14 @@ const limit = (value: number) => String(Number(value.toPrecision(10)));
 export default async function PlcPage({ params }: { params: Promise<{ plcId: string }> }) {
   const { plcId } = await params;
   const actor = await requireActor();
-  const { plc, organization, connection, edge } = await load(getPlc(getDb(), actor, plcId, connectivityLimits()));
+  const limits = connectivityLimits();
+  const { plc, organization, connection, edge } = await load(getPlc(getDb(), actor, plcId, limits));
+  const now = new Date();
+  const [latest, recent] = await Promise.all([
+    getLatest(getDb(), actor, plc.id, limits, now),
+    getPlcEvents(getDb(), actor, plc.id, { from: new Date(now.getTime() - 7 * 86_400_000).toISOString(), limit: "20" }),
+  ]);
+  const values = new Map(latest.tags.map((tag) => [tag.tag, tag]));
   return (
     <>
       <div>
@@ -68,6 +76,9 @@ export default async function PlcPage({ params }: { params: Promise<{ plcId: str
                 <th>Role</th>
                 <th>Type</th>
                 <th>Range</th>
+                <th>Value</th>
+                <th>Quality</th>
+                <th>Updated</th>
               </tr>
             </thead>
             <tbody>
@@ -91,12 +102,57 @@ export default async function PlcPage({ params }: { params: Promise<{ plcId: str
                         ? `${limit(mapping.min)} … ${limit(mapping.max)}`
                         : "—"}
                   </td>
+                  <td className="mono">{shown(values.get(mapping.externalId)?.value ?? null, mapping.unit)}</td>
+                  <td>
+                    <QualityPill quality={values.get(mapping.externalId)?.quality ?? "DISCONNECTED"} />
+                  </td>
+                  <td>{ago(values.get(mapping.externalId)?.at ?? null, now)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </section>
+      <section className="card">
+        <h2>Events</h2>
+        {recent.events.length === 0 ? (
+          <p className="muted">No state or quality change in the last 7 days.</p>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>When (UTC)</th>
+                  <th>What</th>
+                  <th>Change</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recent.events.map((event) => (
+                  <tr key={`${event.kind}${event.subject}${event.at.toISOString()}`}>
+                    <td className="mono">{event.at.toISOString().replace("T", " ").slice(0, 19)}</td>
+                    <td>
+                      {event.kind === "PLC_STATE"
+                        ? "PLC connection"
+                        : (plc.mappings.find((mapping) => mapping.externalId === event.subject)?.name ?? event.subject)}
+                    </td>
+                    <td>
+                      {(event.from ?? "—").toLowerCase()} → {event.to.toLowerCase()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </>
   );
+}
+
+/** A value as shown: on/off for booleans, numbers without float noise, with the unit. */
+function shown(value: number | boolean | null, unit: string | null): string {
+  if (value === null) return "—";
+  if (typeof value === "boolean") return value ? "on" : "off";
+  return `${Number(value.toPrecision(10))}${unit ? ` ${unit}` : ""}`;
 }

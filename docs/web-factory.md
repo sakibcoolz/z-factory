@@ -6,7 +6,7 @@ The Phase 09 cloud application (ADR-0018). It receives what Z-Factory Thin Clien
 |---|---|---|
 | TASK-901 | foundation: app, sign-in, roles, identity model, PLC registration, health | done |
 | TASK-902 | MQTT broker integration, agent onboarding, connectivity | done |
-| TASK-903 | telemetry ingestion, persistence, latest state | planned |
+| TASK-903 | telemetry ingestion, persistence, latest state | done |
 | TASK-904 | monitoring dashboards, events, alarms | planned |
 | TASK-905 | remote command and setpoint lifecycle | planned |
 | TASK-906 | production edge deployment, physical E2E | planned |
@@ -22,6 +22,9 @@ The Phase 09 cloud application (ADR-0018). It receives what Z-Factory Thin Clien
 | `Factory` | a Z-Factory factory as the deployments name it (`site.factoryId`), per site |
 | `Plc`, `PlcMapping` | a PLC an agent runs, registered from its deployment file, with its tags (READ, or WRITE for command and setpoint tags) and their ranges: the cloud's copy of the allow-list. `edgeState` and the other `edge…` fields are its worker's state as the agent last reported it |
 | `Module`, `PlcModule` | process modules a PLC carries signals of |
+| `TagLatest` | the newest value of each tag of a PLC, by the tag's external id, with the quality the agent sent |
+| `PlcEvent` | a change of a PLC's reported connection state, or of a tag's quality, recorded once |
+| `telemetry.batch`, `telemetry.sample` | the history (outside Prisma, partitioned by day): one row per poll, one per tag per poll |
 | `AuditEvent` | who did what: sign-ins and refusals, users and roles, sites, agents and PLC registrations |
 
 ## Registering a PLC
@@ -71,6 +74,30 @@ The pages project connectivity from this with the heartbeat interval (`WEB_FACTO
 
 A PLC shows its worker's reported state while its agent is reachable, and UNKNOWN ("last reported …") while it is not.
 
+## Telemetry
+ADR-0020. The agent publishes one batch per poll of each PLC. Web Factory checks it (`lib/domain/telemetry.ts`) and offers it to the pipeline (`lib/telemetry/pipeline.ts`). Fixed writers store it with `lib/telemetry/store.ts`:
+- **Duplicates:** a batch is identified by its PLC and poll time. A redelivered or replayed batch is a duplicate and changes nothing.
+- **History:** one row per tag per poll in `telemetry.sample`, in day partitions created as needed. Partitions older than the retention (30 days by default) are dropped whole. Batches past the retention, or from more than 10 minutes in the future, are refused.
+- **Latest values:** a value replaces a tag's latest value only when it is newer. Pages project quality as:
+  - DISCONNECTED while the PLC's reported connection is not up (or its agent is unreachable);
+  - STALE when the value was not refreshed for 3 poll intervals;
+  - otherwise what the agent sent: GOOD or BAD.
+- **Events:** tag quality changes and PLC connection changes.
+- **Not stored:** values of tags that are not registered, and batches of unregistered PLCs, are counted and skipped.
+- **Bounds:** 2 writers by default, PLCs split between them, each queue a share of 10,000 batches. When a queue is full, its oldest batch is dropped and counted.
+- **Broker session:** Web Factory's is persistent, so the broker keeps what agents publish while Web Factory is away.
+
+API (JSON over the signed-in session; 401 without one, 404 for what the actor cannot see, 400 for a bad query):
+
+| Path | What |
+|---|---|
+| `GET /api/v1/plcs/{id}/latest` | the PLC's tags with value, reported and projected quality, and time |
+| `GET /api/v1/latest?organizationId=…` (or `siteId`, `agentId`) | the same for every PLC in scope |
+| `GET /api/v1/plcs/{id}/history?tag=…&from=…&to=…&limit=…` | a tag's samples, oldest first; by default the last hour; at most 31 days and 10,000 points |
+| `…&bucket=<seconds>` | the same in buckets: count, min, max, avg, last value, worst quality |
+| `GET /api/v1/plcs/{id}/events?from=…&to=…&kind=PLC_STATE\|TAG_QUALITY` | state and quality changes, newest first |
+| `GET /api/v1/agents/{id}/connections?from=…&to=…` | the agent's reported status changes |
+
 ## Sign-in and sessions
 - **Sign-in:** e-mail and password, through Auth.js credentials (`auth.ts`).
 - **Session:** a signed cookie of at most 8 hours that carries the user id and session version, checked against the database on every request (`lib/auth/session.ts`).
@@ -86,7 +113,7 @@ A PLC shows its worker's reported state while its agent is reachable, and UNKNOW
 | `/orgs/{id}` | members | sites with agent, PLC and factory counts and agents per connectivity state; admins create sites and see the broker connection |
 | `/sites/{id}` | members | agents with connectivity, last seen and PLCs; admins register agents |
 | `/agents/{id}` | members | connectivity with its reasons, last seen, version, the last heartbeat, PLCs with their reported connection and last poll, the connection history; admins issue, rotate and revoke broker credentials and upload deployment files |
-| `/plcs/{id}` | members | factory, PLC id, configuration version and checksum, Modbus endpoint, reported connection, modules, tags with access and range |
+| `/plcs/{id}` | members | factory, PLC id, configuration version and checksum, Modbus endpoint, reported connection, modules, tags with access, range, latest value, quality and age, and the last week's events |
 | `/orgs/{id}/users` | admins | members, roles, enable/disable, add users, the audit log |
 | `/account` | members | change one's own password; this ends one's sessions |
 
@@ -94,15 +121,21 @@ Something the actor cannot see, or that belongs to another organization, is a 40
 
 ## Operations
 - `GET /api/health`: liveness.
-- `GET /api/ready`: the database answers and has the schema (503 otherwise). It also reports `mqtt` as `connected`, `disconnected` or `not-configured`, without failing readiness.
-- Broker connection: logged on connect and loss. A `broker stats` line every minute carries the connection and ingest counters (received, applied, coalesced, transitions, errors, drops by reason).
+- `GET /api/ready`: the database answers and has the schema (503 otherwise). It also reports `mqtt` (`connected`, `disconnected`, `not-configured`) and `telemetry` (`ok`, or `backlogged` above 80 % of the queue), without failing readiness.
+- Broker connection: logged on connect and loss. A `broker stats` line every minute carries:
+  - the connection and ingest counters (received, applied, coalesced, transitions, errors, drops by reason);
+  - the telemetry counters (offered, queued, stored, duplicates, samples, events, unknown tags, version mismatches, errors, drops by reason, last write time).
+
+  Partition changes are logged as `telemetry partitions`.
 - Logs: JSON lines on stdout (`lib/log.ts`); no password or secret is ever logged.
 - Environment (`lib/env.ts`, `.env.example`):
   - `WEB_FACTORY_DATABASE_URL` and `AUTH_SECRET` (32 characters or more);
   - `AUTH_URL` or `AUTH_TRUST_HOST` behind a proxy;
   - `WEB_FACTORY_MQTT_URL`, `…_USERNAME`, `…_PASSWORD_FILE`, `…_CA_FILE`, `…_CLIENT_ID`. The broker URL may not hold credentials. The account needs Dynamic Security administration and read access to `zfactory/#`;
   - `WEB_FACTORY_MQTT_AGENT_URL`: the broker as agents reach it, shown when credentials are issued (default: `WEB_FACTORY_MQTT_URL`);
-  - `WEB_FACTORY_AGENT_HEARTBEAT_S`: the agents' heartbeat interval.
+  - `WEB_FACTORY_AGENT_HEARTBEAT_S`: the agents' heartbeat interval;
+  - `WEB_FACTORY_TELEMETRY_RETENTION_DAYS` (30), `…_QUEUE` (10,000 batches), `…_WRITERS` (2);
+  - `WEB_FACTORY_MQTT_CLIENT_ID`: by default `web-factory-<host>`. It must be different for each Web Factory process on one broker, because the session is persistent.
 - Broker for development: `docker run -d --name web-factory-broker -e MOSQUITTO_DYNSEC_PASSWORD=… -p 127.0.0.1:1883:1883 -v "$PWD/broker/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro" eclipse-mosquitto:2`, from `apps/web-factory`. Then point `WEB_FACTORY_MQTT_URL=mqtt://127.0.0.1:1883` at it, with user name `admin` and the same password in a file.
 - First admin: `WEB_FACTORY_ADMIN_PASSWORD_FILE=… npm run create-admin -- --org … --slug … --email … --name …`. It is refused once any user exists.
 
@@ -140,3 +173,31 @@ Tests:
   - offline from the will;
   - the real agent online with issued credentials and offline on SIGTERM;
   - revocation disconnecting the agent and refusing it.
+
+## As built (TASK-903)
+- **Migration `telemetry_storage`:** `TagLatest`, `PlcEvent`, and the `telemetry` schema.
+- **Code:**
+  - `lib/domain/telemetry.ts`: contract, latest-state walk, quality projection, day keys;
+  - `lib/telemetry/store.ts`: `TelemetryStore` and its PostgreSQL implementation;
+  - `lib/telemetry/pipeline.ts`;
+  - `lib/services/telemetry-service.ts`, `lib/api.ts`, and the `/api/v1` routes.
+- **PLC page:** values, quality and events.
+- **Broker:** persistent session and queue limits.
+
+Tests:
+- Unit: the agent's batch format, latest values independent of arrival order, replays changing nothing, quality projection, day keys and time limits.
+- Database (`test/telemetry.test.ts`):
+  - two PLCs stored from the MQTT handler on, queried raw, in buckets and by organization, site and agent;
+  - a redelivered and a replayed batch stored once;
+  - an older batch after a newer one leaving the latest value alone;
+  - quality and PLC state changes recorded once, and stale and disconnected projected;
+  - unregistered PLCs and tags, version mismatches, expired and future batches, and an identity mismatch, all counted;
+  - a bounded queue dropping the oldest batches;
+  - partitions dropped past the retention;
+  - tenant isolation and query limits.
+- End to end (`test/telemetry-e2e.test.ts`, Docker and `AGENT_BIN`): two simulated Modbus PLCs (`test/modbus-server.ts`), the real agent and a real Mosquitto:
+  - a PLC deployed to the running agent is stored, and a new value reaches the latest view and the history;
+  - a second PLC is added at run time;
+  - a PLC that goes away shows disconnected, with the change recorded;
+  - during a broker outage the agent spools; after it, the backlog is replayed and stored once, with as many samples per tag as batches.
+

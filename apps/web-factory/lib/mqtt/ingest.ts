@@ -7,7 +7,9 @@ import {
   parseAgentTopic,
   plcStateSchema,
 } from "@/lib/domain/agent-messages";
+import { telemetryBatchSchema } from "@/lib/domain/telemetry";
 import type { PrismaClient } from "@/lib/generated/prisma/client";
+import type { TelemetryOffer } from "@/lib/telemetry/pipeline";
 
 /**
  * Turns what agents publish into connectivity state (TASK-902): an agent's reported
@@ -24,8 +26,9 @@ import type { PrismaClient } from "@/lib/generated/prisma/client";
  *   agent or PLC is not registered, its credentials are revoked, or its body names another
  *   agent than its topic.
  *
- * Telemetry and acknowledgements only refresh the last-seen time here; storing them is
- * TASK-903 and TASK-905.
+ * Telemetry (TASK-903) is checked here and handed to the telemetry pipeline, which stores
+ * it; a change of a PLC's reported state is recorded as an event. Acknowledgements only
+ * refresh the last-seen time; storing them is TASK-905.
  */
 
 export const MAX_PAYLOAD_BYTES = 1 << 20;
@@ -51,6 +54,8 @@ export type IngestOptions = {
   agentCacheMs?: number;
   /** Telemetry refreshes the stored last-seen time at most this often per agent. */
   seenWriteMs?: number;
+  /** Where checked telemetry batches go (TASK-903); without one they only refresh last-seen. */
+  telemetry?: { offer(offer: TelemetryOffer): void };
   onError?: (error: unknown, topic: string) => void;
 };
 
@@ -233,29 +238,27 @@ export class Ingestor {
         }
         if (work.payload.length === 0) {
           // The agent cleared the retained state: it no longer runs this PLC.
-          await this.db.plc.update({
-            where: { id: plc.id },
-            data: { edgeState: "REMOVED", edgeStateAt: work.receivedAt },
-          });
+          await this.setPlcState(plc.id, "REMOVED", work.receivedAt, {});
         } else {
           const body = this.body(plcStateSchema, work);
           if (!body) return;
-          await this.db.plc.update({
-            where: { id: plc.id },
-            data: {
-              edgeState: body.state,
-              edgeStateAt: body.at,
-              edgeConfigVersion: body.configVersion,
-              edgeLastPollAt: body.lastPollAt ?? null,
-              edgeLastError: body.lastError || null,
-              edgeReconnects: body.reconnects,
-            },
+          await this.setPlcState(plc.id, body.state, body.at, {
+            edgeConfigVersion: body.configVersion,
+            edgeLastPollAt: body.lastPollAt ?? null,
+            edgeLastError: body.lastError || null,
+            edgeReconnects: body.reconnects,
           });
         }
         await this.touch(agent.id, work, key);
         break;
       }
-      case "telemetry":
+      case "telemetry": {
+        const body = this.body(telemetryBatchSchema, work);
+        await this.touch(agent.id, work, key);
+        if (!body) return;
+        this.options.telemetry?.offer({ agentId: agent.id, message: body, receivedAt: work.receivedAt });
+        break;
+      }
       case "ack":
         await this.touch(agent.id, work, key);
         break;
@@ -288,6 +291,19 @@ export class Ingestor {
       return true;
     });
     if (changed) this.stats.transitions += 1;
+  }
+
+  /** Stores a PLC's reported state; a change of state is recorded once as an event. */
+  private async setPlcState(plcId: string, state: string, at: Date, data: Record<string, unknown>): Promise<void> {
+    await this.db.$transaction(async (tx) => {
+      const before = await tx.plc.findUniqueOrThrow({ where: { id: plcId }, select: { edgeState: true } });
+      await tx.plc.update({ where: { id: plcId }, data: { ...data, edgeState: state, edgeStateAt: at } });
+      if (before.edgeState === state) return;
+      await tx.plcEvent.createMany({
+        data: [{ plcId, kind: "PLC_STATE", subject: "", fromValue: before.edgeState, toValue: state, at }],
+        skipDuplicates: true,
+      });
+    });
   }
 
   /** Refreshes the stored last-seen time for a live message, at most every seenWriteMs. */

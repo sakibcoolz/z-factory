@@ -3,6 +3,7 @@ import { getDb } from "@/lib/db/client";
 import { DEFAULT_LIMITS, type ConnectivityLimits } from "@/lib/domain/connectivity";
 import { getServerEnv } from "@/lib/env";
 import { log } from "@/lib/log";
+import { PostgresTelemetryStore, type TelemetryStore } from "@/lib/telemetry/store";
 import type { BrokerAdmin } from "./dynsec";
 import { type BrokerStatus, MqttRuntime, type MqttSettings } from "./runtime";
 
@@ -27,14 +28,28 @@ export function mqttSettings(): MqttSettings | null {
 }
 
 // One connection per server process; survives dev hot reloads.
-const globalForMqtt = globalThis as typeof globalThis & { webFactoryMqtt?: MqttRuntime };
+const globalForMqtt = globalThis as typeof globalThis & {
+  webFactoryMqtt?: MqttRuntime;
+  webFactoryTelemetryStore?: TelemetryStore;
+};
 
 /** The running broker connection, started on first use; null when MQTT is not configured. */
 export function getMqttRuntime(): MqttRuntime | null {
   if (globalForMqtt.webFactoryMqtt) return globalForMqtt.webFactoryMqtt;
   const settings = mqttSettings();
   if (!settings) return null;
-  globalForMqtt.webFactoryMqtt = new MqttRuntime(settings, getDb(), log);
+  const env = getServerEnv();
+  globalForMqtt.webFactoryMqtt = new MqttRuntime(
+    settings,
+    getDb(),
+    log,
+    {},
+    {
+      retentionDays: env.WEB_FACTORY_TELEMETRY_RETENTION_DAYS,
+      capacity: env.WEB_FACTORY_TELEMETRY_QUEUE,
+      writers: env.WEB_FACTORY_TELEMETRY_WRITERS,
+    },
+  );
   return globalForMqtt.webFactoryMqtt;
 }
 
@@ -45,6 +60,17 @@ export function getBrokerAdmin(): BrokerAdmin | null {
 
 export function brokerStatus(): BrokerStatus | { configured: false } {
   return getMqttRuntime()?.status() ?? { configured: false };
+}
+
+/** Forgets the PLCs the telemetry pipeline remembers, after a registration changed them. */
+export function forgetPlcs(): void {
+  globalForMqtt.webFactoryMqtt?.telemetry.forgetPlcs();
+}
+
+/** The telemetry store, when MQTT runs; otherwise one over the database for queries. */
+export function getTelemetryStore(): TelemetryStore {
+  globalForMqtt.webFactoryTelemetryStore ??= getMqttRuntime()?.telemetryStore ?? new PostgresTelemetryStore(getDb());
+  return globalForMqtt.webFactoryTelemetryStore;
 }
 
 /** Forgets what the ingestor remembers about an agent whose credentials changed. */

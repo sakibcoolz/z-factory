@@ -155,7 +155,7 @@ The edge/cloud layer never replaces PLC logic. Remote commands are communication
 |---|---|---|
 | TASK-901 Web Factory TypeScript Cloud Foundation & Identity Model | DONE | Cloud app bootstrap, auth/RBAC, tenant/site/agent/PLC identity, PostgreSQL foundation, server-only MQTT boundary |
 | TASK-902 MQTT Broker Integration, Agent Onboarding & Connectivity | DONE | Secure MQTT, agent registration, topic isolation, heartbeat/last-seen and connectivity state |
-| TASK-903 Telemetry Ingestion, Cloud Persistence & Latest-State Projection | TODO | Telemetry/event/alarm ingestion, idempotency, durable history, latest-state and quality projection |
+| TASK-903 Telemetry Ingestion, Cloud Persistence & Latest-State Projection | DONE | Telemetry/event/alarm ingestion, idempotency, durable history, latest-state and quality projection |
 | TASK-904 Web Factory Live Monitoring, Dashboards, Events & Alarms | TODO | Site/agent/PLC/module UI, live values, charts, alarms/events, stale/offline visibility |
 | TASK-905 Remote Command/Setpoint Lifecycle, Authorization & Audit | TODO | Authorized command UI, MQTT downlink, allow-list validation, idempotency, ACK lifecycle and audit |
 | TASK-906 Production Edge Deployment, Resilience, Security & Physical E2E | TODO | Real edge deployment, dynamic multi-PLC load, offline spool/replay, security and failure/recovery E2E |

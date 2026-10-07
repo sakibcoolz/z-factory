@@ -17,6 +17,13 @@ export function PlcStatePill({ state }: { state: string }) {
   );
 }
 
+const QUALITY_TONE: Record<string, string> = { GOOD: "ok", STALE: "warn", BAD: "danger", DISCONNECTED: "" };
+
+/** A value's quality: good, stale, bad or disconnected. */
+export function QualityPill({ quality }: { quality: string }) {
+  return <span className={`pill ${QUALITY_TONE[quality] ?? ""}`}>{quality.toLowerCase()}</span>;
+}
+
 /** Says when the statuses on the page cannot be current: Web Factory itself is off the broker. */
 export function BrokerBanner({
   broker,

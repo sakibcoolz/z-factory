@@ -1,10 +1,11 @@
 import "server-only";
-import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { hostname } from "node:os";
 import mqtt, { type IClientOptions, type MqttClient } from "mqtt";
 import { INGEST_SUBSCRIPTIONS } from "@/lib/domain/agent-messages";
 import type { PrismaClient } from "@/lib/generated/prisma/client";
+import { type PipelineOptions, TelemetryPipeline, type TelemetryStats } from "@/lib/telemetry/pipeline";
+import { PostgresTelemetryStore } from "@/lib/telemetry/store";
 import { DYNSEC_RESPONSE_TOPIC, DynsecControl } from "./dynsec";
 import { Ingestor, type IngestOptions, type IngestStats } from "./ingest";
 
@@ -22,6 +23,8 @@ export type MqttSettings = {
   passwordFile?: string;
   caFile?: string;
   clientId?: string;
+  /** How long the broker keeps Web Factory's session (and queues for it) while it is away. */
+  sessionExpirySeconds?: number;
 };
 
 export type BrokerStatus = {
@@ -37,6 +40,7 @@ export type BrokerStatus = {
   nextRetryMs: number;
   refusedSubscriptions: string[];
   ingest: IngestStats;
+  telemetry: TelemetryStats;
 };
 
 export const MIN_RETRY_MS = 1_000;
@@ -58,6 +62,8 @@ export class MqttRuntime {
   readonly client: MqttClient;
   readonly ingestor: Ingestor;
   readonly dynsec: DynsecControl;
+  readonly telemetryStore: PostgresTelemetryStore;
+  readonly telemetry: TelemetryPipeline;
   private readonly state = {
     connects: 0,
     disconnects: 0,
@@ -72,15 +78,28 @@ export class MqttRuntime {
   private retryMs = MIN_RETRY_MS;
   private retryTimer: NodeJS.Timeout | undefined;
   private readonly statsTimer: NodeJS.Timeout;
+  private readonly maintenanceTimer: NodeJS.Timeout;
 
   constructor(
     private readonly settings: MqttSettings,
     db: PrismaClient,
     private readonly log: Logger,
     ingestOptions: IngestOptions = {},
+    telemetryOptions: PipelineOptions = {},
   ) {
-    this.clientId = settings.clientId ?? `web-factory-${hostname()}-${randomBytes(4).toString("hex")}`;
+    // A stable client id: the broker keeps this session, and what agents publish meanwhile.
+    this.clientId = settings.clientId ?? `web-factory-${hostname()}`;
+    this.telemetryStore = new PostgresTelemetryStore(db);
+    this.telemetry = new TelemetryPipeline(db, this.telemetryStore, {
+      ...telemetryOptions,
+      onError: (error) => {
+        log("error", "telemetry write failed", { error: error instanceof Error ? error.message : "unknown" });
+        telemetryOptions.onError?.(error);
+      },
+    });
+    const retentionDays = telemetryOptions.retentionDays ?? 30;
     this.ingestor = new Ingestor(db, {
+      telemetry: this.telemetry,
       ...ingestOptions,
       onError: (error, key) => {
         log("error", "ingest failed", { agent: key, error: error instanceof Error ? error.name : "unknown" });
@@ -92,8 +111,11 @@ export class MqttRuntime {
     const options: IClientOptions = {
       clientId: this.clientId,
       protocolVersion: 5,
-      // Every connection starts clean and gets the retained state again on subscribing.
-      clean: true,
+      // A persistent session (TASK-903): while Web Factory is away, the broker queues what
+      // agents publish with QoS 1, telemetry above all, and delivers it on reconnecting.
+      // Subscribing again on every connect also brings the retained state.
+      clean: false,
+      properties: { sessionExpiryInterval: settings.sessionExpirySeconds ?? 86_400 },
       keepalive: 30,
       connectTimeout: 10_000,
       // Reconnects are scheduled here, with a growing delay (MQTT.js retries at a fixed one).
@@ -117,12 +139,25 @@ export class MqttRuntime {
       else this.ingestor.handle(topic, payload, packet.retain);
     });
     log("info", "connecting to the broker", { broker: redactBroker(settings.url), clientId: this.clientId });
-    // For operators: one line a minute with the connection and ingest counters.
+    // For operators: one line a minute with the connection, ingest and telemetry counters.
     this.statsTimer = setInterval(() => {
-      const { ingest, ...connection } = this.status();
-      log("info", "broker stats", { ...connection, ingest });
+      const { ingest, telemetry, ...connection } = this.status();
+      log("info", "broker stats", { ...connection, ingest, telemetry });
     }, 60_000);
     this.statsTimer.unref();
+    // Telemetry partitions: today's and tomorrow's ready, those past the retention dropped.
+    const maintain = () =>
+      this.telemetryStore
+        .maintain(new Date(), retentionDays)
+        .then(({ created, dropped }) => {
+          if (created.length > 0 || dropped.length > 0) log("info", "telemetry partitions", { created, dropped });
+        })
+        .catch((error: unknown) =>
+          log("error", "telemetry maintenance failed", { error: error instanceof Error ? error.message : "unknown" }),
+        );
+    void maintain();
+    this.maintenanceTimer = setInterval(() => void maintain(), 3_600_000);
+    this.maintenanceTimer.unref();
   }
 
   private async connected(): Promise<void> {
@@ -186,6 +221,7 @@ export class MqttRuntime {
       nextRetryMs: this.retryMs,
       refusedSubscriptions: this.state.refusedSubscriptions,
       ingest: this.ingestor.stats,
+      telemetry: this.telemetry.stats,
     };
   }
 
@@ -193,7 +229,9 @@ export class MqttRuntime {
     this.stopping = true;
     clearTimeout(this.retryTimer);
     clearInterval(this.statsTimer);
+    clearInterval(this.maintenanceTimer);
     await this.ingestor.idle();
+    await this.telemetry.stop();
     await this.client.endAsync();
   }
 }

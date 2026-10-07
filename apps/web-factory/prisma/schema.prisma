@@ -195,6 +195,8 @@ model Plc {
   factory  Factory      @relation(fields: [factoryId], references: [id], onDelete: Cascade)
   mappings PlcMapping[]
   modules  PlcModule[]
+  latest   TagLatest[]
+  events   PlcEvent[]
 
   @@unique([edgeAgentId, externalPlcId])
   @@index([factoryId])
@@ -243,6 +245,53 @@ model PlcModule {
   module Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
 
   @@id([plcId, moduleId])
+}
+
+/// The newest value of each tag of a PLC (TASK-903): the latest-state view. Keyed by the
+/// tag's external id, which survives a new registration (the PlcMapping rows do not).
+/// The history itself is in the `telemetry` schema, outside Prisma (ADR-0020).
+model TagLatest {
+  plcId         String   @db.Uuid
+  /// PlcMapping.externalId.
+  tag           String
+  valueNum      Float?
+  valueBool     Boolean?
+  /// As the agent sent it: GOOD or BAD (STALE and DISCONNECTED are projected on read).
+  quality       String
+  /// The poll time; a value only replaces an older one.
+  at            DateTime
+  receivedAt    DateTime
+  configVersion Int
+
+  plc Plc @relation(fields: [plcId], references: [id], onDelete: Cascade)
+
+  @@id([plcId, tag])
+}
+
+enum PlcEventKind {
+  /// The PLC worker's state as the agent reported it changed (subject "").
+  PLC_STATE
+  /// A tag's quality changed (subject: the tag's external id).
+  TAG_QUALITY
+}
+
+/// What happened to a PLC or one of its tags. The same report delivered again is the
+/// same row: unique by PLC, kind, subject and the agent's time.
+model PlcEvent {
+  id         String       @id @default(uuid(7)) @db.Uuid
+  plcId      String       @db.Uuid
+  kind       PlcEventKind
+  subject    String
+  fromValue  String?
+  toValue    String
+  /// The agent's time (poll time for a tag, state time for the PLC).
+  at         DateTime
+  receivedAt DateTime     @default(now())
+
+  plc Plc @relation(fields: [plcId], references: [id], onDelete: Cascade)
+
+  @@unique([plcId, kind, subject, at])
+  @@index([plcId, at])
 }
 
 /// Who did what, for the record: sign-ins, user and role changes, registrations.

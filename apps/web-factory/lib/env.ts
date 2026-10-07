@@ -25,6 +25,12 @@ const schema = z.object({
   WEB_FACTORY_MQTT_AGENT_URL: brokerUrl.optional(),
   /** The agents' heartbeat interval in seconds (ZFACTORY_AGENT_HEARTBEAT); 10 by default. */
   WEB_FACTORY_AGENT_HEARTBEAT_S: z.coerce.number().int().min(1).max(3600).optional(),
+  /** Days of raw telemetry kept (TASK-903); older day partitions are dropped. */
+  WEB_FACTORY_TELEMETRY_RETENTION_DAYS: z.coerce.number().int().min(1).max(3650).default(30),
+  /** Telemetry batches held for writing; beyond it the oldest are dropped and counted. */
+  WEB_FACTORY_TELEMETRY_QUEUE: z.coerce.number().int().min(100).max(1_000_000).default(10_000),
+  /** Telemetry writers (database connections writing at once). */
+  WEB_FACTORY_TELEMETRY_WRITERS: z.coerce.number().int().min(1).max(32).default(2),
 });
 
 export type ServerEnv = z.infer<typeof schema>;

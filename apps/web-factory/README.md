@@ -27,4 +27,5 @@ Then issue each agent's credentials on its page in Web Factory.
 
 Gates: `npm run lint && npm run typecheck && npm test && npm run build`. The integration tests
 use `WEB_FACTORY_TEST_DATABASE_URL` (database `web_factory_test`) and migrate it first. The
-broker tests need Docker (`WEB_FACTORY_TEST_DOCKER=1`) and, for the real agent, `AGENT_BIN`.
+broker and telemetry end-to-end tests need Docker (`WEB_FACTORY_TEST_DOCKER=1`) and, for the
+real agent, `AGENT_BIN`.
