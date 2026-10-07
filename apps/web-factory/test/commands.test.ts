@@ -216,6 +216,28 @@ describeDb("commands and setpoints (TASK-905)", () => {
       rule: "stale-config-version",
     });
 
+    // Accepted in time, then expired while waiting for the PLC (TASK-907): a final FAILED
+    // with the agent's rule; the agent wrote nothing.
+    const late = (await send(operator, "t-start", true)).command;
+    await applyAck(db, agentId, "plc-1", ack(late.id, "ACCEPTED"));
+    expect(
+      await applyAck(
+        db,
+        agentId,
+        "plc-1",
+        ack(late.id, "FAILED", {
+          rule: "command-expired",
+          reason: "the command expired before it could be written; nothing was written",
+        }),
+      ),
+    ).toBe("applied");
+    expect(await db.command.findUniqueOrThrow({ where: { id: late.id } })).toMatchObject({
+      status: "FAILED",
+      rule: "command-expired",
+      reason: "the command expired before it could be written; nothing was written",
+    });
+    expect(await db.auditEvent.count({ where: { action: "COMMAND_FAILED", subjectId: late.id } })).toBe(1);
+
     // No answer: timed out after expiry and grace; a late final answer is still taken.
     const silent = (await send(operator, "t-speed", 30)).command;
     expect(await expireCommands(db, new Date(Date.now() + 30_000))).toBe(0);

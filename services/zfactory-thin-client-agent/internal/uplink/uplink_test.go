@@ -308,6 +308,23 @@ func TestCarriesTelemetryUpAndCheckedCommandsDown(t *testing.T) {
 		t.Fatalf("PLC B was never written: %v", writes)
 	}
 
+	// TASK-907: a command accepted in time but whose deadline passes while it waits behind a
+	// slow write is answered FAILED command-expired, and never reaches the PLC.
+	plcA.SetDelay(300 * time.Millisecond)
+	cloud.send(t, root+"/command/plc-a", command("cmd-slow", "m-speed", 10, nil))
+	cloud.send(t, root+"/command/plc-a", command("cmd-late", "m-start", true, func(e map[string]any) {
+		e["expiresAt"] = time.Now().Add(400 * time.Millisecond).UTC().Format(time.RFC3339Nano)
+	}))
+	eventually(t, "the late command answered", func() bool { return len(cloud.acks(root+"/ack/plc-a", "cmd-late")) == 2 })
+	if got := cloud.acks(root+"/ack/plc-a", "cmd-late"); strings.Join(got, ",") != "ACCEPTED,FAILED:command-expired" {
+		t.Fatalf("expired command acks %v", got)
+	}
+	eventually(t, "the slow command applied", func() bool { return len(cloud.acks(root+"/ack/plc-a", "cmd-slow")) == 2 })
+	plcA.SetDelay(0)
+	if writes := plcA.Writes(); len(writes) != 2 || plcA.CoilAt(800) {
+		t.Fatalf("the expired command was written: %v", writes)
+	}
+
 	// The broker goes away: polling goes on, and everything resumes when it is back.
 	polls := func(id string) uint64 {
 		status, _ := a.Supervisor().Status(id)
@@ -336,7 +353,7 @@ func TestCarriesTelemetryUpAndCheckedCommandsDown(t *testing.T) {
 		t.Fatalf("uplink status %v", status)
 	}
 	counts := status["commands"].(map[string]uint64)
-	if counts["applied"] != 2 || counts["duplicates"] != 1 || counts["rejected"] != 10 {
+	if counts["applied"] != 3 || counts["duplicates"] != 1 || counts["rejected"] != 10 || counts["expired"] != 1 || counts["failed"] != 1 {
 		t.Fatalf("command counts %v", counts)
 	}
 

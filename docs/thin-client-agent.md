@@ -172,6 +172,17 @@ A command that passes is acknowledged `ACCEPTED` and queued to its PLC's worker 
 
 It answers `FAILED` with `plc-not-connected`, `plc-refused` (a Modbus exception) or `plc-write-failed`, and `plc-worker-stopped` for commands still waiting when the worker stops. What the program does next arrives with telemetry.
 
+**Deadline (TASK-907).** `expiresAt` is an absolute time set by the cloud, at most 10 minutes ahead, and it travels with the command into the worker's queue. A command is never written after it:
+- **On arrival:** an expired command is `REJECTED`/`command-expired`; nothing is queued.
+- **When the worker takes it:** the deadline is checked again, after any wait in the queue. Then, once the PLC connection is held (a poll may have held it), it is checked a last time, immediately before the write.
+- **Expired while waiting:** the command was accepted but is answered `FAILED`/`command-expired`, "nothing was written". The PLC sees no write.
+- **Counted:** expired commands are in `zfactory_agent_commands_total{outcome="expired"}` and in `/v1/status` (uplink → commands → expired).
+
+The deadline is compared with the edge host's clock, so the edge host and the cloud must be time-synchronized (NTP).
+- A clock running fast only expires commands early, which is safe: they are refused, not written.
+- A clock running slow could still write a command after the cloud's deadline, by at most the clock error.
+- The 10-minute bound on `expiresAt` limits how far ahead a deadline can be.
+
 Every command id is remembered per PLC (10 000, for 24 h): a command delivered again is answered again with its last acknowledgement (`duplicate: true`) and never written twice. Acknowledgements are not retained, and nothing that actuates is ever retained. Each outcome is logged with the command id, mapping, value and `requestedBy`.
 
 ## Offline spool (TASK-503c)

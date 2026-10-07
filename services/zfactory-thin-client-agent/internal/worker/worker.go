@@ -207,9 +207,25 @@ func (w *Worker) commandLoop(ctx context.Context) {
 	}
 }
 
+// expired reports whether a command's deadline has passed. A command without a deadline
+// never came through command.Check, so it counts as expired: nothing unchecked is written.
+func (w *Worker) expired(write command.Write) bool {
+	return write.ExpiresAt.IsZero() || !w.options.Now().Before(write.ExpiresAt)
+}
+
+var expiredResult = Result{
+	Status: command.Failed,
+	Rule:   command.RuleExpired,
+	Reason: "the command expired before it could be written; nothing was written",
+}
+
 // execute writes one command tag and reads it back. The PLC program decides what follows;
-// its feedback arrives with the next polls.
+// its feedback arrives with the next polls. A command whose deadline passed while it waited
+// in the queue or for the connection is not written (TASK-907).
 func (w *Worker) execute(ctx context.Context, write command.Write) Result {
+	if w.expired(write) {
+		return expiredResult
+	}
 	w.mu.Lock()
 	state := w.state
 	w.mu.Unlock()
@@ -219,6 +235,10 @@ func (w *Worker) execute(ctx context.Context, write command.Write) Result {
 	m := write.Mapping
 	w.io.Lock()
 	defer w.io.Unlock()
+	// Last check, after any wait for the connection and immediately before the write.
+	if w.expired(write) {
+		return expiredResult
+	}
 	var observed any
 	var err error
 	if codec.IsBool(m.DataType) {
