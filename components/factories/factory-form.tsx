@@ -137,8 +137,9 @@ export function FactoryForm({ mode, action, initial, cancelHref, networkName }: 
         </div>
       </div>
       <p className="zf-sub max-w-180">
-        A private range (10/8, 172.16/12 or 192.168/16), /16 to /28, that does not overlap another factory. Saving
-        changes configuration only: no network or container is created until the factory is started.
+        A private range (10/8, 172.16/12 or 192.168/16), /16 to /28, that does not overlap another factory or a network
+        already on the Docker host. Saving changes configuration only: no network or container is created until the
+        factory is started.
       </p>
 
       <div className="mt-auto flex gap-2 border-t border-line pt-3">

@@ -9,6 +9,7 @@ import {
   DEMO_PROFILES,
   demoProgram,
 } from "@/lib/demo/pump-station";
+import { listHostNetworks } from "@/lib/docker/networks";
 import { DomainError } from "@/lib/domain/errors";
 import { iecTypeFor, isIecIdentifier } from "@/lib/plc/program-template";
 import { createFactory, listFactories, suggestFactorySubnet } from "./factory-service";
@@ -64,14 +65,21 @@ export async function createDemoFactory(
   const taken = new Set((await listFactories(db, actor)).map((factory) => factory.name));
   let name = DEMO_FACTORY_NAME;
   for (let copy = 2; taken.has(name); copy += 1) name = `${DEMO_FACTORY_NAME} ${copy}`;
-  const subnetCidr = options.subnetCidr ?? (await suggestFactorySubnet(db));
+  // Free in the database and on the Docker host (TASK-207), so the demo can start.
+  const hostNetworks = () => listHostNetworks(deps.docker);
+  const subnetCidr = options.subnetCidr ?? (await suggestFactorySubnet(db, hostNetworks));
   if (!subnetCidr) throw new DomainError("CONFLICT", "No free subnet is left for another factory.");
-  const factory = await createFactory(db, actor, {
-    name,
-    slug: slugOf(name),
-    subnetCidr,
-    description: "MVP demo: pressure transmitter, PLC, drive, motor and pump in a closed loop, with a gateway.",
-  });
+  const factory = await createFactory(
+    db,
+    actor,
+    {
+      name,
+      slug: slugOf(name),
+      subnetCidr,
+      description: "MVP demo: pressure transmitter, PLC, drive, motor and pump in a closed loop, with a gateway.",
+    },
+    hostNetworks,
+  );
   const factoryId = factory.id;
 
   // The PLC and the modules its field devices are wired to.

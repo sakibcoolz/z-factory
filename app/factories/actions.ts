@@ -6,6 +6,7 @@ import { requireActor } from "@/lib/auth/actor";
 import { getDb } from "@/lib/db/client";
 import { getDocker } from "@/lib/docker/client";
 import { removeFactoryResources } from "@/lib/docker/factory-resources";
+import { listHostNetworks } from "@/lib/docker/networks";
 import { isDomainError } from "@/lib/domain/errors";
 import { routes } from "@/lib/navigation/routes";
 import { type OperationState, toOperationState } from "@/lib/plc/operation-state";
@@ -35,7 +36,7 @@ export async function createFactoryAction(_previous: FactoryFormState, formData:
   let factoryId: string;
   try {
     const actor = await requireActor();
-    factoryId = (await createFactory(getDb(), actor, values)).id;
+    factoryId = (await createFactory(getDb(), actor, values, () => listHostNetworks(getDocker()))).id;
   } catch (error) {
     logUnexpected("factory.create", error);
     return toFormState(error, values);
@@ -68,7 +69,7 @@ export async function updateFactoryAction(
   const values = readFactoryForm(formData);
   try {
     const actor = await requireActor();
-    await updateFactory(getDb(), actor, factoryId, values);
+    await updateFactory(getDb(), actor, factoryId, values, () => listHostNetworks(getDocker()));
   } catch (error) {
     logUnexpected("factory.update", error);
     return toFormState(error, values);

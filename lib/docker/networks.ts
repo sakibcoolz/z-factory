@@ -10,9 +10,10 @@ import { buildNetworkCreateOptions, networkRequestSchema } from "./spec";
 
 const IPV4_CIDR = /^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/;
 
-type ExistingNetwork = { name: string; subnets: string[]; labels: Record<string, string> };
+export type ExistingNetwork = { name: string; subnets: string[]; labels: Record<string, string> };
 
-async function listNetworks(docker: Docker): Promise<ExistingNetwork[]> {
+/** Every network on the Docker host with its IPv4 subnets, whoever created it. */
+export async function listHostNetworks(docker: Docker): Promise<ExistingNetwork[]> {
   const networks = await dockerCall("list networks", () => docker.listNetworks());
   return networks.map((network) => ({
     name: network.Name,
@@ -46,7 +47,7 @@ export async function ensureFactoryNetwork(
   policy: RuntimePolicy,
 ): Promise<{ name: string; created: boolean }> {
   const request = parseInput(networkRequestSchema, input);
-  const networks = await listNetworks(docker);
+  const networks = await listHostNetworks(docker);
 
   const existing = networks.find((network) => network.name === request.name);
   if (existing) {

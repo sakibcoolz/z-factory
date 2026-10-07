@@ -26,6 +26,18 @@ import { describeDb, openTestDb, resetDb } from "./harness";
  */
 const alice = { ownerId: "alice" };
 
+/**
+ * No engine runs behind this client; it answers only the network listing the demo's
+ * subnet check makes (TASK-207), with these networks.
+ */
+function dockerHostWith(networks: Array<{ Name: string; Subnet: string }>) {
+  const docker = createDockerClient("unix:///nonexistent/docker.sock");
+  return Object.assign(docker, {
+    listNetworks: async () =>
+      networks.map(({ Name, Subnet }) => ({ Name, Labels: {}, IPAM: { Config: [{ Subnet }] } })),
+  }) as typeof docker;
+}
+
 describeDb("the pump station demo factory", () => {
   let db: PrismaClient;
   let deps: GatewayDeps;
@@ -41,7 +53,7 @@ describeDb("the pump station demo factory", () => {
     deps = {
       db,
       bus: new EventBus(),
-      docker: createDockerClient("unix:///nonexistent/docker.sock"),
+      docker: dockerHostWith([]),
       policy: {
         images: RUNTIME_IMAGES,
         portRange: { min: 15_950, max: 15_979 },
@@ -210,6 +222,21 @@ describeDb("the pump station demo factory", () => {
     expect(JSON.stringify(exported)).toContain("VFD-01");
     expect(JSON.stringify(exported)).toContain("Pump_Speed_SP");
     expect(JSON.stringify(exported)).toContain("PT-101");
+  });
+
+  it("picks a subnet free on the Docker host too, and refuses when Docker cannot be asked (TASK-207)", async () => {
+    deps.docker = dockerHostWith([{ Name: "zfactory_deleted", Subnet: "172.20.1.0/24" }]);
+    const demo = await createDemoFactory(deps, alice);
+    expect((await db.factory.findUniqueOrThrow({ where: { id: demo.factoryId } })).subnetCidr).toBe("172.20.2.0/24");
+
+    deps.docker = createDockerClient("unix:///nonexistent/docker.sock");
+    const error = await createDemoFactory(deps, alice).then(
+      () => undefined,
+      (reason: unknown) => reason,
+    );
+    expect(error).toBeInstanceOf(DomainError);
+    expect((error as DomainError).details.rule).toBe("subnet-check-unavailable");
+    expect(await db.factory.count()).toBe(1);
   });
 
   it("can be built again beside itself, and tells when the catalog is not loaded", async () => {
