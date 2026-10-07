@@ -159,6 +159,7 @@ The edge/cloud layer never replaces PLC logic. Remote commands are communication
 | TASK-904 Web Factory Live Monitoring, Dashboards, Events & Alarms | DONE | Site/agent/PLC/module UI, live values, charts, alarms/events, stale/offline visibility |
 | TASK-905 Remote Command/Setpoint Lifecycle, Authorization & Audit | DONE | Authorized command UI, MQTT downlink, allow-list validation, idempotency, ACK lifecycle and audit |
 | TASK-906 Production Edge Deployment, Resilience, Security & Physical E2E | DONE (stand-in; physical run open) | Real edge deployment, dynamic multi-PLC load, offline spool/replay, security and failure/recovery E2E |
+| TASK-907 Recheck Command Expiry Immediately Before the PLC Write (GitHub issue 50) | DONE | Carry the absolute expiry into the PLC worker's queue; recheck it after the I/O lock, right before the write; an expired command makes zero writes |
 
 TASK-503 remains the source-of-truth design/build dependency for the Go Z-Factory Thin Client Agent.
 

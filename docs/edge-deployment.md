@@ -106,7 +106,7 @@ Bind it to the LAN only if a monitoring agent must scrape it.
 | `zfactory_agent_queue_depth`, `…_queue_dropped_total` | telemetry waiting for the uplink, and dropped because the queue was full |
 | `zfactory_agent_spool_entries`, `…_bytes`, `…_oldest_age_seconds`, `…_dropped_total`, `…_written_total`, `…_replayed_total` | the offline spool |
 | `zfactory_agent_mqtt_connected`, `…_connects_total`, `…_connections_lost_total`, `…_published_total` | the broker connection |
-| `zfactory_agent_commands_total{outcome}` | cloud commands: received, accepted, rejected, applied, failed, duplicates, ack errors |
+| `zfactory_agent_commands_total{outcome}` | cloud commands: received, accepted, rejected, applied, failed, expired (the deadline passed while waiting; nothing written), duplicates, ack errors |
 | `go_goroutines`, `go_memstats_heap_alloc_bytes`, `go_memstats_sys_bytes`, `process_cpu_seconds_total`, `process_max_resident_memory_bytes` | the agent's own resources |
 
 Logs are JSON lines on stdout (journald or `docker logs`), with no secret.
@@ -129,6 +129,7 @@ Raise the memory limit and `ZFACTORY_AGENT_MAX_CONCURRENT_POLLS` for many hundre
 | A PLC stays disconnected | `/v1/plcs/{plcId}`: last error; the host and port in its file; the network path from the edge host |
 | A file does not take | `rejected/<file>.reason.json` |
 | The spool grows | the broker connection; `zfactory_agent_spool_oldest_age_seconds`; replay runs at `ZFACTORY_AGENT_REPLAY_RATE` |
+| Commands failed `command-expired` | the PLC was slow or busy for longer than the command's deadline (60 s from Web Factory); or the edge host's clock runs ahead (check NTP). Nothing was written |
 | Commands rejected `stale-config-version` | the file the agent runs is older than the one registered in Web Factory: deploy the same version to both |
 
 ## Stand-in run (done)
@@ -155,7 +156,7 @@ The measured report of the last run is in TASK-906's evidence.
 Run on the target edge host, with real PLCs on a real LAN, and keep the output as evidence. It needs an edge host, two or more PLCs (or OpenPLC on separate hardware), the production broker with TLS, and Web Factory.
 
 1. Build and install with `install.sh install`, checking the checksum. Record `uname -m`, the OS, `zfactory-agent -version`, and `systemctl status`.
-2. Onboard the agent in Web Factory, start the service, and see it online in Web Factory within one heartbeat.
+2. Check that the edge host's clock is synchronized (`timedatectl`: NTP active, synchronized). Command deadlines are compared with it (TASK-907). Then onboard the agent in Web Factory, start the service, and see it online in Web Factory within one heartbeat.
 3. Deploy every PLC file, and see each PLC online with live values. Record `/metrics` (workers, poll durations).
 4. Unplug one PLC's network cable. That PLC shows disconnected and raises an alarm in Web Factory; the others' `polls_total` keep rising at their rate. Plug it back in and see it recover.
 5. Drop a broken file and a tampered file into `staging/`: both end in `rejected/`, and nothing that runs changes.
