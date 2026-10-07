@@ -454,6 +454,12 @@ As built (TASK-903, ADR-0020):
 - **Ingestion:** bounded, sharded by PLC, and observable. Web Factory's broker session is persistent, so nothing published while it is away is lost.
 - **API:** `/api/v1` serves latest values, history, events and connection history, scoped to the tenant.
 
+As built (TASK-904, ADR-0021):
+- **Alarms:** PLC alarm tags, PLC connections and agents raise them, through one sweep with one active alarm per condition. Operators and admins acknowledge.
+- **Live updates:** server-sent events per scope, built from the database and checked against the actor on every update.
+- **Charts:** built-in SVG.
+- **Navigation:** site, factory, module, agent, PLC, tag.
+
 Details: `docs/web-factory.md`.
 
 Rules:
