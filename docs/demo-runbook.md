@@ -91,7 +91,7 @@ Simulator → `VFD-01` → **Inject overcurrent**. The drive trips; the program 
 PLC-01 → Export: the report with identity, modules and channels, tags, Modbus map, connected devices, relationships and versions; downloads as JSON and CSV. "Open printable report" prints it.
 
 ## 8. Stop
-Runtime → **Stop factory**. The simulation stops first and stores the last device states, then the PLC. The edge client is told again that the PLC does not answer. The factory, its program and its history stay; "Start factory" runs it again. To remove it: PLC-01 → Runtime → Remove, then delete the factory.
+Runtime → **Stop factory**. The simulation stops first and stores the last device states, then the PLC. The edge client is told again that the PLC does not answer. The factory, its program and its history stay; "Start factory" runs it again. To remove it, delete the stopped factory: its PLC containers and its Docker network are removed with it.
 
 ## What is recorded
 - Every gateway write: a `DeviceCommand` with source `GATEWAY`, and the events `GATEWAY_COMMAND_RECEIVED` and `COMMAND_ACCEPTED`. A refused write: `COMMAND_REJECTED`.
