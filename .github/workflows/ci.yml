@@ -64,3 +64,16 @@ jobs:
           PROCESS_SIM_BIN: ${{ runner.temp }}/process-sim
           AGENT_BIN: ${{ runner.temp }}/zfactory-agent
       - run: npm run build
+      # Web Factory (apps/web-factory, Phase 09): its own install, database, gates and build.
+      - name: Web Factory database
+        run: PGPASSWORD=zfactory psql -h localhost -U zfactory -d zfactory_test -c "CREATE DATABASE web_factory_test"
+      - run: npm ci
+        working-directory: apps/web-factory
+      - run: npm run lint && npm run typecheck
+        working-directory: apps/web-factory
+      - run: npm run db:deploy && npm test && npm run build
+        working-directory: apps/web-factory
+        env:
+          WEB_FACTORY_DATABASE_URL: postgresql://zfactory:zfactory@localhost:5432/web_factory_test
+          WEB_FACTORY_TEST_DATABASE_URL: postgresql://zfactory:zfactory@localhost:5432/web_factory_test
+          AUTH_SECRET: ci-only-auth-secret-0123456789abcdef0123456789

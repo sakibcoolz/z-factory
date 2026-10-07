@@ -103,6 +103,15 @@ As built (TASK-503c):
   - a command to a program output refused;
   - an outage spooled across an agent restart, and replayed.
 
+## Web Factory (Phase 09)
+As built (TASK-901): `apps/web-factory` runs its own `npm test`.
+- **Unit:** passwords, roles, environment, deployment contract.
+- **Integration** (`WEB_FACTORY_TEST_DATABASE_URL`, migrated by the global setup):
+  - identity: bootstrap, neutral sign-in refusals and lockout, roles of viewers and operators, tenant isolation, sessions ending on role, status or password change, the last admin kept;
+  - registration: topic-segment ids, registration and update from deployment files, every refusal, the audit trail.
+- **CI:** creates `web_factory_test`, then runs lint, typecheck, migrations, tests and build for the app.
+- **Root project:** excludes `apps/` from its typecheck, lint and tests.
+
 ## PLC-to-PLC communication (Phase 07)
 As built (TASK-701): `lib/domain/plc-communication.test.ts` covers the link rules (self, factory, controller, server capability by client end), the service name and the snapshot. `test/integration/plc-communication.test.ts` (PostgreSQL) creates links between catalog PLCs and an RTU, refuses self, cross-factory, non-controller, duplicate and out-of-range inputs, versions every change with the server's name following the roles, exports the link by names and in both PLCs' engineering exports, hides another owner's links, keeps the history after removal and removes the link with its PLC.
 

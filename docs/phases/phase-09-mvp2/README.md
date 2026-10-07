@@ -1,6 +1,6 @@
 # Phase 09 — MVP 2: Production Edge & Cloud Integration
 
-Status: **PLANNED**
+Status: **IN PROGRESS**
 
 ## Goal
 
@@ -153,7 +153,7 @@ The edge/cloud layer never replaces PLC logic. Remote commands are communication
 
 | Task | Status | Scope |
 |---|---|---|
-| TASK-901 Web Factory TypeScript Cloud Foundation & Identity Model | TODO | Cloud app bootstrap, auth/RBAC, tenant/site/agent/PLC identity, PostgreSQL foundation, server-only MQTT boundary |
+| TASK-901 Web Factory TypeScript Cloud Foundation & Identity Model | DONE | Cloud app bootstrap, auth/RBAC, tenant/site/agent/PLC identity, PostgreSQL foundation, server-only MQTT boundary |
 | TASK-902 MQTT Broker Integration, Agent Onboarding & Connectivity | TODO | Secure MQTT, agent registration, topic isolation, heartbeat/last-seen and connectivity state |
 | TASK-903 Telemetry Ingestion, Cloud Persistence & Latest-State Projection | TODO | Telemetry/event/alarm ingestion, idempotency, durable history, latest-state and quality projection |
 | TASK-904 Web Factory Live Monitoring, Dashboards, Events & Alarms | TODO | Site/agent/PLC/module UI, live values, charts, alarms/events, stale/offline visibility |
