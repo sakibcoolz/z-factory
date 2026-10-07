@@ -467,6 +467,12 @@ As built (TASK-905, ADR-0022):
 - **No double actuation:** request keys in Web Factory, command ids at the agent.
 - **Authority:** the PLC program decides what follows a written command.
 
+As built (TASK-906, ADR-0023):
+- **Deployment:** reproducible static builds for amd64, arm64 and armv7, with checksums. A checksum-checking systemd installer with a hardened unit, and a distroless non-root image of the same binary.
+- **Transport:** MQTT over TLS only in production.
+- **Observability:** the agent's goroutines, memory, CPU, poll latency, spool and command counters on `/metrics`.
+- **Validation:** a production-like stand-in run proves every failure mode on one machine. The run on physical hardware is an open checklist (`docs/edge-deployment.md`).
+
 Details: `docs/web-factory.md`.
 
 Rules:

@@ -54,6 +54,9 @@ jobs:
           ZFACTORY_AGENT_DOCKER: "1"
       - run: go build -o "$RUNNER_TEMP/zfactory-agent" ./cmd/zfactory-agent
         working-directory: services/zfactory-thin-client-agent
+      # The deployment kit (TASK-906): reproducible builds, the installer and the unit.
+      - run: packaging/test-packaging.sh
+        working-directory: services/zfactory-thin-client-agent
       - run: npm run format:check
       - run: npm run lint
       - run: npm run typecheck

@@ -48,15 +48,39 @@ export function freePort(): Promise<number> {
   });
 }
 
-/** Starts a broker on a free loopback port; the admin password goes to `<dir>/admin-password`. */
+/**
+ * Starts a broker on a free loopback port; the admin password goes to `<dir>/admin-password`.
+ * With `tls`, it listens on mqtts with a throwaway CA (broker/dev-ca.sh) written to `<dir>/ca`.
+ */
 export async function startBroker(
   dir: string,
   label: string,
-): Promise<{ container: string; url: string; passwordFile: string }> {
+  options: { tls?: boolean } = {},
+): Promise<{ container: string; url: string; passwordFile: string; caFile?: string }> {
   const adminPassword = randomBytes(18).toString("base64url");
   const passwordFile = join(dir, "admin-password");
   writeFileSync(passwordFile, `${adminPassword}\n`, { mode: 0o600 });
   const port = await freePort();
+  if (options.tls) {
+    const ca = join(dir, "ca");
+    execFileSync(resolve(__dirname, "../broker/dev-ca.sh"), [ca, "localhost", "127.0.0.1"], { stdio: "ignore" });
+    const container = docker(
+      "run",
+      "-d",
+      "--label",
+      `web-factory-test=${label}`,
+      "-e",
+      `MOSQUITTO_DYNSEC_PASSWORD=${adminPassword}`,
+      "-p",
+      `127.0.0.1:${port}:8883`,
+      "-v",
+      `${resolve(__dirname, "../broker/mosquitto-tls.conf")}:/mosquitto/config/mosquitto.conf:ro`,
+      "-v",
+      `${ca}:/mosquitto/certs:ro`,
+      IMAGE,
+    );
+    return { container, url: `mqtts://127.0.0.1:${port}`, passwordFile, caFile: join(ca, "ca.crt") };
+  }
   const container = docker(
     "run",
     "-d",

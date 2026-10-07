@@ -38,9 +38,17 @@ credentials by `-mqtt-username` and `-mqtt-password-file`, TLS by `-mqtt-ca-file
 ZFACTORY_AGENT_DOCKER=1 go test -race ./internal/uplink   # runs eclipse-mosquitto:2
 ```
 
-Health: `GET /healthz`, `/v1/status`, `/v1/plcs/{plcId}`, `/metrics`.
+Health: `GET /healthz`, `/v1/status`, `/v1/plcs/{plcId}`, `/metrics`; `zfactory-agent -probe`
+asks a running agent and exits 0 or 1 (container health checks).
 
 Offline spool (with MQTT): `spool/telemetry.db`, bounded by `-spool-max-bytes` (256 MiB)
 and `-spool-max-age` (7 days), replayed at `-replay-rate` (50 batches/s) after a reconnect.
 
-systemd: `packaging/zfactory-agent.service`.
+Production (TASK-906, `docs/edge-deployment.md`):
+
+```sh
+packaging/build.sh 1.0.0          # dist/: linux amd64, arm64, armv7 + SHA256SUMS-1.0.0 (reproducible)
+packaging/install.sh install --binary dist/zfactory-agent-1.0.0-linux-arm64 --sums dist/SHA256SUMS-1.0.0   # as root
+docker build -f packaging/Dockerfile --build-arg VERSION=1.0.0 -t zfactory-agent:1.0.0 .
+packaging/test-packaging.sh       # tests the kit without root
+```

@@ -9,7 +9,7 @@ The Phase 09 cloud application (ADR-0018). It receives what Z-Factory Thin Clien
 | TASK-903 | telemetry ingestion, persistence, latest state | done |
 | TASK-904 | monitoring dashboards, events, alarms | done |
 | TASK-905 | remote command and setpoint lifecycle | done |
-| TASK-906 | production edge deployment, physical E2E | planned |
+| TASK-906 | production edge deployment, resilience, security; the physical run is open (`docs/edge-deployment.md`) | done (stand-in) |
 
 ## Identity model
 | Model | What it is |
@@ -189,6 +189,7 @@ Something the actor cannot see, or that belongs to another organization, is a 40
   - `WEB_FACTORY_AGENT_HEARTBEAT_S`: the agents' heartbeat interval;
   - `WEB_FACTORY_TELEMETRY_RETENTION_DAYS` (30), `…_QUEUE` (10,000 batches), `…_WRITERS` (2);
   - `WEB_FACTORY_MQTT_CLIENT_ID`: by default `web-factory-<host>`. It must be different for each Web Factory process on one broker, because the session is persistent.
+- Broker in production: `broker/mosquitto-tls.conf`, MQTT over TLS only on 8883, with the server certificate from your CA. Web Factory verifies it with `WEB_FACTORY_MQTT_CA_FILE` and agents with `ZFACTORY_AGENT_MQTT_CA_FILE` (ADR-0023, `docs/edge-deployment.md`).
 - Broker for development: `docker run -d --name web-factory-broker -e MOSQUITTO_DYNSEC_PASSWORD=… -p 127.0.0.1:1883:1883 -v "$PWD/broker/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro" eclipse-mosquitto:2`, from `apps/web-factory`. Then point `WEB_FACTORY_MQTT_URL=mqtt://127.0.0.1:1883` at it, with user name `admin` and the same password in a file.
 - First admin: `WEB_FACTORY_ADMIN_PASSWORD_FILE=… npm run create-admin -- --org … --slug … --email … --name …`. It is refused once any user exists.
 

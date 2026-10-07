@@ -128,10 +128,12 @@ type Worker struct {
 
 	commands chan job
 
-	mu         sync.Mutex
-	state      string
-	values     map[string]telemetry.Value
-	lastPoll   time.Time
+	mu       sync.Mutex
+	state    string
+	values   map[string]telemetry.Value
+	lastPoll time.Time
+	// pollTook is how long the last complete poll took (wall clock, not the test clock).
+	pollTook   time.Duration
 	lastError  string
 	errorAt    time.Time
 	polls      uint64
@@ -401,6 +403,7 @@ func (w *Worker) pollOnce(ctx context.Context) error {
 	}
 	defer w.release()
 	at := w.options.Now()
+	started := time.Now()
 	refused := false
 	for _, s := range w.spans {
 		if ctx.Err() != nil {
@@ -432,6 +435,7 @@ func (w *Worker) pollOnce(ctx context.Context) error {
 	w.mu.Lock()
 	w.polls++
 	w.lastPoll = at
+	w.pollTook = time.Since(started)
 	if refused {
 		w.state = Degraded
 	} else {
@@ -488,21 +492,23 @@ func (w *Worker) valuesLocked() []telemetry.Value {
 
 // Snapshot is what health shows about one worker.
 type Snapshot struct {
-	PLCID         string            `json:"plcId"`
-	Name          string            `json:"name"`
-	State         string            `json:"state"`
-	Endpoint      string            `json:"endpoint"`
-	ConfigVersion int64             `json:"configVersion"`
-	Checksum      string            `json:"checksum"`
-	Mappings      int               `json:"mappings"`
-	Writable      int               `json:"writable"`
-	Polls         uint64            `json:"polls"`
-	Failures      uint64            `json:"failures"`
-	Reconnects    uint64            `json:"reconnects"`
-	LastPollAt    *time.Time        `json:"lastPollAt"`
-	LastError     string            `json:"lastError,omitempty"`
-	LastErrorAt   *time.Time        `json:"lastErrorAt,omitempty"`
-	Values        []telemetry.Value `json:"values,omitempty"`
+	PLCID         string     `json:"plcId"`
+	Name          string     `json:"name"`
+	State         string     `json:"state"`
+	Endpoint      string     `json:"endpoint"`
+	ConfigVersion int64      `json:"configVersion"`
+	Checksum      string     `json:"checksum"`
+	Mappings      int        `json:"mappings"`
+	Writable      int        `json:"writable"`
+	Polls         uint64     `json:"polls"`
+	Failures      uint64     `json:"failures"`
+	Reconnects    uint64     `json:"reconnects"`
+	LastPollAt    *time.Time `json:"lastPollAt"`
+	// LastPollMs is how long the last complete poll took, in milliseconds.
+	LastPollMs  float64           `json:"lastPollMs"`
+	LastError   string            `json:"lastError,omitempty"`
+	LastErrorAt *time.Time        `json:"lastErrorAt,omitempty"`
+	Values      []telemetry.Value `json:"values,omitempty"`
 }
 
 // Snapshot returns the worker's state; with values, each carries its quality now: a good
@@ -530,6 +536,7 @@ func (w *Worker) Snapshot(withValues bool) Snapshot {
 		Failures:      w.failures,
 		Reconnects:    w.reconnects,
 		LastError:     w.lastError,
+		LastPollMs:    float64(w.pollTook.Microseconds()) / 1000,
 	}
 	if !w.lastPoll.IsZero() {
 		at := w.lastPoll

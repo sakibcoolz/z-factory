@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -164,11 +165,25 @@ func TestRunsWhateverIsDeployedAndReloadsWithoutRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	body := make([]byte, 1<<16)
-	n, _ := response.Body.Read(body)
+	body, _ := io.ReadAll(response.Body)
 	_ = response.Body.Close()
-	if !strings.Contains(string(body[:n]), `zfactory_agent_workers{state="ONLINE"} 2`) {
-		t.Fatalf("metrics:\n%s", body[:n])
+	// Workers, poll latency and the process's own resources (TASK-906).
+	for _, want := range []string{
+		`zfactory_agent_workers{state="ONLINE"} 2`,
+		`zfactory_agent_plc_poll_duration_seconds{plc_id=`,
+		`zfactory_agent_plc_poll_failures_total{plc_id=`,
+		"go_goroutines ",
+		"go_memstats_heap_alloc_bytes ",
+		"process_cpu_seconds_total ",
+	} {
+		if !strings.Contains(string(body), want) {
+			t.Fatalf("metrics lack %q:\n%s", want, body)
+		}
+	}
+	for _, plc := range a.Status().PLCs {
+		if plc.State == "ONLINE" && plc.LastPollMs <= 0 {
+			t.Fatalf("no poll duration for %s: %+v", plc.Name, plc)
+		}
 	}
 
 	// Stopping leaves nothing running.

@@ -12,8 +12,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"runtime"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/sakibcoolz/z-factory/services/zfactory-thin-client-agent/internal/deploy"
@@ -189,5 +191,70 @@ func metrics(status AgentStatus) string {
 	for _, plc := range status.PLCs {
 		fmt.Fprintf(&b, "zfactory_agent_plc_reconnects_total{plc_id=\"%s\"} %d\n", label(plc.PLCID), plc.Reconnects)
 	}
+	line("zfactory_agent_plc_poll_failures_total", "Polls or connection attempts of the PLC that failed.", "counter")
+	for _, plc := range status.PLCs {
+		fmt.Fprintf(&b, "zfactory_agent_plc_poll_failures_total{plc_id=\"%s\"} %d\n", label(plc.PLCID), plc.Failures)
+	}
+	line("zfactory_agent_plc_poll_duration_seconds", "How long the last complete poll of the PLC took.", "gauge")
+	for _, plc := range status.PLCs {
+		fmt.Fprintf(&b, "zfactory_agent_plc_poll_duration_seconds{plc_id=\"%s\"} %.6f\n", label(plc.PLCID), plc.LastPollMs/1000)
+	}
+	uplinkMetrics(&b, line, status.Uplink)
+	processMetrics(&b, line)
 	return b.String()
+}
+
+// uplinkMetrics adds the MQTT connection, command and spool counters (TASK-906).
+func uplinkMetrics(b *strings.Builder, line func(name, help, kind string), uplink map[string]any) {
+	if connects, ok := uplink["connects"].(uint64); ok {
+		line("zfactory_agent_mqtt_connects_total", "Times the agent connected to the broker.", "counter")
+		fmt.Fprintf(b, "zfactory_agent_mqtt_connects_total %d\n", connects)
+	}
+	if lost, ok := uplink["lostConnections"].(uint64); ok {
+		line("zfactory_agent_mqtt_connections_lost_total", "Times the broker connection was lost.", "counter")
+		fmt.Fprintf(b, "zfactory_agent_mqtt_connections_lost_total %d\n", lost)
+	}
+	if published, ok := uplink["published"].(uint64); ok {
+		line("zfactory_agent_mqtt_published_total", "Telemetry batches the broker took live.", "counter")
+		fmt.Fprintf(b, "zfactory_agent_mqtt_published_total %d\n", published)
+	}
+	if commands, ok := uplink["commands"].(map[string]uint64); ok {
+		line("zfactory_agent_commands_total", "Cloud commands by outcome.", "counter")
+		outcomes := make([]string, 0, len(commands))
+		for outcome := range commands {
+			outcomes = append(outcomes, outcome)
+		}
+		sort.Strings(outcomes)
+		for _, outcome := range outcomes {
+			fmt.Fprintf(b, "zfactory_agent_commands_total{outcome=\"%s\"} %d\n", label(outcome), commands[outcome])
+		}
+	}
+	if spooling, ok := uplink["spool"].(map[string]any); ok && spooling["configured"] == true {
+		line("zfactory_agent_spool_written_total", "Telemetry batches put in the spool.", "counter")
+		fmt.Fprintf(b, "zfactory_agent_spool_written_total %v\n", spooling["written"])
+		line("zfactory_agent_spool_replayed_total", "Spooled batches sent after a reconnect.", "counter")
+		fmt.Fprintf(b, "zfactory_agent_spool_replayed_total %v\n", spooling["replayed"])
+	}
+}
+
+// processMetrics adds the agent process's own resources: goroutines, memory and CPU time.
+func processMetrics(b *strings.Builder, line func(name, help, kind string)) {
+	var memory runtime.MemStats
+	runtime.ReadMemStats(&memory)
+	line("go_goroutines", "Goroutines of the agent.", "gauge")
+	fmt.Fprintf(b, "go_goroutines %d\n", runtime.NumGoroutine())
+	line("go_memstats_heap_alloc_bytes", "Heap bytes in use.", "gauge")
+	fmt.Fprintf(b, "go_memstats_heap_alloc_bytes %d\n", memory.HeapAlloc)
+	line("go_memstats_sys_bytes", "Bytes the Go runtime holds from the operating system.", "gauge")
+	fmt.Fprintf(b, "go_memstats_sys_bytes %d\n", memory.Sys)
+	line("go_gc_cycles_total", "Completed garbage collections.", "counter")
+	fmt.Fprintf(b, "go_gc_cycles_total %d\n", memory.NumGC)
+	var usage syscall.Rusage
+	if syscall.Getrusage(syscall.RUSAGE_SELF, &usage) == nil {
+		cpu := float64(usage.Utime.Sec+usage.Stime.Sec) + float64(usage.Utime.Usec+usage.Stime.Usec)/1e6
+		line("process_cpu_seconds_total", "User and system CPU time of the agent.", "counter")
+		fmt.Fprintf(b, "process_cpu_seconds_total %.3f\n", cpu)
+		line("process_max_resident_memory_bytes", "Peak resident memory of the agent.", "gauge")
+		fmt.Fprintf(b, "process_max_resident_memory_bytes %d\n", usage.Maxrss*1024)
+	}
 }
