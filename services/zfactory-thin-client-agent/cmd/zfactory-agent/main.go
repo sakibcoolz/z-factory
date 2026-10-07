@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
@@ -82,10 +83,14 @@ func main() {
 	spoolAge := flag.Duration("spool-max-age", envDuration("ZFACTORY_AGENT_SPOOL_MAX_AGE", 7*24*time.Hour), "age after which spooled telemetry is dropped")
 	replayRate := flag.Int("replay-rate", envInt("ZFACTORY_AGENT_REPLAY_RATE", 50), "spooled batches sent per second after a reconnect")
 	showVersion := flag.Bool("version", false, "print the version and exit")
+	probe := flag.Bool("probe", false, "ask the running agent's health endpoint whether it is alive, and exit 0 or 1 (container health checks)")
 	flag.Parse()
 	if *showVersion {
 		fmt.Println(version)
 		return
+	}
+	if *probe {
+		os.Exit(probeHealth(*healthAddr))
 	}
 
 	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -123,4 +128,21 @@ func main() {
 		log.Error("agent did not stop cleanly", "error", err.Error())
 		os.Exit(1)
 	}
+}
+
+// probeHealth asks the health endpoint once. The agent answers 200 while it runs, also when
+// a PLC is degraded: a degraded PLC is the PLC's problem, not a reason to restart the agent.
+func probeHealth(addr string) int {
+	client := http.Client{Timeout: 3 * time.Second}
+	response, err := client.Get("http://" + addr + "/healthz")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "the agent does not answer:", err)
+		return 1
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		fmt.Fprintln(os.Stderr, "the agent answers", response.Status)
+		return 1
+	}
+	return 0
 }

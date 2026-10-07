@@ -1,28 +1,57 @@
-# systemd unit for the Z-Factory Thin Client Agent (docs/thin-client-agent.md).
-# Install: copy the binary to /usr/local/bin/zfactory-agent, this file to
-# /etc/systemd/system/, create the user, then `systemctl enable --now zfactory-agent`.
+# systemd unit for the Z-Factory Thin Client Agent (docs/edge-deployment.md).
+# Installed by packaging/install.sh. Settings come from /etc/zfactory-agent/agent.env;
+# deployment files, rejected files and the offline spool live in /var/lib/zfactory-agent.
 [Unit]
 Description=Z-Factory Thin Client Agent
+Documentation=https://github.com/sakibcoolz/z-factory/blob/develop/docs/edge-deployment.md
 After=network-online.target
 Wants=network-online.target
+# Stop restarting after 10 failures in 5 minutes; an operator looks at it then.
+StartLimitIntervalSec=300
+StartLimitBurst=10
 
 [Service]
 Type=simple
 User=zfactory-agent
 Group=zfactory-agent
-ExecStart=/usr/local/bin/zfactory-agent -dir /etc/zfactory-agent -health 127.0.0.1:9180
+EnvironmentFile=/etc/zfactory-agent/agent.env
+Environment=ZFACTORY_AGENT_DIR=/var/lib/zfactory-agent
+ExecStart=/usr/local/bin/zfactory-agent
 Restart=on-failure
 RestartSec=5s
-# Graceful shutdown: the agent stops its workers within its own timeout.
+# Graceful shutdown: the agent stops its workers and says it goes offline.
 TimeoutStopSec=30s
-# It needs its directory and the network, nothing else.
-ReadWritePaths=/etc/zfactory-agent
+# /var/lib/zfactory-agent, owned by the service user, kept across upgrades.
+StateDirectory=zfactory-agent
+StateDirectoryMode=0750
+# The agent needs its state directory and the network, nothing else.
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
+PrivateDevices=true
 NoNewPrivileges=true
 CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+UMask=0027
 LimitNOFILE=65536
+# Bounded resources; raise for very large PLC counts (docs/edge-deployment.md → Sizing).
+MemoryMax=512M
+TasksMax=4096
 
 [Install]
 WantedBy=multi-user.target

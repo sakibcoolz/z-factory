@@ -32,3 +32,6 @@ next-env.d.ts
 # misc
 .DS_Store
 npm-debug.log*
+
+# The stand-in run's report (scripts/edge-standin.sh)
+/edge-standin-report.json

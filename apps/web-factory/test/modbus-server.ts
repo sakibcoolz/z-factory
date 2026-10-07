@@ -12,6 +12,15 @@ export class ModbusServer {
   readonly writes: Array<{ fn: number; address: number; value: number | boolean }> = [];
   private server: Server | undefined;
   private readonly sockets = new Set<Socket>();
+  private programTimer: NodeJS.Timeout | undefined;
+  /** Answers this much later: a slow PLC (TASK-906). */
+  delayMs = 0;
+
+  /** Runs a "PLC program" on the image every scanMs, like a PLC scan cycle (TASK-906). */
+  run(program: (plc: ModbusServer) => void, scanMs = 50): void {
+    clearInterval(this.programTimer);
+    this.programTimer = setInterval(() => program(this), scanMs);
+  }
 
   async listen(port: number): Promise<void> {
     this.server = createServer((socket) => {
@@ -26,7 +35,9 @@ export class ModbusServer {
           if (pending.length < 6 + length) break;
           const frame = pending.subarray(0, 6 + length);
           pending = pending.subarray(6 + length);
-          socket.write(this.answer(frame));
+          const reply = this.answer(frame);
+          if (this.delayMs > 0) setTimeout(() => socket.writable && socket.write(reply), this.delayMs);
+          else socket.write(reply);
         }
       });
     });
@@ -84,6 +95,7 @@ export class ModbusServer {
   }
 
   async close(): Promise<void> {
+    clearInterval(this.programTimer);
     for (const socket of this.sockets) socket.destroy();
     await new Promise<void>((done) => (this.server ? this.server.close(() => done()) : done()));
     this.server = undefined;

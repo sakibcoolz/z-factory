@@ -456,7 +456,16 @@ func TestSpoolsWhileTheBrokerIsAwayAndReplaysAfter(t *testing.T) {
 	}
 	metrics, _ := io.ReadAll(response.Body)
 	_ = response.Body.Close()
-	for _, want := range []string{"zfactory_agent_spool_entries 0", "zfactory_agent_mqtt_connected 1", "zfactory_agent_spool_bytes 0"} {
+	for _, want := range []string{
+		"zfactory_agent_spool_entries 0",
+		"zfactory_agent_mqtt_connected 1",
+		"zfactory_agent_spool_bytes 0",
+		"zfactory_agent_mqtt_connects_total ",
+		"zfactory_agent_mqtt_connections_lost_total ",
+		"zfactory_agent_spool_written_total ",
+		"zfactory_agent_spool_replayed_total ",
+		`zfactory_agent_commands_total{outcome="accepted"}`,
+	} {
 		if !strings.Contains(string(metrics), want) {
 			t.Errorf("metrics lack %q:\n%s", want, metrics)
 		}
