@@ -12,7 +12,7 @@ export function openTestDb(): PrismaClient {
 
 export async function resetDb(db: PrismaClient): Promise<void> {
   await db.$executeRawUnsafe(
-    'TRUNCATE "AgentConnectionEvent", "AuditEvent", "PlcModule", "Module", "PlcMapping", "Plc", "Factory", "EdgeAgent", "Site", "Membership", "User", "Organization" CASCADE',
+    'TRUNCATE telemetry.batch, telemetry.sample, "PlcEvent", "TagLatest", "AgentConnectionEvent", "AuditEvent", "PlcModule", "Module", "PlcMapping", "Plc", "Factory", "EdgeAgent", "Site", "Membership", "User", "Organization" CASCADE',
   );
 }
 
@@ -28,6 +28,9 @@ export function deploymentFile(
     mappings?: Mapping[];
     modules?: Array<{ moduleId: string; name: string; type: string }>;
     pretty?: boolean;
+    host?: string;
+    port?: number;
+    pollIntervalMs?: number;
   } = {},
 ): string {
   const plcId = options.plcId ?? "plc-1";
@@ -36,11 +39,11 @@ export function deploymentFile(
     plc: { plcId, name: options.plcName ?? "PLC-01", role: null },
     connection: {
       protocol: "MODBUS_TCP",
-      host: "10.0.0.15",
-      port: 502,
+      host: options.host ?? "10.0.0.15",
+      port: options.port ?? 502,
       unitId: 1,
       timeoutMs: 2000,
-      pollIntervalMs: 1000,
+      pollIntervalMs: options.pollIntervalMs ?? 1000,
     },
     modules: options.modules ?? [{ moduleId: "module-1", name: "PH-01", type: "PUMP_HOUSE" }],
     mappings: options.mappings ?? [

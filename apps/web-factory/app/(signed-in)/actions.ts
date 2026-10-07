@@ -8,7 +8,7 @@ import { getDb } from "@/lib/db/client";
 import { isDomainError } from "@/lib/domain/errors";
 import type { FormState } from "@/lib/form-state";
 import { log } from "@/lib/log";
-import { agentBrokerUrl, forgetAgent, getBrokerAdmin } from "@/lib/mqtt/boundary";
+import { agentBrokerUrl, forgetAgent, forgetPlcs, getBrokerAdmin } from "@/lib/mqtt/boundary";
 import { issueAgentCredentials, revokeAgentCredentials } from "@/lib/services/onboarding-service";
 import { createAgent, createSite, registerDeployment } from "@/lib/services/site-service";
 import { addMember, changeOwnPassword, setMemberActive, setMemberRole } from "@/lib/services/user-service";
@@ -74,6 +74,8 @@ export async function registerDeploymentAction(agentId: string, _state: FormStat
     async () => {
       const text = file instanceof File && file.size > 0 ? await file.text() : "";
       const result = await registerDeployment(getDb(), actor, agentId, text);
+      // Telemetry of the new version's tags is matched against them from now on.
+      if (!result.unchanged) forgetPlcs();
       return result.unchanged
         ? "This version is registered already."
         : result.created
