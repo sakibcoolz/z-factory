@@ -1,0 +1,221 @@
+// Web Factory's own database (TASK-901, docs/web-factory.md). Nothing here is shared with
+// Z-Factory's database: identities that come from the edge (factory, PLC, mapping, module)
+// are stored by their external id, as the agent's deployment files and MQTT topics name them.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  VIEWER
+  OPERATOR
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum AgentStatus {
+  /// Registered; nothing heard from it yet (connectivity is TASK-902).
+  UNKNOWN
+  ONLINE
+  OFFLINE
+}
+
+enum MappingAccess {
+  READ
+  WRITE
+}
+
+/// A tenant: everything below belongs to exactly one organization.
+model Organization {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+
+  memberships Membership[]
+  sites       Site[]
+  factories   Factory[]
+  auditEvents AuditEvent[]
+}
+
+/// A person who signs in. The password hash is scrypt (lib/auth/password.ts).
+model User {
+  id           String     @id @default(uuid(7)) @db.Uuid
+  /// Stored lower-cased.
+  email        String     @unique
+  name         String
+  passwordHash String
+  status       UserStatus @default(ACTIVE)
+  /// Raised when the user is disabled, their password or a role changes: older sessions end.
+  sessionVersion Int      @default(0)
+  failedLogins Int        @default(0)
+  lockedUntil  DateTime?
+  lastLoginAt  DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  memberships Membership[]
+  auditEvents AuditEvent[]
+}
+
+/// A user's role in one organization.
+model Membership {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  organizationId String   @db.Uuid
+  userId         String   @db.Uuid
+  role           Role
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+}
+
+/// A plant location. `siteKey` is the site id in the agents' MQTT topics (zfactory/{siteKey}/…),
+/// so it is unique across the whole broker, not only within the organization.
+model Site {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  organizationId String   @db.Uuid
+  siteKey        String   @unique
+  name           String
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  agents       EdgeAgent[]
+  factories    Factory[]
+
+  @@index([organizationId])
+}
+
+/// A Z-Factory Thin Client Agent at a site. `agentKey` is its agent id in the topics.
+model EdgeAgent {
+  id         String      @id @default(uuid(7)) @db.Uuid
+  siteId     String      @db.Uuid
+  agentKey   String
+  name       String
+  status     AgentStatus @default(UNKNOWN)
+  lastSeenAt DateTime?
+  createdAt  DateTime    @default(now())
+
+  site Site  @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  plcs Plc[]
+
+  @@unique([siteId, agentKey])
+}
+
+/// A Z-Factory factory, as the agents' deployments name it (`site.factoryId`).
+model Factory {
+  id                String   @id @default(uuid(7)) @db.Uuid
+  organizationId    String   @db.Uuid
+  siteId            String   @db.Uuid
+  externalFactoryId String
+  name              String
+  slug              String
+  createdAt         DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site         Site         @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  plcs         Plc[]
+  modules      Module[]
+
+  @@unique([siteId, externalFactoryId])
+  @@index([organizationId])
+}
+
+/// A PLC an agent runs, registered from its edge deployment file. `externalPlcId` is the
+/// plcId in the topics. The registered deployment is the cloud's copy of the allow-list.
+model Plc {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  edgeAgentId    String   @db.Uuid
+  factoryId      String   @db.Uuid
+  externalPlcId  String
+  name           String
+  role           String?
+  configVersion  Int
+  checksum       String
+  /// The deployment as registered: connection settings and mappings, never a secret.
+  deploymentJson Json
+  registeredAt   DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  agent    EdgeAgent    @relation(fields: [edgeAgentId], references: [id], onDelete: Cascade)
+  factory  Factory      @relation(fields: [factoryId], references: [id], onDelete: Cascade)
+  mappings PlcMapping[]
+  modules  PlcModule[]
+
+  @@unique([edgeAgentId, externalPlcId])
+  @@index([factoryId])
+}
+
+/// One tag of a registered PLC, by its id in telemetry and commands.
+model PlcMapping {
+  id         String        @id @default(uuid(7)) @db.Uuid
+  plcId      String        @db.Uuid
+  externalId String
+  name       String
+  access     MappingAccess
+  role       String
+  dataType   String
+  unit       String?
+  min        Float?
+  max        Float?
+
+  plc Plc @relation(fields: [plcId], references: [id], onDelete: Cascade)
+
+  @@unique([plcId, externalId])
+  @@unique([plcId, name])
+}
+
+/// A process module of a factory, as the deployments name it.
+model Module {
+  id               String   @id @default(uuid(7)) @db.Uuid
+  factoryId        String   @db.Uuid
+  externalModuleId String
+  name             String
+  type             String
+  createdAt        DateTime @default(now())
+
+  factory Factory     @relation(fields: [factoryId], references: [id], onDelete: Cascade)
+  plcs    PlcModule[]
+
+  @@unique([factoryId, externalModuleId])
+}
+
+/// A module whose signals a PLC carries.
+model PlcModule {
+  plcId    String @db.Uuid
+  moduleId String @db.Uuid
+
+  plc    Plc    @relation(fields: [plcId], references: [id], onDelete: Cascade)
+  module Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@id([plcId, moduleId])
+}
+
+/// Who did what, for the record: sign-ins, user and role changes, registrations.
+model AuditEvent {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  organizationId String?  @db.Uuid
+  actorUserId    String?  @db.Uuid
+  action         String
+  subjectType    String
+  subjectId      String?
+  detailJson     Json     @default("{}")
+  at             DateTime @default(now())
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actor        User?         @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, at])
+}

@@ -17,7 +17,7 @@ export default defineConfig({
     setupFiles: ["./vitest.setup.ts"],
     globalSetup: ["./test/global-setup.ts"],
     include: ["**/*.test.{ts,tsx}"],
-    exclude: ["node_modules/**", ".next/**"],
+    exclude: ["node_modules/**", ".next/**", "apps/**"],
     css: false,
     // Integration tests share one PostgreSQL database.
     fileParallelism: false,

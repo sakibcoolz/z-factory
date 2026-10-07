@@ -4,6 +4,11 @@ coverage/
 node_modules/
 graphify-out/
 lib/generated/
+apps/web-factory/lib/generated/
+apps/web-factory/.next/
+apps/web-factory/node_modules/
+apps/web-factory/prisma/migrations/
+apps/web-factory/next-env.d.ts
 prisma/migrations/
 package-lock.json
 next-env.d.ts

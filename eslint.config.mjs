@@ -5,7 +5,16 @@ import nextTs from "eslint-config-next/typescript";
 export default defineConfig([
   ...nextVitals,
   ...nextTs,
-  globalIgnores([".next/**", "out/**", "coverage/**", "next-env.d.ts", "graphify-out/**", "lib/generated/**"]),
+  // Web Factory (apps/web-factory) is its own application with its own lint config.
+  globalIgnores([
+    ".next/**",
+    "out/**",
+    "coverage/**",
+    "next-env.d.ts",
+    "graphify-out/**",
+    "lib/generated/**",
+    "apps/**",
+  ]),
   {
     // Design-system adherence (Modernist `_adherence.oxlintrc.json`): UI code takes
     // colors and sizes from the tokens in app/globals.css, never from raw literals.
