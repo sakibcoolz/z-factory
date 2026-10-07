@@ -4,6 +4,8 @@ import { hostname } from "node:os";
 import mqtt, { type IClientOptions, type MqttClient } from "mqtt";
 import { INGEST_SUBSCRIPTIONS } from "@/lib/domain/agent-messages";
 import type { PrismaClient } from "@/lib/generated/prisma/client";
+import { type SweepResult, sweepAlarms } from "@/lib/alarms/engine";
+import { type ConnectivityLimits, DEFAULT_LIMITS, lateAfterMs } from "@/lib/domain/connectivity";
 import { type PipelineOptions, TelemetryPipeline, type TelemetryStats } from "@/lib/telemetry/pipeline";
 import { PostgresTelemetryStore } from "@/lib/telemetry/store";
 import { DYNSEC_RESPONSE_TOPIC, DynsecControl } from "./dynsec";
@@ -41,6 +43,13 @@ export type BrokerStatus = {
   refusedSubscriptions: string[];
   ingest: IngestStats;
   telemetry: TelemetryStats;
+  alarms: { sweeps: number; raised: number; cleared: number; errors: number; judgingConnectivity: boolean };
+};
+
+export type AlarmOptions = {
+  /** How often the alarm sweep runs; 0 turns it off. */
+  intervalMs?: number;
+  limits?: ConnectivityLimits;
 };
 
 export const MIN_RETRY_MS = 1_000;
@@ -79,6 +88,10 @@ export class MqttRuntime {
   private retryTimer: NodeJS.Timeout | undefined;
   private readonly statsTimer: NodeJS.Timeout;
   private readonly maintenanceTimer: NodeJS.Timeout;
+  private readonly alarmTimer: NodeJS.Timeout | undefined;
+  private readonly alarmStats = { sweeps: 0, raised: 0, cleared: 0, errors: 0 };
+  private readonly limits: ConnectivityLimits;
+  private sweeping: Promise<SweepResult | void> | null = null;
 
   constructor(
     private readonly settings: MqttSettings,
@@ -86,7 +99,9 @@ export class MqttRuntime {
     private readonly log: Logger,
     ingestOptions: IngestOptions = {},
     telemetryOptions: PipelineOptions = {},
+    alarmOptions: AlarmOptions = {},
   ) {
+    this.limits = alarmOptions.limits ?? DEFAULT_LIMITS;
     // A stable client id: the broker keeps this session, and what agents publish meanwhile.
     this.clientId = settings.clientId ?? `web-factory-${hostname()}`;
     this.telemetryStore = new PostgresTelemetryStore(db);
@@ -141,8 +156,8 @@ export class MqttRuntime {
     log("info", "connecting to the broker", { broker: redactBroker(settings.url), clientId: this.clientId });
     // For operators: one line a minute with the connection, ingest and telemetry counters.
     this.statsTimer = setInterval(() => {
-      const { ingest, telemetry, ...connection } = this.status();
-      log("info", "broker stats", { ...connection, ingest, telemetry });
+      const { ingest, telemetry, alarms, ...connection } = this.status();
+      log("info", "broker stats", { ...connection, ingest, telemetry, alarms });
     }, 60_000);
     this.statsTimer.unref();
     // Telemetry partitions: today's and tomorrow's ready, those past the retention dropped.
@@ -158,6 +173,42 @@ export class MqttRuntime {
     void maintain();
     this.maintenanceTimer = setInterval(() => void maintain(), 3_600_000);
     this.maintenanceTimer.unref();
+    // The alarm sweep (TASK-904): one at a time, every few seconds.
+    const intervalMs = alarmOptions.intervalMs ?? 3_000;
+    if (intervalMs > 0) {
+      this.alarmTimer = setInterval(() => void this.sweep(db), intervalMs);
+      this.alarmTimer.unref();
+    }
+  }
+
+  /**
+   * Whether agent and PLC connectivity can be judged: Web Factory has been connected long
+   * enough to have heard every live agent's heartbeat. Otherwise every agent would look
+   * silent, and a Web Factory outage would raise an alarm for each of them.
+   */
+  judgingConnectivity(now = Date.now()): boolean {
+    if (!this.client.connected || !this.state.lastConnectedAt) return false;
+    return now - new Date(this.state.lastConnectedAt).getTime() >= lateAfterMs(this.limits);
+  }
+
+  /** Runs one alarm sweep, unless one is running. */
+  async sweep(db: PrismaClient): Promise<void> {
+    if (this.sweeping) return;
+    this.sweeping = sweepAlarms(db, { limits: this.limits, judgeConnectivity: this.judgingConnectivity() })
+      .then((result) => {
+        this.alarmStats.sweeps += 1;
+        this.alarmStats.raised += result.raised;
+        this.alarmStats.cleared += result.cleared;
+        if (result.raised > 0 || result.cleared > 0) this.log("info", "alarms", { ...result });
+      })
+      .catch((error: unknown) => {
+        this.alarmStats.errors += 1;
+        this.log("error", "alarm sweep failed", { error: error instanceof Error ? error.message : "unknown" });
+      })
+      .finally(() => {
+        this.sweeping = null;
+      });
+    await this.sweeping;
   }
 
   private async connected(): Promise<void> {
@@ -222,6 +273,7 @@ export class MqttRuntime {
       refusedSubscriptions: this.state.refusedSubscriptions,
       ingest: this.ingestor.stats,
       telemetry: this.telemetry.stats,
+      alarms: { ...this.alarmStats, judgingConnectivity: this.judgingConnectivity() },
     };
   }
 
@@ -230,6 +282,8 @@ export class MqttRuntime {
     clearTimeout(this.retryTimer);
     clearInterval(this.statsTimer);
     clearInterval(this.maintenanceTimer);
+    clearInterval(this.alarmTimer);
+    await this.sweeping;
     await this.ingestor.idle();
     await this.telemetry.stop();
     await this.client.endAsync();

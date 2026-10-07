@@ -11,7 +11,7 @@ import { createAgent, createSite, registerDeployment } from "@/lib/services/site
 import { getHistory, getLatest, getLatestInScope, getPlcEvents } from "@/lib/services/telemetry-service";
 import { actorForSession, authenticate, bootstrapAdmin } from "@/lib/services/user-service";
 import { agentBinary, docker, freePort, startBroker, until, withBroker } from "./broker-harness";
-import { deploymentFile, openTestDb, resetDb } from "./harness";
+import { deploymentFile, mapping, openTestDb, resetDb } from "./harness";
 import { ModbusServer } from "./modbus-server";
 
 /**
@@ -70,6 +70,28 @@ describeE2E("telemetry from real agents into Web Factory (TASK-903)", () => {
         host: "127.0.0.1",
         port: ports[plc],
         pollIntervalMs: POLL_MS,
+        // The harness's tags, and an alarm the PLC program raises (TASK-904).
+        mappings: [
+          mapping("t-start", "Start_Cmd", "WRITE", "COMMAND", "EXTERNAL_COMMAND", "BOOL", "COIL", 800),
+          {
+            ...mapping(
+              "t-speed",
+              "Speed_SP",
+              "WRITE",
+              "SETPOINT",
+              "EXTERNAL_COMMAND",
+              "INT16",
+              "HOLDING_REGISTER",
+              101,
+            ),
+            scale: 0.1,
+            unit: "Hz",
+            min: -3276.8,
+            max: 3276.7,
+          },
+          mapping("t-running", "Running", "READ", "STATUS", "PROGRAM_OUTPUT", "BOOL", "COIL", 8192),
+          mapping("t-overheat", "Overheat", "READ", "ALARM", "PROGRAM_OUTPUT", "BOOL", "COIL", 8193),
+        ],
       });
       await registerDeployment(db, admin, agentId, files[plc]);
       ids[plc] = (await db.plc.findFirstOrThrow({ where: { externalPlcId: `plc-${plc}` } })).id;
@@ -88,6 +110,8 @@ describeE2E("telemetry from real agents into Web Factory (TASK-903)", () => {
       () => {},
       { agentCacheMs: 0 },
       { plcCacheMs: 0 },
+      // Alarms swept twice a second; the agent's heartbeat is 1 s.
+      { intervalMs: 500, limits: { heartbeatMs: 1000 } },
     );
     await until("Web Factory to connect", () => runtime.status().connected || undefined, 20_000);
 
@@ -151,6 +175,18 @@ describeE2E("telemetry from real agents into Web Factory (TASK-903)", () => {
     ]);
   }, 40_000);
 
+  it("raises an alarm while the PLC's alarm tag is true, and clears it when it is false", async () => {
+    const activeAlarm = () =>
+      db.alarm.findFirst({ where: { plcId: ids.a!, source: "PLC_TAG", activeKey: { not: null } } });
+    plcs.a.coils.set(8193, true);
+    const alarm = await until("the alarm", async () => (await activeAlarm()) ?? undefined, 20_000);
+    expect(alarm).toMatchObject({ severity: "HIGH", message: "Overheat on PLC-A", subject: "t-overheat" });
+    plcs.a.coils.set(8193, false);
+    await until("the alarm to clear", async () => ((await activeAlarm()) === null ? true : undefined), 20_000);
+    const cleared = await db.alarm.findUniqueOrThrow({ where: { id: alarm.id } });
+    expect(cleared.clearedAt).not.toBeNull();
+  }, 60_000);
+
   it("shows a PLC that goes away as disconnected, with the change recorded", async () => {
     await plcs.a.close();
     await until("PLC-A disconnected", async () =>
@@ -158,6 +194,13 @@ describeE2E("telemetry from real agents into Web Factory (TASK-903)", () => {
     );
     const events = await getPlcEvents(db, admin, ids.a!, { kind: "PLC_STATE" });
     expect(events.events[0]?.from).toBe("ONLINE");
+    // And an alarm says so.
+    await until(
+      "the PLC connection alarm",
+      async () =>
+        (await db.alarm.findFirst({ where: { plcId: ids.a!, source: "PLC_CONNECTION", activeKey: { not: null } } })) ??
+        undefined,
+    );
     expect(["RECONNECTING", "DISCONNECTED"]).toContain(events.events[0]?.to);
     // PLC-B goes on.
     const before = await count("SELECT count(*) AS n FROM telemetry.batch WHERE plc_id = $1::uuid", ids.b!);

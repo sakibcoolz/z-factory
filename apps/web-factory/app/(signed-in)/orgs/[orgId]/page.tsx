@@ -8,6 +8,7 @@ import { getDb } from "@/lib/db/client";
 import { type Connectivity, CONNECTIVITY_LABELS, projectAgent } from "@/lib/domain/connectivity";
 import { brokerStatus, connectivityLimits } from "@/lib/mqtt/boundary";
 import { load } from "@/lib/page";
+import { listAlarms } from "@/lib/services/alarm-service";
 import { listSites } from "@/lib/services/site-service";
 import { createSiteAction } from "../../actions";
 
@@ -23,6 +24,9 @@ export default async function OrganizationPage({ params }: { params: Promise<{ o
   const limits = connectivityLimits();
   const now = new Date();
   const broker = brokerStatus();
+  const { alarms } = await listAlarms(getDb(), actor, orgId, { state: "active" });
+  const activeAlarms = alarms.filter((alarm) => alarm.active);
+  const unacknowledged = alarms.filter((alarm) => !alarm.acknowledgedAt).length;
   const summary = (agents: (typeof sites)[number]["agents"]) => {
     const counts = new Map<Connectivity, number>();
     for (const agent of agents) {
@@ -58,6 +62,29 @@ export default async function OrganizationPage({ params }: { params: Promise<{ o
         </p>
       </div>
       <BrokerBanner broker={broker} />
+      <section className="card" aria-label="Alarms">
+        <div className="row">
+          <h2>
+            <Link href={`/orgs/${organization.id}/alarms`}>Alarms</Link>
+          </h2>
+          {activeAlarms.length === 0 ? (
+            <span className="pill ok">none active</span>
+          ) : (
+            (["HIGH", "MEDIUM", "LOW"] as const).map((severity) => {
+              const count = activeAlarms.filter((alarm) => alarm.severity === severity).length;
+              return count === 0 ? null : (
+                <span
+                  key={severity}
+                  className={`pill ${severity === "HIGH" ? "danger" : severity === "MEDIUM" ? "warn" : ""}`}
+                >
+                  {count} {severity.toLowerCase()}
+                </span>
+              );
+            })
+          )}
+          {unacknowledged > 0 ? <span className="muted">{unacknowledged} unacknowledged</span> : null}
+        </div>
+      </section>
       {sites.length === 0 ? <p className="card muted">No site yet.</p> : null}
       <div className="grid">
         {sites.map((site) => (

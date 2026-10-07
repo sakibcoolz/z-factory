@@ -48,6 +48,7 @@ model Organization {
   sites       Site[]
   factories   Factory[]
   auditEvents AuditEvent[]
+  alarms      Alarm[]
 }
 
 /// A person who signs in. The password hash is scrypt (lib/auth/password.ts).
@@ -292,6 +293,49 @@ model PlcEvent {
 
   @@unique([plcId, kind, subject, at])
   @@index([plcId, at])
+}
+
+enum AlarmSource {
+  /// A PLC tag with role ALARM reads true: the PLC program raised it.
+  PLC_TAG
+  /// A PLC's connection, as its agent reports it, is down.
+  PLC_CONNECTION
+  /// An agent is offline or degraded.
+  AGENT_CONNECTION
+}
+
+enum AlarmSeverity {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+/// An alarm (TASK-904, ADR-0021): raised while its condition holds, cleared when it ends,
+/// acknowledged by an operator or admin. Raised and cleared by Web Factory's alarm sweep only.
+model Alarm {
+  id             String        @id @default(uuid(7)) @db.Uuid
+  organizationId String        @db.Uuid
+  siteId         String        @db.Uuid
+  agentId        String?       @db.Uuid
+  plcId          String?       @db.Uuid
+  source         AlarmSource
+  /// The tag's external id for PLC_TAG; "" otherwise.
+  subject        String
+  severity       AlarmSeverity
+  message        String
+  /// Set while the alarm is active (source, agent or PLC, subject), null once cleared: at
+  /// most one active alarm per condition.
+  activeKey      String?       @unique
+  raisedAt       DateTime      @default(now())
+  clearedAt      DateTime?
+  acknowledgedAt DateTime?
+  acknowledgedBy String?       @db.Uuid
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, raisedAt])
+  @@index([plcId, raisedAt])
+  @@index([agentId, raisedAt])
 }
 
 /// Who did what, for the record: sign-ins, user and role changes, registrations.
