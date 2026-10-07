@@ -447,6 +447,13 @@ As built (TASK-902, ADR-0019):
 - **Ingestion:** one server-side MQTT 5 connection per Web Factory process, with growing reconnect delays. It ingests status, heartbeat and PLC state in order per agent; replays and duplicates change nothing.
 - **Connectivity:** projected on read as UNKNOWN, ONLINE, DEGRADED or OFFLINE, timed by Web Factory's clock.
 
+As built (TASK-903, ADR-0020):
+- **History:** telemetry is kept in PostgreSQL as one row per tag per poll, in a `telemetry` schema partitioned by day. It is retained 30 days by default, by dropping partitions.
+- **Duplicates:** a batch is identified by its PLC and poll time, so a redelivered or replayed batch is stored once.
+- **Latest state:** keyed by tag, newest poll wins. STALE and DISCONNECTED are projected on read.
+- **Ingestion:** bounded, sharded by PLC, and observable. Web Factory's broker session is persistent, so nothing published while it is away is lost.
+- **API:** `/api/v1` serves latest values, history, events and connection history, scoped to the tenant.
+
 Details: `docs/web-factory.md`.
 
 Rules:

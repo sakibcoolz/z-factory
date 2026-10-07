@@ -113,6 +113,10 @@ As built (TASK-902):
 - **Unit:** agent topics and message schemas, an agent's broker rights, the connectivity projection.
 - **Integration** (`test/connectivity.test.ts`): ingesting status, heartbeat and PLC state; a status change recorded once; retained messages; drops by reason; throttling and coalescing; issuing, rotating and revoking credentials with a fake broker.
 - **Broker** (`test/broker.test.ts`, Docker: `WEB_FACTORY_TEST_DOCKER=1` or `TEST_DOCKER=1`; the real agent with `AGENT_BIN`): a real Mosquitto with Dynamic Security from `broker/mosquitto.conf`. It covers onboarding, topic authorization (reason 135), reconnect and broker restart without duplicated state, the will, the real agent, and revocation. Every container is removed.
+As built (TASK-903):
+- **Unit:** the telemetry contract, latest-state walk, quality projection and time limits.
+- **Integration** (`test/telemetry.test.ts`): storage from the MQTT handler on; duplicates and replays; out-of-order batches; events; drops; the bounded queue; partitions; tenant isolation and query limits.
+- **End to end** (`test/telemetry-e2e.test.ts`, Docker and `AGENT_BIN`): simulated Modbus PLCs (`test/modbus-server.ts`), the real agent, a real Mosquitto. It covers PLCs added at run time, a PLC lost, and a broker outage replayed without duplicates.
 - **CI:** creates `web_factory_test`, then runs lint, typecheck, migrations, tests (with Docker and the agent binary) and build for the app.
 - **Root project:** excludes `apps/` from its typecheck, lint and tests.
 
