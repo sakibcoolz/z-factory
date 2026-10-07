@@ -13,5 +13,18 @@ WEB_FACTORY_ADMIN_PASSWORD_FILE=./first-password npm run create-admin -- \
 npm run dev                     # http://localhost:3200
 ```
 
+A broker for development (Mosquitto with Dynamic Security, ADR-0019):
+
+```sh
+printf '%s\n' "$(openssl rand -base64 18)" > ./mqtt-admin-password
+docker run -d --name web-factory-broker -e MOSQUITTO_DYNSEC_PASSWORD="$(cat ./mqtt-admin-password)" \
+  -p 127.0.0.1:1883:1883 -v "$PWD/broker/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro" eclipse-mosquitto:2
+# .env: WEB_FACTORY_MQTT_URL=mqtt://127.0.0.1:1883  WEB_FACTORY_MQTT_USERNAME=admin
+#       WEB_FACTORY_MQTT_PASSWORD_FILE=./mqtt-admin-password
+```
+
+Then issue each agent's credentials on its page in Web Factory.
+
 Gates: `npm run lint && npm run typecheck && npm test && npm run build`. The integration tests
-use `WEB_FACTORY_TEST_DATABASE_URL` (database `web_factory_test`) and migrate it first.
+use `WEB_FACTORY_TEST_DATABASE_URL` (database `web_factory_test`) and migrate it first. The
+broker tests need Docker (`WEB_FACTORY_TEST_DOCKER=1`) and, for the real agent, `AGENT_BIN`.

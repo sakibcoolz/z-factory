@@ -9,6 +9,7 @@ import {
   deploymentProblems,
   type EdgeDeploymentDocument,
 } from "@/lib/domain/edge-deployment";
+import { type ConnectivityLimits, DEFAULT_LIMITS, projectAgent, projectPlc } from "@/lib/domain/connectivity";
 import { DomainError } from "@/lib/domain/errors";
 import type { Prisma, PrismaClient } from "@/lib/generated/prisma/client";
 import { audit } from "./audit-service";
@@ -80,14 +81,37 @@ async function siteOf(db: Db, actor: Actor, siteId: string, permission: "view" |
   return { site, ...access };
 }
 
-export async function getSite(db: Db, actor: Actor, siteId: string) {
+export async function getSite(
+  db: Db,
+  actor: Actor,
+  siteId: string,
+  limits: ConnectivityLimits = DEFAULT_LIMITS,
+  now = new Date(),
+) {
   const { site, organization, role } = await siteOf(db, actor, siteId, "view");
   const agents = await db.edgeAgent.findMany({
     where: { siteId: site.id },
     orderBy: { name: "asc" },
     include: { plcs: { orderBy: { name: "asc" }, select: { id: true, name: true, configVersion: true } } },
   });
-  return { site, organization, role, agents };
+  return {
+    site,
+    organization,
+    role,
+    agents: agents.map((agent) => ({
+      ...agent,
+      connectivity: projectAgent(
+        {
+          status: agent.status,
+          lastSeenAt: agent.lastSeenAt,
+          heartbeat: agent.heartbeatJson,
+          credentialRevokedAt: agent.credentialRevokedAt,
+        },
+        now,
+        limits,
+      ),
+    })),
+  };
 }
 
 export async function createAgent(db: PrismaClient, actor: Actor, siteId: string, input: unknown) {
@@ -123,22 +147,48 @@ async function agentOf(db: Db, actor: Actor, agentId: string, permission: "view"
   return { agent, ...access };
 }
 
-export async function getAgent(db: Db, actor: Actor, agentId: string) {
+export async function getAgent(
+  db: Db,
+  actor: Actor,
+  agentId: string,
+  limits: ConnectivityLimits = DEFAULT_LIMITS,
+  now = new Date(),
+) {
   const { agent, organization, role } = await agentOf(db, actor, agentId, "view");
-  const plcs = await db.plc.findMany({
-    where: { edgeAgentId: agent.id },
-    orderBy: { name: "asc" },
-    include: {
-      factory: true,
-      _count: { select: { mappings: true } },
-      mappings: { where: { access: "WRITE" }, select: { id: true } },
+  const [plcs, events] = await Promise.all([
+    db.plc.findMany({
+      where: { edgeAgentId: agent.id },
+      orderBy: { name: "asc" },
+      include: {
+        factory: true,
+        _count: { select: { mappings: true } },
+        mappings: { where: { access: "WRITE" }, select: { id: true } },
+      },
+    }),
+    db.agentConnectionEvent.findMany({ where: { edgeAgentId: agent.id }, orderBy: { at: "desc" }, take: 20 }),
+  ]);
+  const connectivity = projectAgent(
+    {
+      status: agent.status,
+      lastSeenAt: agent.lastSeenAt,
+      heartbeat: agent.heartbeatJson,
+      credentialRevokedAt: agent.credentialRevokedAt,
     },
-  });
+    now,
+    limits,
+  );
   return {
     agent,
     organization,
     role,
     topicRoot: `zfactory/${agent.site.siteKey}/${agent.agentKey}`,
+    connectivity,
+    credentials: agent.credentialRevokedAt
+      ? { state: "REVOKED" as const, username: agent.brokerUsername, at: agent.credentialRevokedAt }
+      : agent.credentialIssuedAt
+        ? { state: "ISSUED" as const, username: agent.brokerUsername, at: agent.credentialIssuedAt }
+        : { state: "NONE" as const, username: null, at: null },
+    events: events.map((event) => ({ id: event.id, status: event.status, at: event.at })),
     plcs: plcs.map((plc) => ({
       id: plc.id,
       externalPlcId: plc.externalPlcId,
@@ -148,11 +198,24 @@ export async function getAgent(db: Db, actor: Actor, agentId: string) {
       mappings: plc._count.mappings,
       writable: plc.mappings.length,
       updatedAt: plc.updatedAt,
+      edge: {
+        ...projectPlc({ edgeState: plc.edgeState, edgeLastError: plc.edgeLastError }, connectivity.state),
+        configVersion: plc.edgeConfigVersion,
+        lastPollAt: plc.edgeLastPollAt,
+        reportedAt: plc.edgeStateAt,
+        reconnects: plc.edgeReconnects,
+      },
     })),
   };
 }
 
-export async function getPlc(db: Db, actor: Actor, plcId: string) {
+export async function getPlc(
+  db: Db,
+  actor: Actor,
+  plcId: string,
+  limits: ConnectivityLimits = DEFAULT_LIMITS,
+  now = new Date(),
+) {
   const plc = isUuid(plcId)
     ? await db.plc.findUnique({
         where: { id: plcId },
@@ -170,7 +233,25 @@ export async function getPlc(db: Db, actor: Actor, plcId: string) {
     throw error;
   });
   const document = plc.deploymentJson as unknown as EdgeDeploymentDocument;
-  return { plc, ...access, connection: document.deployment.connection };
+  const agent = projectAgent(
+    {
+      status: plc.agent.status,
+      lastSeenAt: plc.agent.lastSeenAt,
+      heartbeat: plc.agent.heartbeatJson,
+      credentialRevokedAt: plc.agent.credentialRevokedAt,
+    },
+    now,
+    limits,
+  );
+  return {
+    plc,
+    ...access,
+    connection: document.deployment.connection,
+    edge: {
+      ...projectPlc({ edgeState: plc.edgeState, edgeLastError: plc.edgeLastError }, agent.state),
+      agent: agent.state,
+    },
+  };
 }
 
 /** Reads, checks and verifies a deployment file. */

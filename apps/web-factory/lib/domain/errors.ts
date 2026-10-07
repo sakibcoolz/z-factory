@@ -1,5 +1,12 @@
 /** Typed domain failures. Messages are safe to show to users; they never carry database internals. */
-export const DOMAIN_ERROR_CODES = ["VALIDATION", "UNAUTHORIZED", "FORBIDDEN", "NOT_FOUND", "CONFLICT"] as const;
+export const DOMAIN_ERROR_CODES = [
+  "VALIDATION",
+  "UNAUTHORIZED",
+  "FORBIDDEN",
+  "NOT_FOUND",
+  "CONFLICT",
+  "UNAVAILABLE",
+] as const;
 
 export type DomainErrorCode = (typeof DOMAIN_ERROR_CODES)[number];
 

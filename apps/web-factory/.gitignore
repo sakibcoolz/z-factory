@@ -7,3 +7,6 @@ next-env.d.ts
 *.tsbuildinfo
 .env*
 !.env.example
+# Password files the README examples create
+/first-password
+/mqtt-admin-password

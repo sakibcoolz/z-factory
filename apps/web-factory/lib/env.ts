@@ -5,20 +5,26 @@ import { z } from "zod";
  * Web Factory's server environment, checked once. Nothing here reaches a browser: there is
  * no NEXT_PUBLIC_ variable, and MQTT credentials are read from files on the server only.
  */
+const brokerUrl = z
+  .string()
+  .url()
+  .refine((value) => /^(mqtts?|tcp|ssl|tls):\/\//.test(value), "an mqtt://, mqtts://, tcp://, ssl:// or tls:// URL")
+  .refine((value) => !/\/\/[^/]*@/.test(value), "credentials belong in the user name and password file, not the URL");
+
 const schema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   WEB_FACTORY_DATABASE_URL: z.string().url().startsWith("postgresql://"),
   AUTH_SECRET: z.string().min(32, "AUTH_SECRET must be at least 32 characters"),
   AUTH_URL: z.string().url().optional(),
-  WEB_FACTORY_MQTT_URL: z
-    .string()
-    .url()
-    .refine((value) => /^(mqtts?|tcp|ssl|tls):\/\//.test(value), "an mqtt://, mqtts://, tcp://, ssl:// or tls:// URL")
-    .refine((value) => !/\/\/[^/]*@/.test(value), "credentials belong in the user name and password file, not the URL")
-    .optional(),
+  WEB_FACTORY_MQTT_URL: brokerUrl.optional(),
   WEB_FACTORY_MQTT_USERNAME: z.string().optional(),
   WEB_FACTORY_MQTT_PASSWORD_FILE: z.string().optional(),
   WEB_FACTORY_MQTT_CA_FILE: z.string().optional(),
+  WEB_FACTORY_MQTT_CLIENT_ID: z.string().min(1).max(128).optional(),
+  /** The broker as agents reach it, shown when their credentials are issued. */
+  WEB_FACTORY_MQTT_AGENT_URL: brokerUrl.optional(),
+  /** The agents' heartbeat interval in seconds (ZFACTORY_AGENT_HEARTBEAT); 10 by default. */
+  WEB_FACTORY_AGENT_HEARTBEAT_S: z.coerce.number().int().min(1).max(3600).optional(),
 });
 
 export type ServerEnv = z.infer<typeof schema>;

@@ -1,19 +1,22 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ActionForm } from "@/components/action-form";
+import { ago, BrokerBanner, ConnectivityPill } from "@/components/connectivity";
 import { can } from "@/lib/auth/roles";
 import { requireActor } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
+import { brokerStatus, connectivityLimits } from "@/lib/mqtt/boundary";
 import { load } from "@/lib/page";
 import { getSite } from "@/lib/services/site-service";
 import { createAgentAction } from "../../actions";
 
 export const metadata: Metadata = { title: "Site" };
+export const dynamic = "force-dynamic";
 
 export default async function SitePage({ params }: { params: Promise<{ siteId: string }> }) {
   const { siteId } = await params;
   const actor = await requireActor();
-  const { site, organization, role, agents } = await load(getSite(getDb(), actor, siteId));
+  const { site, organization, role, agents } = await load(getSite(getDb(), actor, siteId, connectivityLimits()));
   return (
     <>
       <div>
@@ -25,6 +28,7 @@ export default async function SitePage({ params }: { params: Promise<{ siteId: s
         <h1>{site.name}</h1>
         <span className="mono muted">site id {site.siteKey}</span>
       </div>
+      <BrokerBanner broker={brokerStatus()} />
       <section className="card">
         <h2>Thin Client Agents</h2>
         {agents.length === 0 ? (
@@ -37,6 +41,7 @@ export default async function SitePage({ params }: { params: Promise<{ siteId: s
                   <th>Agent</th>
                   <th>Agent id</th>
                   <th>Status</th>
+                  <th>Last seen</th>
                   <th>PLCs</th>
                 </tr>
               </thead>
@@ -47,11 +52,10 @@ export default async function SitePage({ params }: { params: Promise<{ siteId: s
                       <Link href={`/agents/${agent.id}`}>{agent.name}</Link>
                     </td>
                     <td className="mono">{agent.agentKey}</td>
-                    <td>
-                      <span className="pill">
-                        {agent.status === "UNKNOWN" ? "not heard from yet" : agent.status.toLowerCase()}
-                      </span>
+                    <td title={agent.connectivity.reasons.join("; ")}>
+                      <ConnectivityPill state={agent.connectivity.state} />
                     </td>
+                    <td>{ago(agent.lastSeenAt)}</td>
                     <td>{agent.plcs.map((plc) => plc.name).join(", ") || "—"}</td>
                   </tr>
                 ))}
