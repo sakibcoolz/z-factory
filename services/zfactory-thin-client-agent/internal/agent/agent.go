@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/sakibcoolz/z-factory/services/zfactory-thin-client-agent/internal/config"
 	"github.com/sakibcoolz/z-factory/services/zfactory-thin-client-agent/internal/deploy"
 	"github.com/sakibcoolz/z-factory/services/zfactory-thin-client-agent/internal/health"
+	"github.com/sakibcoolz/z-factory/services/zfactory-thin-client-agent/internal/spool"
 	"github.com/sakibcoolz/z-factory/services/zfactory-thin-client-agent/internal/supervisor"
 	"github.com/sakibcoolz/z-factory/services/zfactory-thin-client-agent/internal/telemetry"
 	"github.com/sakibcoolz/z-factory/services/zfactory-thin-client-agent/internal/uplink"
@@ -38,6 +40,9 @@ type Settings struct {
 	NewClient func(config.Connection) worker.Client
 	// Uplink connects to the cloud over MQTT; nil runs the agent without one.
 	Uplink *uplink.Settings
+	// SpoolMaxBytes and SpoolMaxAge bound the offline spool under spool/ (with an uplink only).
+	SpoolMaxBytes int64
+	SpoolMaxAge   time.Duration
 }
 
 func (s *Settings) defaults() {
@@ -62,6 +67,12 @@ func (s *Settings) defaults() {
 	if s.Version == "" {
 		s.Version = "dev"
 	}
+	if s.SpoolMaxBytes <= 0 {
+		s.SpoolMaxBytes = 256 << 20
+	}
+	if s.SpoolMaxAge <= 0 {
+		s.SpoolMaxAge = 7 * 24 * time.Hour
+	}
 	if s.Logger == nil {
 		s.Logger = slog.New(slog.DiscardHandler)
 	}
@@ -74,9 +85,11 @@ type Agent struct {
 	supervisor *supervisor.Supervisor
 	queue      *telemetry.Queue
 	uplink     *uplink.Uplink
+	spool      *spool.Spool
 	listener   net.Listener
 	server     *http.Server
 	startedAt  time.Time
+	spoolError string
 	cancel     context.CancelFunc
 	done       chan struct{}
 	scans      atomic.Uint64
@@ -125,10 +138,22 @@ func Start(ctx context.Context, settings Settings) (*Agent, error) {
 	if settings.Uplink != nil {
 		uplinkSettings := *settings.Uplink
 		uplinkSettings.Version = settings.Version
-		a.uplink, err = uplink.Start(runCtx, uplinkSettings, a.queue, a.supervisor, settings.Logger)
+		// A spool that cannot be opened degrades forwarding; it never stops the agent.
+		var store spool.Store
+		a.spool, err = spool.Open(filepath.Join(settings.Dir, deploy.Spool), settings.SpoolMaxBytes, settings.SpoolMaxAge)
+		if err != nil {
+			settings.Logger.Error("the spool is not available; telemetry is lost while the cloud is away", "error", err.Error())
+			a.spoolError = err.Error()
+		} else {
+			store = a.spool
+		}
+		a.uplink, err = uplink.Start(runCtx, uplinkSettings, a.queue, a.supervisor, store, settings.Logger)
 		if err != nil {
 			cancel()
 			_ = listener.Close()
+			if a.spool != nil {
+				_ = a.spool.Close()
+			}
 			return nil, err
 		}
 	}
@@ -203,7 +228,11 @@ func (a *Agent) drain(ctx context.Context) {
 
 func (a *Agent) uplinkStatus() map[string]any {
 	if a.uplink != nil {
-		return a.uplink.Status()
+		status := a.uplink.Status()
+		if a.spoolError != "" {
+			status["spool"] = map[string]any{"configured": false, "error": a.spoolError}
+		}
+		return status
 	}
 	return map[string]any{"configured": false, "discardedBatches": a.discarded.Load()}
 }
@@ -226,6 +255,9 @@ func (a *Agent) Stop() error {
 		a.stopErr = errors.Join(a.supervisor.Shutdown(ctx), a.server.Shutdown(ctx))
 		if a.uplink != nil {
 			a.uplink.Stop()
+		}
+		if a.spool != nil {
+			a.stopErr = errors.Join(a.stopErr, a.spool.Close())
 		}
 		a.settings.Logger.Info("agent stopped")
 	})

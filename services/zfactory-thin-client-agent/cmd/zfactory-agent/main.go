@@ -78,6 +78,9 @@ func main() {
 	qos := flag.Int("mqtt-telemetry-qos", envInt("ZFACTORY_AGENT_MQTT_TELEMETRY_QOS", 1), "QoS of telemetry (0 or 1)")
 	publishers := flag.Int("mqtt-publishers", envInt("ZFACTORY_AGENT_MQTT_PUBLISHERS", 4), "telemetry publishers shared by all PLCs")
 	heartbeat := flag.Duration("heartbeat", envDuration("ZFACTORY_AGENT_HEARTBEAT", 10*time.Second), "heartbeat interval")
+	spoolBytes := flag.Int64("spool-max-bytes", int64(envInt("ZFACTORY_AGENT_SPOOL_MAX_BYTES", 256<<20)), "bytes the offline spool may hold")
+	spoolAge := flag.Duration("spool-max-age", envDuration("ZFACTORY_AGENT_SPOOL_MAX_AGE", 7*24*time.Hour), "age after which spooled telemetry is dropped")
+	replayRate := flag.Int("replay-rate", envInt("ZFACTORY_AGENT_REPLAY_RATE", 50), "spooled batches sent per second after a reconnect")
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
 	if *showVersion {
@@ -95,6 +98,7 @@ func main() {
 			BrokerURL: *broker, ClientID: *clientID, SiteID: *siteID, AgentID: *agentID,
 			Username: *username, PasswordFile: *passwordFile, CAFile: *caFile, CertFile: *certFile, KeyFile: *keyFile,
 			TelemetryQoS: byte(min(max(*qos, 0), 1)), Publishers: *publishers, Heartbeat: *heartbeat,
+			ReplayRate: *replayRate,
 		}
 	}
 	running, err := agent.Start(ctx, agent.Settings{
@@ -107,6 +111,8 @@ func main() {
 		Version:            version,
 		Logger:             log,
 		Uplink:             link,
+		SpoolMaxBytes:      *spoolBytes,
+		SpoolMaxAge:        *spoolAge,
 	})
 	if err != nil {
 		log.Error("agent did not start", "error", err.Error())

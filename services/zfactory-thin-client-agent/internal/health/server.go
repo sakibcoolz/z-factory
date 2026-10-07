@@ -151,6 +151,28 @@ func metrics(status AgentStatus) string {
 	fmt.Fprintf(&b, "zfactory_agent_queue_depth %d\n", status.Queue.Depth)
 	line("zfactory_agent_queue_dropped_total", "Telemetry batches dropped because the queue was full.", "counter")
 	fmt.Fprintf(&b, "zfactory_agent_queue_dropped_total %d\n", status.Queue.Dropped)
+	if spooling, ok := status.Uplink["spool"].(map[string]any); ok && spooling["configured"] == true {
+		line("zfactory_agent_spool_entries", "Telemetry batches kept while the cloud was away.", "gauge")
+		fmt.Fprintf(&b, "zfactory_agent_spool_entries %v\n", spooling["entries"])
+		line("zfactory_agent_spool_bytes", "Bytes of telemetry in the spool.", "gauge")
+		fmt.Fprintf(&b, "zfactory_agent_spool_bytes %v\n", spooling["bytes"])
+		line("zfactory_agent_spool_oldest_age_seconds", "Age of the oldest spooled batch; 0 when the spool is empty.", "gauge")
+		age := 0.0
+		if oldest, ok := spooling["oldest"].(*time.Time); ok && oldest != nil {
+			age = time.Since(*oldest).Seconds()
+		}
+		fmt.Fprintf(&b, "zfactory_agent_spool_oldest_age_seconds %.0f\n", age)
+		line("zfactory_agent_spool_dropped_total", "Spooled batches dropped by the size or age limit.", "counter")
+		fmt.Fprintf(&b, "zfactory_agent_spool_dropped_total %v\n", spooling["dropped"])
+	}
+	if connected, ok := status.Uplink["connected"].(bool); ok {
+		line("zfactory_agent_mqtt_connected", "1 while the MQTT broker connection is up.", "gauge")
+		up := 0
+		if connected {
+			up = 1
+		}
+		fmt.Fprintf(&b, "zfactory_agent_mqtt_connected %d\n", up)
+	}
 	line("zfactory_agent_plc_up", "1 while the PLC worker is online.", "gauge")
 	for _, plc := range status.PLCs {
 		up := 0

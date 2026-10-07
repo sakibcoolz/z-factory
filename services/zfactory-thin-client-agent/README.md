@@ -40,4 +40,7 @@ ZFACTORY_AGENT_DOCKER=1 go test -race ./internal/uplink   # runs eclipse-mosquit
 
 Health: `GET /healthz`, `/v1/status`, `/v1/plcs/{plcId}`, `/metrics`.
 
-systemd: `packaging/zfactory-agent.service`. The offline spool is TASK-503c.
+Offline spool (with MQTT): `spool/telemetry.db`, bounded by `-spool-max-bytes` (256 MiB)
+and `-spool-max-age` (7 days), replayed at `-replay-rate` (50 batches/s) after a reconnect.
+
+systemd: `packaging/zfactory-agent.service`.

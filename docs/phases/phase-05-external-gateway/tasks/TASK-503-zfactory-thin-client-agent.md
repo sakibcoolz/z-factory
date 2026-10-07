@@ -1,6 +1,6 @@
 # TASK-503 — Z-Factory Thin Client Agent: File-Driven Dynamic PLC Connectivity, Concurrency & MQTT Cloud Uplink
 
-Status: **IN PROGRESS** (503a and 503b done; 503c follows)
+Status: **DONE**
 Linear: [ZFA-43](https://linear.app/recruit-verse/issue/ZFA-43)
 
 Phase: **05 — External Gateway MVP**
@@ -309,7 +309,7 @@ TASK-503 is delivered in three pull requests. The owner approved the dependencie
 |---|---|---|
 | 503a | Z-Factory edge-deployment export; agent core: file validation and lifecycle, hot reload, supervised workers, Modbus polling, bounded queue, health/metrics, systemd unit | DONE |
 | 503b | MQTT uplink (telemetry, state, heartbeat; shared bounded publisher pool) and command downlink (allow-list, validation, idempotency, acks) | DONE |
-| 503c | Offline spool with restart recovery and controlled replay; full E2E exported JSON → agent → Modbus → MQTT → command → PLC logic → feedback → ack | TODO |
+| 503c | Offline spool with restart recovery and controlled replay; full E2E exported JSON → agent → Modbus → MQTT → command → PLC logic → feedback → ack | DONE |
 
 ## As built (503a)
 Design and file format: `docs/thin-client-agent.md`; decision: `docs/adr/0017-thin-client-agent.md`.
@@ -370,3 +370,36 @@ Tests 11–15 of the list above are covered; 9 and 10 are covered without a spoo
   6. the removed PLC's retained state is cleared, and `offline` is published on stop.
 - `ZFACTORY_AGENT_LOAD_N=1000`: 3010 goroutines (two per worker plus one per fake PLC connection), 29 MiB heap, nothing dropped.
 - The full Next.js suite, including the edge E2E with the rebuilt agent, passes; the numbers are in the report.
+
+## As built (503c)
+- **Spool** (`internal/spool`, bbolt): `spool/telemetry.db`, oldest first, bounded by bytes (256 MiB) and age (7 days); it survives restarts.
+- **Uplink:** undelivered batches go to the spool, and one replayer sends them back at a fixed rate (50/s) marked `replayed`, beside the live publishers.
+- **Failure:** a failing spool degrades forwarding only.
+- **Metrics:** spool and MQTT figures are in `/metrics` and `/v1/status`.
+
+## Coverage of the test list
+| # | Test | Where |
+|---|---|---|
+| 1–3 | 0, 1, N configs → workers | `internal/agent`, `internal/deploy` |
+| 4–6 | add, update, remove without restart, only the target | `internal/agent`, `internal/supervisor`, `edge-agent.test.ts` |
+| 7 | malformed, partial, duplicate, changed configs rejected; others healthy | `internal/deploy`, `internal/agent`, `edge-agent.test.ts` |
+| 8 | one PLC offline, others continue | `internal/agent`, `internal/worker` |
+| 9 | MQTT offline: polling continues, telemetry spools | `internal/uplink` (both MQTT tests), `edge-agent.test.ts` |
+| 10 | bounded backlog replay after reconnect | `internal/uplink` (`TestSpoolsWhileTheBrokerIsAwayAndReplaysAfter`), `edge-agent.test.ts` |
+| 11 | shared bounded publisher pool | `internal/uplink` |
+| 12 | a command routes only to its PLC | `internal/uplink` |
+| 13 | unmapped or arbitrary writes rejected | `internal/command`, `internal/uplink`, `edge-agent.test.ts` |
+| 14 | allowed command or setpoint write succeeds | `internal/worker`, `internal/uplink`, `edge-agent.test.ts` |
+| 15 | a duplicate command id does not actuate twice | `internal/command`, `internal/uplink` |
+| 16 | a restart recovers active configs and the spool | `internal/deploy`, `internal/spool`, `internal/uplink`, `edge-agent.test.ts` |
+| 17 | graceful shutdown leaks no goroutines | `internal/agent` |
+| 18 | `go test -race ./...` | all packages; CI |
+| 19 | configurable large-N load test | `internal/agent` (`ZFACTORY_AGENT_LOAD_N`) |
+| 20 | E2E: exported JSON → agent → Modbus PLC → MQTT telemetry → MQTT command → command tag → PLC logic → feedback → ack and telemetry | `edge-agent.test.ts` |
+
+## Evidence (503c)
+- `ZFACTORY_AGENT_DOCKER=1 go test -race ./...` passes, every package.
+  - The spool replay test passed three times in a row: a backlog of 20 was kept over an agent restart, then replayed in order and completely, with 20 live batches arriving during the replay.
+  - `ZFACTORY_AGENT_LOAD_N=1000`: 3010 goroutines, 28 MiB heap, nothing dropped.
+- The full E2E in `edge-agent.test.ts` passed three times in a row against a real OpenPLC runtime and Mosquitto.
+- The full Next.js suite and the static checks are listed in the report.

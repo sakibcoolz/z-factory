@@ -11,8 +11,10 @@
 //	ack/{plcId}         what became of a command           QoS 1, not retained
 //
 // A fixed pool of publishers takes telemetry off the shared queue; nothing is published
-// per PLC on its own connection. While the broker cannot be reached the publishers wait
-// and the queue drops its oldest batches (the spool of TASK-503c keeps them instead).
+// per PLC on its own connection. While the broker cannot be reached the publishers put
+// the batches in the spool (TASK-503c); after it returns, one replayer sends the backlog
+// at a fixed rate beside the live publishers, marked "replayed", so live telemetry is
+// never held up by it. Without a spool the publishers wait and the queue drops its oldest.
 package uplink
 
 import (
@@ -35,6 +37,7 @@ import (
 
 	"github.com/sakibcoolz/z-factory/services/zfactory-thin-client-agent/internal/command"
 	"github.com/sakibcoolz/z-factory/services/zfactory-thin-client-agent/internal/config"
+	"github.com/sakibcoolz/z-factory/services/zfactory-thin-client-agent/internal/spool"
 	"github.com/sakibcoolz/z-factory/services/zfactory-thin-client-agent/internal/supervisor"
 	"github.com/sakibcoolz/z-factory/services/zfactory-thin-client-agent/internal/telemetry"
 	"github.com/sakibcoolz/z-factory/services/zfactory-thin-client-agent/internal/worker"
@@ -59,6 +62,8 @@ type Settings struct {
 	StateRefresh   time.Duration
 	PublishTimeout time.Duration
 	KeepAlive      time.Duration
+	// ReplayRate is how many spooled batches are sent per second after a reconnect.
+	ReplayRate int
 	// Version is the agent's version, for the heartbeat.
 	Version string
 }
@@ -105,6 +110,9 @@ func (s *Settings) defaults() error {
 	if s.KeepAlive <= 0 {
 		s.KeepAlive = 30 * time.Second
 	}
+	if s.ReplayRate <= 0 {
+		s.ReplayRate = 50
+	}
 	return nil
 }
 
@@ -125,6 +133,7 @@ type Source interface {
 // Counters of the uplink.
 type counters struct {
 	published, publishErrors, connects, connectionsLost                  atomic.Uint64
+	spooled, spoolErrors, lost, replayedOut                              atomic.Uint64
 	received, accepted, rejected, applied, failed, duplicates, ackErrors atomic.Uint64
 }
 
@@ -132,6 +141,7 @@ type counters struct {
 type Uplink struct {
 	settings  Settings
 	queue     *telemetry.Queue
+	spool     spool.Store
 	source    Source
 	log       *slog.Logger
 	client    mqtt.Client
@@ -150,7 +160,8 @@ type Uplink struct {
 
 // Start connects in the background (retrying until the broker answers) and starts the
 // publishers, the heartbeat and the command subscription.
-func Start(ctx context.Context, settings Settings, queue *telemetry.Queue, source Source, log *slog.Logger) (*Uplink, error) {
+// The spool is optional: nil keeps the 503b behaviour of waiting and dropping the oldest.
+func Start(ctx context.Context, settings Settings, queue *telemetry.Queue, source Source, store spool.Store, log *slog.Logger) (*Uplink, error) {
 	if err := settings.defaults(); err != nil {
 		return nil, err
 	}
@@ -160,6 +171,7 @@ func Start(ctx context.Context, settings Settings, queue *telemetry.Queue, sourc
 	u := &Uplink{
 		settings:  settings,
 		queue:     queue,
+		spool:     store,
 		source:    source,
 		log:       log.With("component", "uplink"),
 		commands:  command.NewCache(10_000, 24*time.Hour),
@@ -180,6 +192,9 @@ func Start(ctx context.Context, settings Settings, queue *telemetry.Queue, sourc
 		u.wg.Go(func() { u.publish(runCtx) })
 	}
 	u.wg.Go(func() { u.beat(runCtx) })
+	if store != nil {
+		u.wg.Go(func() { u.replay(runCtx) })
+	}
 	u.log.Info("uplink started", "broker", redact(settings.BrokerURL), "clientId", settings.ClientID, "prefix", u.prefix)
 	return u, nil
 }
@@ -291,10 +306,26 @@ func (u *Uplink) send(topic string, qos byte, retained bool, payload []byte, wai
 	return true
 }
 
-// publish is one publisher of the pool: it waits for the broker, then takes a batch.
+// publishBatch sends one batch and waits for the broker to take it.
+func (u *Uplink) publishBatch(batch telemetry.Batch, replayed bool) bool {
+	payload, err := json.Marshal(struct {
+		Schema   string `json:"schema"`
+		Version  int    `json:"version"`
+		SiteID   string `json:"siteId"`
+		AgentID  string `json:"agentId"`
+		Replayed bool   `json:"replayed,omitempty"`
+		telemetry.Batch
+	}{"zfactory.telemetry", 1, u.settings.SiteID, u.settings.AgentID, replayed, batch})
+	if err != nil {
+		return true // Nothing to keep: it would never encode.
+	}
+	return u.send(u.prefix+"/telemetry/"+batch.PLCID, u.settings.TelemetryQoS, false, payload, true)
+}
+
+// publish is one publisher of the pool. A batch it cannot deliver goes to the spool.
 func (u *Uplink) publish(ctx context.Context) {
 	for ctx.Err() == nil {
-		if !u.Connected() {
+		if !u.Connected() && u.spool == nil {
 			timer := time.NewTimer(200 * time.Millisecond)
 			select {
 			case <-ctx.Done():
@@ -308,18 +339,87 @@ func (u *Uplink) publish(ctx context.Context) {
 		if !ok {
 			return
 		}
-		payload, err := json.Marshal(struct {
-			Schema  string `json:"schema"`
-			Version int    `json:"version"`
-			SiteID  string `json:"siteId"`
-			AgentID string `json:"agentId"`
-			telemetry.Batch
-		}{"zfactory.telemetry", 1, u.settings.SiteID, u.settings.AgentID, batch})
-		if err != nil {
+		if u.Connected() && u.publishBatch(batch, false) {
+			u.counters.published.Add(1)
 			continue
 		}
-		if u.send(u.prefix+"/telemetry/"+batch.PLCID, u.settings.TelemetryQoS, false, payload, true) {
-			u.counters.published.Add(1)
+		u.keep(batch)
+	}
+}
+
+// keep puts an undelivered batch in the spool. A failing spool costs the batch, never a worker.
+func (u *Uplink) keep(batch telemetry.Batch) {
+	if u.spool == nil {
+		u.counters.lost.Add(1)
+		return
+	}
+	if err := u.spool.Put(batch); err != nil {
+		u.counters.spoolErrors.Add(1)
+		u.counters.lost.Add(1)
+		u.setError("spooling failed: " + err.Error())
+		return
+	}
+	u.counters.spooled.Add(1)
+}
+
+// replay sends the spooled backlog, oldest first, at the replay rate while connected.
+func (u *Uplink) replay(ctx context.Context) {
+	ticker := time.NewTicker(time.Second / time.Duration(u.settings.ReplayRate))
+	defer ticker.Stop()
+	prune := time.NewTicker(time.Minute)
+	defer prune.Stop()
+	wait := func(delay time.Duration) bool {
+		timer := time.NewTimer(delay)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return false
+		case <-timer.C:
+			return true
+		}
+	}
+	for ctx.Err() == nil {
+		select {
+		case <-prune.C:
+			if pruner, ok := u.spool.(interface{ Prune() (int, error) }); ok {
+				_, _ = pruner.Prune()
+			}
+		default:
+		}
+		if !u.Connected() {
+			if !wait(500 * time.Millisecond) {
+				return
+			}
+			continue
+		}
+		entries, err := u.spool.Peek(50)
+		if err != nil || len(entries) == 0 {
+			if !wait(500 * time.Millisecond) {
+				return
+			}
+			continue
+		}
+		var sent []uint64
+		for _, entry := range entries {
+			select {
+			case <-ctx.Done():
+				_ = u.spool.Delete(sent)
+				return
+			case <-ticker.C:
+			}
+			if entry.Batch.PLCID == "" {
+				// Unreadable: nothing to send, only to remove.
+				sent = append(sent, entry.Key)
+				continue
+			}
+			if !u.Connected() || !u.publishBatch(entry.Batch, true) {
+				break
+			}
+			sent = append(sent, entry.Key)
+			u.counters.replayedOut.Add(1)
+		}
+		if err := u.spool.Delete(sent); err != nil {
+			u.counters.spoolErrors.Add(1)
 		}
 	}
 }
@@ -391,11 +491,15 @@ func (u *Uplink) publishHeartbeat() {
 		byState[status.State]++
 	}
 	queue := u.queue.Stats()
+	backlog := 0
+	if u.spool != nil {
+		backlog = u.spool.Stats().Entries
+	}
 	payload, _ := json.Marshal(map[string]any{
 		"schema": "zfactory.agent-heartbeat", "version": 1, "siteId": u.settings.SiteID, "agentId": u.settings.AgentID,
 		"agentVersion": u.settings.Version, "uptimeS": int64(time.Since(u.startedAt).Seconds()),
 		"workers": len(statuses), "byState": byState,
-		"queue":     map[string]any{"depth": queue.Depth, "dropped": queue.Dropped},
+		"queue": map[string]any{"depth": queue.Depth, "dropped": queue.Dropped}, "spooled": backlog,
 		"published": u.counters.published.Load(), "at": time.Now().UTC(),
 	})
 	u.send(u.prefix+"/agent/heartbeat", 0, false, payload, false)
@@ -481,18 +585,32 @@ func (u *Uplink) Status() map[string]any {
 	lastError := u.lastError
 	u.mu.Unlock()
 	c := &u.counters
+	spooling := map[string]any{"configured": false}
+	if u.spool != nil {
+		stats := u.spool.Stats()
+		spooling = map[string]any{
+			"configured": true, "entries": stats.Entries, "bytes": stats.Bytes, "maxBytes": stats.MaxBytes,
+			"oldest": stats.Oldest, "written": stats.Written, "replayed": stats.Replayed, "dropped": stats.Dropped,
+			"error": stats.Error, "replayRate": u.settings.ReplayRate,
+		}
+	}
 	return map[string]any{
-		"configured": true,
-		"connected":  u.Connected(),
-		"broker":     redact(u.settings.BrokerURL),
-		"clientId":   u.settings.ClientID,
-		"topicRoot":  u.prefix,
-		"publishers": u.settings.Publishers,
-		"published":  c.published.Load(),
-		"errors":     c.publishErrors.Load(),
-		"connects":   c.connects.Load(),
-		"lost":       c.connectionsLost.Load(),
-		"lastError":  lastError,
+		"spool":           spooling,
+		"spooled":         c.spooled.Load(),
+		"spoolErrors":     c.spoolErrors.Load(),
+		"lost":            c.lost.Load(),
+		"replayedOut":     c.replayedOut.Load(),
+		"configured":      true,
+		"connected":       u.Connected(),
+		"broker":          redact(u.settings.BrokerURL),
+		"clientId":        u.settings.ClientID,
+		"topicRoot":       u.prefix,
+		"publishers":      u.settings.Publishers,
+		"published":       c.published.Load(),
+		"errors":          c.publishErrors.Load(),
+		"connects":        c.connects.Load(),
+		"lostConnections": c.connectionsLost.Load(),
+		"lastError":       lastError,
 		"commands": map[string]uint64{
 			"received": c.received.Load(), "accepted": c.accepted.Load(), "rejected": c.rejected.Load(),
 			"applied": c.applied.Load(), "failed": c.failed.Load(), "duplicates": c.duplicates.Load(),
