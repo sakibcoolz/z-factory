@@ -1,6 +1,6 @@
 # Phase 09 — MVP 2: Production Edge & Cloud Integration
 
-Status: **IN PROGRESS**
+Status: **IN PROGRESS** — TASK-901 to TASK-906 are done; the run on physical edge hardware (TASK-906's checklist, `docs/edge-deployment.md`) is still open.
 
 ## Goal
 
@@ -158,7 +158,7 @@ The edge/cloud layer never replaces PLC logic. Remote commands are communication
 | TASK-903 Telemetry Ingestion, Cloud Persistence & Latest-State Projection | DONE | Telemetry/event/alarm ingestion, idempotency, durable history, latest-state and quality projection |
 | TASK-904 Web Factory Live Monitoring, Dashboards, Events & Alarms | DONE | Site/agent/PLC/module UI, live values, charts, alarms/events, stale/offline visibility |
 | TASK-905 Remote Command/Setpoint Lifecycle, Authorization & Audit | DONE | Authorized command UI, MQTT downlink, allow-list validation, idempotency, ACK lifecycle and audit |
-| TASK-906 Production Edge Deployment, Resilience, Security & Physical E2E | TODO | Real edge deployment, dynamic multi-PLC load, offline spool/replay, security and failure/recovery E2E |
+| TASK-906 Production Edge Deployment, Resilience, Security & Physical E2E | DONE (stand-in; physical run open) | Real edge deployment, dynamic multi-PLC load, offline spool/replay, security and failure/recovery E2E |
 
 TASK-503 remains the source-of-truth design/build dependency for the Go Z-Factory Thin Client Agent.
 

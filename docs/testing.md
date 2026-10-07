@@ -125,6 +125,9 @@ As built (TASK-905):
 - **Unit:** command checks, the envelope, transitions.
 - **Integration** (`test/commands.test.ts`): issue, refusals, request keys, broker failure, acknowledgements, timeouts, telemetry confirmation, isolation.
 - **End to end:** the real agent writes a setpoint once (the simulated PLC counts writes), answers a redelivery as a duplicate, and refuses a forged command and a stale version.
+As built (TASK-906):
+- **Kit:** `services/zfactory-thin-client-agent/packaging/test-packaging.sh` (in CI) covers reproducible builds, checksum refusal, install layout and modes, upgrade, uninstall and purge, and systemd's check of the unit.
+- **Stand-in run:** `scripts/edge-standin.sh` runs `test/edge-standin.test.ts` (needs `AGENT_IMAGE`, so it is skipped in CI). It drives the hardened release image over TLS against N simulated PLCs and real OpenPLC runtimes from `test/edge-standin/plc-lab.ts`, covering hot add, isolation, refused files, a hot update, commands through PLC logic, an outage with an agent restart, spool pressure, resources and secrets. It writes a measured report.
 - **CI:** creates `web_factory_test`, then runs lint, typecheck, migrations, tests (with Docker and the agent binary) and build for the app.
 - **Root project:** excludes `apps/` from its typecheck, lint and tests.
 
