@@ -137,14 +137,49 @@ export async function updateFactory(
   });
 }
 
-export async function deleteFactory(db: PrismaClient, actor: Actor, factoryId: string): Promise<void> {
-  await db.$transaction(async (transaction) => {
-    const current = await factoryRepository.findById(transaction, actor.ownerId, factoryId);
+/** Removes a factory's Docker resources; `lib/docker/factory-resources.ts` in the app. */
+export type FactoryResourceRemover = (factoryId: string) => Promise<{ containers: string[]; networks: string[] }>;
+
+/**
+ * Deletes a stopped factory with everything it owns (TASK-206): first its Docker
+ * resources (runtime containers and network), then its record. If Docker cannot be
+ * reached or refuses, the factory is kept, so no container or network is left behind
+ * without a record to find it by; deleting again later finishes the job.
+ */
+export async function deleteFactory(
+  db: PrismaClient,
+  actor: Actor,
+  factoryId: string,
+  removeResources: FactoryResourceRemover,
+): Promise<{ containers: string[]; networks: string[] }> {
+  const assertStopped = async (reader: Parameters<typeof factoryRepository.findById>[0]) => {
+    const current = await factoryRepository.findById(reader, actor.ownerId, factoryId);
     if (!current) throw notFound();
-    // A running factory owns containers and a network; deleting its record would orphan them.
+    // A running factory owns containers and a network that are in use.
     if (current.runtimeStatus !== "STOPPED") {
       throw new DomainError("CONFLICT", "Stop the factory before deleting it.", { rule: "delete-requires-stopped" });
     }
+  };
+
+  await assertStopped(db);
+  let removed;
+  
+  try {
+    removed = await removeResources(factoryId);
+  } catch (error) {
+    if (error instanceof DomainError) {
+      throw new DomainError(
+        error.code,
+        `${error.message} The factory was not deleted, so none of its containers or its network is left behind.`,
+        { ...error.details, rule: error.details.rule ?? "delete-runtime-cleanup" },
+      );
+    }
+    throw error;
+  }
+  await db.$transaction(async (transaction) => {
+    await assertStopped(transaction);
     await factoryRepository.delete(transaction, actor.ownerId, factoryId);
   });
+
+  return removed;
 }
