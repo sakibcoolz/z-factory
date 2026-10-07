@@ -435,6 +435,15 @@ Web Factory (TypeScript / Next.js / Node.js)
 MQTT Broker -> Thin Client Agent -> allowed command/setpoint -> PLC logic
 ```
 
+As built (TASK-901, ADR-0018):
+- `apps/web-factory/`, a separate Next.js app with its own database `web_factory`;
+- Auth.js e-mail/password sign-in with database-checked sessions;
+- VIEWER/OPERATOR/ADMIN roles per organization;
+- the identity model: organization, site, agent, factory, PLC, tags, modules, audit;
+- PLC registration from the edge deployment file, health and readiness, and a server-only MQTT boundary.
+
+Details: `docs/web-factory.md`.
+
 Rules:
 - Web Factory is a separate cloud application from the edge Go agent.
 - MQTT is server-to-server/agent transport; production browser clients do not receive broker credentials.
