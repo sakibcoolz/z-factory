@@ -2,21 +2,32 @@
 
 import Link from "next/link";
 import type { PlcLiveView } from "@/lib/live/types";
+import { CommandControl } from "./command-control";
 import { PlcStatePill, QualityPill } from "./connectivity";
 import { agoText, LiveBadge, shownValue, useLiveView, useNow } from "./live";
 import { AlarmTable } from "./live-alarms";
 
-export type TagMeta = { role: string; range: string };
+export type TagMeta = {
+  role: string;
+  range: string;
+  /** A command or setpoint tag the cloud may write (TASK-905). */
+  writable: boolean;
+  boolean: boolean;
+  min: number | null;
+  max: number | null;
+};
 
 /** A PLC's tags with live values, quality and age, and its active alarms. */
 export function LivePlc({
   initial,
   meta,
   canAcknowledge,
+  canCommand,
 }: {
   initial: PlcLiveView;
   meta: Record<string, TagMeta>;
   canAcknowledge: boolean;
+  canCommand: boolean;
 }) {
   const { view, state } = useLiveView(`plc:${initial.plc.plcId}`, initial);
   const now = useNow();
@@ -45,6 +56,7 @@ export function LivePlc({
                 <th>Value</th>
                 <th>Quality</th>
                 <th>Updated</th>
+                {canCommand ? <th>Command</th> : null}
               </tr>
             </thead>
             <tbody>
@@ -67,16 +79,101 @@ export function LivePlc({
                     <QualityPill quality={tag.quality} />
                   </td>
                   <td>{agoText(tag.at, now)}</td>
+                  {canCommand ? (
+                    <td>
+                      {meta[tag.tag]?.writable ? (
+                        <CommandControl
+                          plcId={plc.plcId}
+                          tag={tag.tag}
+                          name={tag.name}
+                          boolean={meta[tag.tag]!.boolean}
+                          min={meta[tag.tag]!.min}
+                          max={meta[tag.tag]!.max}
+                          unit={tag.unit}
+                        />
+                      ) : null}
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </section>
+      <section className="card" aria-label="Commands">
+        <h2>Commands</h2>
+        <p className="muted">
+          A command or setpoint is written to the PLC&apos;s command tag; the PLC program and its interlocks decide what
+          the machine does. The agent checks every command against its own allow-list again.
+        </p>
+        <CommandTable commands={view.commands} now={now} />
+      </section>
       <section className="card" aria-label="Alarms">
         <h2>Alarms</h2>
         <AlarmTable alarms={view.alarms} now={now} canAcknowledge={canAcknowledge} />
       </section>
     </>
+  );
+}
+
+const STATUS_TONE: Record<string, string> = {
+  APPLIED: "ok",
+  ACCEPTED: "",
+  PUBLISHED: "",
+  REQUESTED: "",
+  REJECTED: "danger",
+  FAILED: "danger",
+  TIMED_OUT: "warn",
+};
+
+/** Recent commands: who asked what, how far it got, what the agent read back, what telemetry showed. */
+export function CommandTable({ commands, now }: { commands: PlcLiveView["commands"]; now: number }) {
+  if (commands.length === 0) return <p className="muted">No command sent yet.</p>;
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Sent</th>
+            <th>By</th>
+            <th>Tag</th>
+            <th>Value</th>
+            <th>Status</th>
+            <th>Read back</th>
+            <th>Telemetry</th>
+          </tr>
+        </thead>
+        <tbody>
+          {commands.map((command) => (
+            <tr key={command.id} data-command={command.status}>
+              <td title={command.requestedAt}>{agoText(command.requestedAt, now)}</td>
+              <td>{command.requestedBy}</td>
+              <td className="mono">{command.tagName}</td>
+              <td className="mono">{shownValue(command.value, null)}</td>
+              <td>
+                <span className={`pill ${STATUS_TONE[command.status] ?? ""}`}>
+                  {command.status.toLowerCase().replace("_", " ")}
+                </span>
+                {command.lateAnswer ? <span className="muted"> (late answer)</span> : null}
+                {command.reason ? <span className="muted"> {command.reason}</span> : null}
+                {command.duplicateAcks > 0 ? (
+                  <span className="muted"> · redelivered {command.duplicateAcks}×, written once</span>
+                ) : null}
+              </td>
+              <td className="mono">
+                {command.observed === null || command.observed === undefined ? "—" : shownValue(command.observed, null)}
+              </td>
+              <td>
+                {command.confirmedAt
+                  ? `confirmed ${agoText(command.confirmedAt, now)}`
+                  : command.status === "APPLIED"
+                    ? "not yet seen"
+                    : "—"}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }

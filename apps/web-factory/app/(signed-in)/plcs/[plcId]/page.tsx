@@ -34,6 +34,10 @@ export default async function PlcPage({ params }: { params: Promise<{ plcId: str
       mapping.externalId,
       {
         role: mapping.role,
+        writable: mapping.access === "WRITE" && (mapping.role === "COMMAND" || mapping.role === "SETPOINT"),
+        boolean: mapping.dataType === "BOOL",
+        min: mapping.min,
+        max: mapping.max,
         range:
           mapping.dataType === "BOOL"
             ? "on / off"
@@ -87,7 +91,12 @@ export default async function PlcPage({ params }: { params: Promise<{ plcId: str
         </dl>
       </div>
       <BrokerBanner broker={brokerStatus()} />
-      <LivePlc initial={toJson(live) as PlcLiveView} meta={meta} canAcknowledge={can(role, "command")} />
+      <LivePlc
+        initial={toJson(live) as PlcLiveView}
+        meta={meta}
+        canAcknowledge={can(role, "command")}
+        canCommand={can(role, "command")}
+      />
       <section className="card">
         <h2>Events</h2>
         {recent.events.length === 0 ? (

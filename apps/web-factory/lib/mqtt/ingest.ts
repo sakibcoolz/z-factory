@@ -7,6 +7,7 @@ import {
   parseAgentTopic,
   plcStateSchema,
 } from "@/lib/domain/agent-messages";
+import { type CommandAck, commandAckSchema } from "@/lib/domain/commands";
 import { telemetryBatchSchema } from "@/lib/domain/telemetry";
 import type { PrismaClient } from "@/lib/generated/prisma/client";
 import type { TelemetryOffer } from "@/lib/telemetry/pipeline";
@@ -27,14 +28,22 @@ import type { TelemetryOffer } from "@/lib/telemetry/pipeline";
  *   agent than its topic.
  *
  * Telemetry (TASK-903) is checked here and handed to the telemetry pipeline, which stores
- * it; a change of a PLC's reported state is recorded as an event. Acknowledgements only
- * refresh the last-seen time; storing them is TASK-905.
+ * it; a change of a PLC's reported state is recorded as an event. Command acknowledgements
+ * (TASK-905) move their command on.
  */
 
 export const MAX_PAYLOAD_BYTES = 1 << 20;
 
 export type DropReason =
-  "topic" | "too-large" | "not-ingested" | "malformed" | "identity" | "unknown-agent" | "revoked" | "unknown-plc";
+  | "topic"
+  | "too-large"
+  | "not-ingested"
+  | "malformed"
+  | "identity"
+  | "unknown-agent"
+  | "revoked"
+  | "unknown-plc"
+  | "unknown-command";
 
 export type IngestStats = {
   received: number;
@@ -42,6 +51,8 @@ export type IngestStats = {
   coalesced: number;
   transitions: number;
   errors: number;
+  /** Command acknowledgements by outcome: applied, duplicate, unchanged, unknown-command. */
+  acks: Record<string, number>;
   dropped: Record<DropReason, number>;
   lastMessageAt: string | null;
 };
@@ -56,6 +67,10 @@ export type IngestOptions = {
   seenWriteMs?: number;
   /** Where checked telemetry batches go (TASK-903); without one they only refresh last-seen. */
   telemetry?: { offer(offer: TelemetryOffer): void };
+  /** Where command acknowledgements go (TASK-905); without it they only refresh last-seen. */
+  commands?: {
+    applyAck(agentId: string, topicPlcId: string, ack: CommandAck, receivedAt: Date): Promise<string>;
+  };
   onError?: (error: unknown, topic: string) => void;
 };
 
@@ -75,6 +90,7 @@ export class Ingestor {
     coalesced: 0,
     transitions: 0,
     errors: 0,
+    acks: {},
     dropped: {
       topic: 0,
       "too-large": 0,
@@ -84,6 +100,7 @@ export class Ingestor {
       "unknown-agent": 0,
       revoked: 0,
       "unknown-plc": 0,
+      "unknown-command": 0,
     },
     lastMessageAt: null,
   };
@@ -259,9 +276,22 @@ export class Ingestor {
         this.options.telemetry?.offer({ agentId: agent.id, message: body, receivedAt: work.receivedAt });
         break;
       }
-      case "ack":
+      case "ack": {
         await this.touch(agent.id, work, key);
+        let parsed;
+        try {
+          parsed = commandAckSchema.safeParse(JSON.parse(work.payload.toString("utf8")));
+        } catch {
+          return this.drop("malformed");
+        }
+        if (!parsed.success) return this.drop("malformed");
+        // An ack names no site or agent: its topic does, and the command must be this agent's.
+        const outcome =
+          (await this.options.commands?.applyAck(agent.id, topic.plcId, parsed.data, work.receivedAt)) ?? "ignored";
+        this.stats.acks[outcome] = (this.stats.acks[outcome] ?? 0) + 1;
+        if (outcome === "unknown-command") return this.drop("unknown-command");
         break;
+      }
     }
     this.stats.applied += 1;
   }

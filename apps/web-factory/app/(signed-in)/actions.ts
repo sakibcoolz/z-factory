@@ -5,11 +5,19 @@ import { redirect } from "next/navigation";
 import { signOut } from "@/auth";
 import { requireActor } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
-import { isDomainError } from "@/lib/domain/errors";
+import { DomainError, isDomainError } from "@/lib/domain/errors";
 import type { FormState } from "@/lib/form-state";
 import { log } from "@/lib/log";
-import { agentBrokerUrl, forgetAgent, forgetPlcs, getBrokerAdmin } from "@/lib/mqtt/boundary";
+import {
+  agentBrokerUrl,
+  connectivityLimits,
+  forgetAgent,
+  forgetPlcs,
+  getBrokerAdmin,
+  getCommandPublisher,
+} from "@/lib/mqtt/boundary";
 import { acknowledgeAlarm } from "@/lib/services/alarm-service";
+import { issueCommand } from "@/lib/services/command-service";
 import { issueAgentCredentials, revokeAgentCredentials } from "@/lib/services/onboarding-service";
 import { createAgent, createSite, registerDeployment } from "@/lib/services/site-service";
 import { addMember, changeOwnPassword, setMemberActive, setMemberRole } from "@/lib/services/user-service";
@@ -138,6 +146,34 @@ export async function revokeCredentialsAction(agentId: string, _state: FormState
       return "Credentials revoked; the agent was disconnected.";
     },
     [`/agents/${agentId}`],
+  );
+}
+
+/**
+ * Sends a command or setpoint (TASK-905). The value comes from the form: "on"/"off" for a
+ * BOOL tag, a number otherwise; the request key makes a form sent twice one command.
+ */
+export async function issueCommandAction(plcId: string, tag: string, _state: FormState, data: FormData) {
+  const actor = await requireActor();
+  const raw = field(data, "value");
+  const value = raw === "on" ? true : raw === "off" ? false : raw.trim() === "" ? Number.NaN : Number(raw);
+  return run(
+    "command.issue",
+    async () => {
+      const { command, repeated } = await issueCommand(
+        getDb(),
+        getCommandPublisher(),
+        actor,
+        plcId,
+        { tag, value, requestKey: field(data, "requestKey") },
+        { limits: connectivityLimits() },
+      );
+      if (repeated) return "Already sent.";
+      if (command.status === "REJECTED") throw new DomainError("VALIDATION", command.reason ?? "Refused.");
+      if (command.status === "FAILED") throw new DomainError("VALIDATION", command.reason ?? "Not sent.");
+      return "Sent.";
+    },
+    [],
   );
 }
 

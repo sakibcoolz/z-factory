@@ -5,6 +5,7 @@ import mqtt, { type IClientOptions, type MqttClient } from "mqtt";
 import { INGEST_SUBSCRIPTIONS } from "@/lib/domain/agent-messages";
 import type { PrismaClient } from "@/lib/generated/prisma/client";
 import { type SweepResult, sweepAlarms } from "@/lib/alarms/engine";
+import { applyAck, expireCommands } from "@/lib/services/command-service";
 import { type ConnectivityLimits, DEFAULT_LIMITS, lateAfterMs } from "@/lib/domain/connectivity";
 import { type PipelineOptions, TelemetryPipeline, type TelemetryStats } from "@/lib/telemetry/pipeline";
 import { PostgresTelemetryStore } from "@/lib/telemetry/store";
@@ -41,9 +42,12 @@ export type BrokerStatus = {
   lastError: string | null;
   nextRetryMs: number;
   refusedSubscriptions: string[];
+  /** Whether Web Factory's client holds the role to publish commands. */
+  commandsAllowed: boolean;
   ingest: IngestStats;
   telemetry: TelemetryStats;
   alarms: { sweeps: number; raised: number; cleared: number; errors: number; judgingConnectivity: boolean };
+  commandsTimedOut: number;
 };
 
 export type AlarmOptions = {
@@ -80,6 +84,7 @@ export class MqttRuntime {
     lastDisconnectedAt: null as string | null,
     lastError: null as string | null,
     refusedSubscriptions: [] as string[],
+    commandsAllowed: false,
   };
   private readonly clientId: string;
   private up = false;
@@ -90,6 +95,7 @@ export class MqttRuntime {
   private readonly maintenanceTimer: NodeJS.Timeout;
   private readonly alarmTimer: NodeJS.Timeout | undefined;
   private readonly alarmStats = { sweeps: 0, raised: 0, cleared: 0, errors: 0 };
+  private commandsTimedOut = 0;
   private readonly limits: ConnectivityLimits;
   private sweeping: Promise<SweepResult | void> | null = null;
 
@@ -115,6 +121,7 @@ export class MqttRuntime {
     const retentionDays = telemetryOptions.retentionDays ?? 30;
     this.ingestor = new Ingestor(db, {
       telemetry: this.telemetry,
+      commands: { applyAck: (agentId, plcId, ack, receivedAt) => applyAck(db, agentId, plcId, ack, receivedAt) },
       ...ingestOptions,
       onError: (error, key) => {
         log("error", "ingest failed", { agent: key, error: error instanceof Error ? error.name : "unknown" });
@@ -195,7 +202,11 @@ export class MqttRuntime {
   async sweep(db: PrismaClient): Promise<void> {
     if (this.sweeping) return;
     this.sweeping = sweepAlarms(db, { limits: this.limits, judgeConnectivity: this.judgingConnectivity() })
-      .then((result) => {
+      .then(async (result) => {
+        // Commands left without a final answer (TASK-905).
+        const timedOut = await expireCommands(db);
+        this.commandsTimedOut += timedOut;
+        if (timedOut > 0) this.log("warn", "commands timed out", { count: timedOut });
         this.alarmStats.sweeps += 1;
         this.alarmStats.raised += result.raised;
         this.alarmStats.cleared += result.cleared;
@@ -228,6 +239,20 @@ export class MqttRuntime {
       }
     }
     this.state.refusedSubscriptions = refused;
+    // The right to publish commands (TASK-905); without it every command is refused by the broker.
+    if (this.settings.username) {
+      try {
+        // Granted just now: the broker drops this connection to apply it, and the next has it.
+        const granted = await this.dynsec.ensureServiceRole(this.settings.username);
+        this.state.commandsAllowed = !granted;
+        if (granted) this.log("info", "command role granted; the broker reconnects Web Factory to apply it");
+      } catch (error) {
+        this.state.commandsAllowed = false;
+        this.log("error", "the command role could not be granted", {
+          error: error instanceof Error ? error.message : "unknown",
+        });
+      }
+    }
     if (refused.length > 0) {
       this.state.lastError = `subscriptions refused: ${refused.join(", ")}`;
       this.log("error", "broker refused subscriptions", { topics: refused });
@@ -258,6 +283,12 @@ export class MqttRuntime {
     await this.client.publishAsync(topic, payload, { qos: 1 });
   }
 
+  /** Publishes a command (QoS 1, not retained); refused when Web Factory may not (TASK-905). */
+  async publishCommand(topic: string, payload: string): Promise<void> {
+    if (!this.state.commandsAllowed) throw new Error("Web Factory may not publish commands on this broker");
+    await this.publish(topic, payload);
+  }
+
   status(): BrokerStatus {
     return {
       configured: true,
@@ -271,9 +302,11 @@ export class MqttRuntime {
       lastError: this.state.lastError,
       nextRetryMs: this.retryMs,
       refusedSubscriptions: this.state.refusedSubscriptions,
+      commandsAllowed: this.state.commandsAllowed,
       ingest: this.ingestor.stats,
       telemetry: this.telemetry.stats,
       alarms: { ...this.alarmStats, judgingConnectivity: this.judgingConnectivity() },
+      commandsTimedOut: this.commandsTimedOut,
     };
   }
 

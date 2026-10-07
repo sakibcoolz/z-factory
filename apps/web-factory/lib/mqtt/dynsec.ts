@@ -11,6 +11,8 @@ import type { AgentBrokerIdentity } from "@/lib/domain/broker-access";
 
 export const DYNSEC_TOPIC = "$CONTROL/dynamic-security/v1";
 export const DYNSEC_RESPONSE_TOPIC = `${DYNSEC_TOPIC}/response`;
+/** Web Factory's own role: publishing commands to agents (TASK-905). */
+export const SERVICE_ROLE = "web-factory-commands";
 
 /** What onboarding needs from the broker; tests use a fake. */
 export interface BrokerAdmin {
@@ -119,6 +121,39 @@ export class DynsecControl implements BrokerAdmin {
       await this.one({ command: "disableClient", username });
       await this.one({ command: "enableClient", username });
     }
+  }
+
+  /**
+   * Gives Web Factory's own client the right to publish commands, and nothing more
+   * (TASK-905): the role `web-factory-commands` allows publishing to every agent's
+   * command topic. Repeating it changes nothing. Returns whether something changed:
+   * then the broker disconnects the client (an "administrative action") and the next
+   * connection has the right.
+   */
+  async ensureServiceRole(username: string): Promise<boolean> {
+    const rolename = SERVICE_ROLE;
+    const acls = [{ acltype: "publishClientSend", topic: "zfactory/+/+/command/+", allow: true }];
+    const role = await this.one({ command: "createRole", rolename, acls }, ["Role already exists"]);
+    if (role.error) {
+      // Changing a role disconnects every client that holds it, this one too: only when it differs.
+      const current = await this.one({ command: "getRole", rolename });
+      const held = (
+        (current.data as { role?: { acls?: Array<{ acltype: string; topic: string; allow: boolean }> } })?.role?.acls ??
+        []
+      ).map((acl) => `${acl.acltype} ${acl.topic} ${acl.allow}`);
+      const wanted = acls.map((acl) => `${acl.acltype} ${acl.topic} ${acl.allow}`);
+      if (held.sort().join("|") !== wanted.sort().join("|")) {
+        await this.one({ command: "modifyRole", rolename, acls });
+        return true;
+      }
+    }
+    const client = await this.one({ command: "getClient", username });
+    const roles = (
+      (client.data as { client?: { roles?: Array<{ rolename: string }> } } | undefined)?.client?.roles ?? []
+    ).map((entry) => entry.rolename);
+    if (roles.includes(rolename)) return false;
+    await this.one({ command: "addClientRole", username, rolename });
+    return true;
   }
 
   async disableClient(username: string): Promise<void> {

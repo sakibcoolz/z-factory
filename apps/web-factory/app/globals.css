@@ -310,3 +310,12 @@ ul.plain {
 .big {
   font-size: 22px;
 }
+form.command {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  align-items: center;
+}
+form.command input[type="number"] {
+  width: 7em;
+}

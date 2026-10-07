@@ -6,6 +6,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Actor } from "@/lib/auth/actor";
 import type { PrismaClient } from "@/lib/generated/prisma/client";
 import { MqttRuntime } from "@/lib/mqtt/runtime";
+import { commandEnvelope } from "@/lib/domain/commands";
+import { getCommand, issueCommand } from "@/lib/services/command-service";
 import { issueAgentCredentials } from "@/lib/services/onboarding-service";
 import { createAgent, createSite, registerDeployment } from "@/lib/services/site-service";
 import { getHistory, getLatest, getLatestInScope, getPlcEvents } from "@/lib/services/telemetry-service";
@@ -113,7 +115,12 @@ describeE2E("telemetry from real agents into Web Factory (TASK-903)", () => {
       // Alarms swept twice a second; the agent's heartbeat is 1 s.
       { intervalMs: 500, limits: { heartbeatMs: 1000 } },
     );
-    await until("Web Factory to connect", () => runtime.status().connected || undefined, 20_000);
+    // Connected, with the command role granted (the first grant reconnects Web Factory once).
+    await until(
+      "Web Factory to connect",
+      () => (runtime.status().connected && runtime.status().commandsAllowed) || undefined,
+      20_000,
+    );
 
     const issued = await issueAgentCredentials(db, runtime.dynsec, admin, agentId);
     edge = join(work, "agent");
@@ -185,6 +192,104 @@ describeE2E("telemetry from real agents into Web Factory (TASK-903)", () => {
     await until("the alarm to clear", async () => ((await activeAlarm()) === null ? true : undefined), 20_000);
     const cleared = await db.alarm.findUniqueOrThrow({ where: { id: alarm.id } });
     expect(cleared.clearedAt).not.toBeNull();
+  }, 60_000);
+
+  it("carries a setpoint to the PLC once, and the edge refuses what its allow-list does not allow", async () => {
+    const publish = (topic: string, payload: string) => runtime.publishCommand(topic, payload);
+    const commandOf = (id: string) => db.command.findUniqueOrThrow({ where: { id } });
+    const writesBefore = plcs.a.writes.length;
+    const { command } = await issueCommand(db, publish, admin, ids.a!, {
+      tag: "t-speed",
+      value: 33.3,
+      requestKey: "e2e-setpoint-1",
+    });
+    expect(command.status).toBe("PUBLISHED");
+    const applied = await until("the setpoint applied", async () => {
+      const current = await commandOf(command.id);
+      return current.status === "APPLIED" ? current : undefined;
+    });
+    expect(applied.acceptedAt).not.toBeNull();
+    expect(Math.abs((applied.observedJson as number) - 33.3)).toBeLessThan(1e-9);
+    // Written once, to the setpoint register, in tenths.
+    expect(plcs.a.writes.slice(writesBefore)).toEqual([{ fn: 16, address: 101, value: 333 }]);
+    // The PLC's next polls show it: confirmed by telemetry.
+    await until("telemetry confirmation", async () =>
+      (await getCommand(db, admin, command.id)).confirmedAt ? true : undefined,
+    );
+
+    // The same command delivered again (a QoS 1 redelivery): answered again, never written again.
+    await publish(
+      "zfactory/plant-1/edge-1/command/plc-a",
+      JSON.stringify(
+        commandEnvelope({
+          commandId: command.id,
+          plcId: "plc-a",
+          mappingId: "t-speed",
+          value: 33.3,
+          configVersion: command.configVersion,
+          issuedAt: command.requestedAt,
+          expiresAt: command.expiresAt,
+          requestedBy: command.requestedBy,
+        }),
+      ),
+    );
+    await until("the duplicate answer", async () =>
+      (await commandOf(command.id)).duplicateAcks > 0 ? true : undefined,
+    );
+    expect(plcs.a.writes.length).toBe(writesBefore + 1);
+    expect((await commandOf(command.id)).status).toBe("APPLIED");
+
+    // A command that skipped Web Factory's checks, to a tag the PLC program owns: the agent refuses it.
+    const forged = await db.command.create({
+      data: {
+        organizationId,
+        siteId: (await db.site.findFirstOrThrow()).id,
+        agentId,
+        plcId: ids.a!,
+        tag: "t-running",
+        tagName: "Running",
+        valueBool: false,
+        configVersion: command.configVersion,
+        requestedBy: command.requestedBy,
+        requestKey: "e2e-forged",
+        status: "PUBLISHED",
+        expiresAt: new Date(Date.now() + 60_000),
+      },
+    });
+    await publish(
+      "zfactory/plant-1/edge-1/command/plc-a",
+      JSON.stringify(
+        commandEnvelope({
+          commandId: forged.id,
+          plcId: "plc-a",
+          mappingId: "t-running",
+          value: false,
+          configVersion: command.configVersion,
+          issuedAt: new Date(),
+          expiresAt: new Date(Date.now() + 60_000),
+          requestedBy: command.requestedBy,
+        }),
+      ),
+    );
+    const refused = await until("the edge refusal", async () => {
+      const current = await commandOf(forged.id);
+      return current.status === "REJECTED" ? current : undefined;
+    });
+    expect(refused.rule).toBe("not-writable");
+
+    // Web Factory has a newer registration than the agent runs: the agent refuses the version.
+    await registerDeployment(db, admin, agentId, files.a!.replace('"configVersion": 1', '"configVersion": 2'));
+    const stale = await issueCommand(db, publish, admin, ids.a!, {
+      tag: "t-start",
+      value: true,
+      requestKey: "e2e-stale",
+    });
+    const staleAnswer = await until("the version refusal", async () => {
+      const current = await commandOf(stale.command.id);
+      return current.status === "REJECTED" ? current : undefined;
+    });
+    expect(staleAnswer.rule).toBe("stale-config-version");
+    expect(plcs.a.writes.length).toBe(writesBefore + 1);
   }, 60_000);
 
   it("shows a PLC that goes away as disconnected, with the change recorded", async () => {

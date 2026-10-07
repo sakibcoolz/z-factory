@@ -12,7 +12,7 @@ export function openTestDb(): PrismaClient {
 
 export async function resetDb(db: PrismaClient): Promise<void> {
   await db.$executeRawUnsafe(
-    'TRUNCATE telemetry.batch, telemetry.sample, "Alarm", "PlcEvent", "TagLatest", "AgentConnectionEvent", "AuditEvent", "PlcModule", "Module", "PlcMapping", "Plc", "Factory", "EdgeAgent", "Site", "Membership", "User", "Organization" CASCADE',
+    'TRUNCATE telemetry.batch, telemetry.sample, "Command", "Alarm", "PlcEvent", "TagLatest", "AgentConnectionEvent", "AuditEvent", "PlcModule", "Module", "PlcMapping", "Plc", "Factory", "EdgeAgent", "Site", "Membership", "User", "Organization" CASCADE',
   );
 }
 
