@@ -1,6 +1,6 @@
 # Phase 02 — OpenPLC, Docker & Device Simulation Runtime
 
-Status: **DONE**, with runtime-lifecycle follow-ups (TASK-207 to TASK-209) open
+Status: **DONE**, with runtime-lifecycle follow-ups (TASK-208 and TASK-209) open
 
 | Task | Status |
 |---|---|
@@ -10,7 +10,7 @@ Status: **DONE**, with runtime-lifecycle follow-ups (TASK-207 to TASK-209) open
 | TASK-204 Device simulator runtime | DONE |
 | TASK-205 Program-authoritative I/O semantics & physical target boundary | DONE |
 | TASK-206 Remove a factory's Docker network and PLC containers when it is deleted (ZFA-51) | DONE |
-| TASK-207 Check a factory's subnet against existing Docker networks (ZFA-52) | TODO |
+| TASK-207 Check a factory's subnet against existing Docker networks (ZFA-52) | DONE |
 | TASK-208 "Stop factory" must leave a factory stopped after a failed start (ZFA-53) | TODO |
 | TASK-209 Reconcile stored runtime state with Docker after a host restart (ZFA-54) | TODO |
 
