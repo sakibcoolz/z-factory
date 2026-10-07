@@ -221,3 +221,40 @@ button:disabled {
   justify-content: center;
   padding: var(--space-4);
 }
+.secret {
+  /* Below the buttons, across the row. */
+  flex-basis: 100%;
+  order: 1;
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--warn);
+  border-radius: var(--radius);
+  display: grid;
+  gap: var(--space-2);
+}
+.secret p {
+  margin: 0;
+}
+.kv dd {
+  overflow-wrap: anywhere;
+}
+pre {
+  margin: 0;
+  padding: var(--space-2);
+  background: var(--bg);
+  border-radius: var(--radius);
+  overflow-x: auto;
+  font-size: 13px;
+}
+.banner {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--warn);
+  border-radius: var(--radius);
+  color: var(--warn);
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: flex-start;
+}

@@ -8,6 +8,8 @@ import { getDb } from "@/lib/db/client";
 import { isDomainError } from "@/lib/domain/errors";
 import type { FormState } from "@/lib/form-state";
 import { log } from "@/lib/log";
+import { agentBrokerUrl, forgetAgent, getBrokerAdmin } from "@/lib/mqtt/boundary";
+import { issueAgentCredentials, revokeAgentCredentials } from "@/lib/services/onboarding-service";
 import { createAgent, createSite, registerDeployment } from "@/lib/services/site-service";
 import { addMember, changeOwnPassword, setMemberActive, setMemberRole } from "@/lib/services/user-service";
 
@@ -77,6 +79,60 @@ export async function registerDeploymentAction(agentId: string, _state: FormStat
         : result.created
           ? "PLC registered."
           : "PLC updated to the new version.";
+    },
+    [`/agents/${agentId}`],
+  );
+}
+
+/** What issuing credentials answers: the password, shown once to this administrator only. */
+export type CredentialsState = FormState & {
+  issued?: {
+    username: string;
+    clientId: string;
+    password: string;
+    siteKey: string;
+    agentKey: string;
+    brokerUrl: string | null;
+    rotated: boolean;
+  };
+};
+
+export async function issueCredentialsAction(agentId: string, _state: CredentialsState): Promise<CredentialsState> {
+  const actor = await requireActor();
+  try {
+    const issued = await issueAgentCredentials(getDb(), getBrokerAdmin(), actor, agentId);
+    forgetAgent(issued.siteKey, issued.agentKey);
+    return {
+      notice: issued.rotated ? "New password issued; the old one no longer works." : "Credentials issued.",
+      issued: {
+        username: issued.username,
+        clientId: issued.clientId,
+        password: issued.password,
+        siteKey: issued.siteKey,
+        agentKey: issued.agentKey,
+        brokerUrl: agentBrokerUrl(),
+        rotated: issued.rotated,
+      },
+    };
+  } catch (error) {
+    if (isDomainError(error)) return { error: error.message };
+    log("error", "action failed", {
+      action: "agent.credentials",
+      error: error instanceof Error ? error.name : "unknown",
+    });
+    return { error: "Something went wrong. Try again." };
+  } finally {
+    revalidatePath(`/agents/${agentId}`);
+  }
+}
+
+export async function revokeCredentialsAction(agentId: string, _state: FormState) {
+  const actor = await requireActor();
+  return run(
+    "agent.revoke",
+    async () => {
+      await revokeAgentCredentials(getDb(), getBrokerAdmin(), actor, agentId);
+      return "Credentials revoked; the agent was disconnected.";
     },
     [`/agents/${agentId}`],
   );

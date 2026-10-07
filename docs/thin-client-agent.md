@@ -140,6 +140,8 @@ Topics are under `zfactory/{siteId}/{agentId}/`:
 | `command/{plcId}` | down | 1 (subscribed) | `zfactory.command`, below |
 | `ack/{plcId}` | up | 1, no | `zfactory.command-ack`, below |
 
+**Broker credentials.** With Web Factory, an admin issues the agent its own broker client on the agent's page (ADR-0019, docs/web-factory.md). The user name is `agent:<site>:<agent>`, the client id is the default above, and the role covers only this agent's topics. Put the password, shown once, alone in the password file. Using another client id, or another agent's topics, is refused by the broker.
+
 **Connection.**
 - The agent connects in the background, retrying with a growing interval up to 30 s; the agent never waits for the broker.
 - The session is persistent (`cleanSession=false`), so the command subscription survives reconnects.

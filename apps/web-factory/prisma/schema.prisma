@@ -22,8 +22,11 @@ enum UserStatus {
   DISABLED
 }
 
+/// What an agent last said about itself on agent/status (the will says OFFLINE). What the
+/// pages show is projected from this, the last-seen time and the heartbeat
+/// (lib/domain/connectivity.ts), which adds DEGRADED and staleness.
 enum AgentStatus {
-  /// Registered; nothing heard from it yet (connectivity is TASK-902).
+  /// Registered; nothing heard from it yet.
   UNKNOWN
   ONLINE
   OFFLINE
@@ -49,19 +52,19 @@ model Organization {
 
 /// A person who signs in. The password hash is scrypt (lib/auth/password.ts).
 model User {
-  id           String     @id @default(uuid(7)) @db.Uuid
+  id             String     @id @default(uuid(7)) @db.Uuid
   /// Stored lower-cased.
-  email        String     @unique
-  name         String
-  passwordHash String
-  status       UserStatus @default(ACTIVE)
+  email          String     @unique
+  name           String
+  passwordHash   String
+  status         UserStatus @default(ACTIVE)
   /// Raised when the user is disabled, their password or a role changes: older sessions end.
-  sessionVersion Int      @default(0)
-  failedLogins Int        @default(0)
-  lockedUntil  DateTime?
-  lastLoginAt  DateTime?
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  sessionVersion Int        @default(0)
+  failedLogins   Int        @default(0)
+  lockedUntil    DateTime?
+  lastLoginAt    DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
 
   memberships Membership[]
   auditEvents AuditEvent[]
@@ -100,18 +103,48 @@ model Site {
 
 /// A Z-Factory Thin Client Agent at a site. `agentKey` is its agent id in the topics.
 model EdgeAgent {
-  id         String      @id @default(uuid(7)) @db.Uuid
-  siteId     String      @db.Uuid
-  agentKey   String
-  name       String
-  status     AgentStatus @default(UNKNOWN)
-  lastSeenAt DateTime?
-  createdAt  DateTime    @default(now())
+  id                  String      @id @default(uuid(7)) @db.Uuid
+  siteId              String      @db.Uuid
+  agentKey            String
+  name                String
+  status              AgentStatus @default(UNKNOWN)
+  /// The agent's own time on the status message that set `status`; older ones are ignored.
+  statusAt            DateTime?
+  /// Web Factory's time of the last live (not retained) message from the agent.
+  lastSeenAt          DateTime?
+  lastHeartbeatAt     DateTime?
+  /// The last heartbeat as sent: counters only, never a secret.
+  heartbeatJson       Json?
+  agentVersion        String?
+  /// The agent's broker client (Mosquitto Dynamic Security). The password is never stored.
+  brokerUsername      String?     @unique
+  brokerClientId      String?     @unique
+  credentialIssuedAt  DateTime?
+  credentialRevokedAt DateTime?
+  createdAt           DateTime    @default(now())
 
-  site Site  @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  plcs Plc[]
+  site   Site                   @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  plcs   Plc[]
+  events AgentConnectionEvent[]
 
   @@unique([siteId, agentKey])
+}
+
+/// A change of an agent's reported status, recorded once when Web Factory sees the change.
+/// The same report delivered again (a retained message after a reconnect, a QoS 1
+/// redelivery) changes nothing and adds no row.
+model AgentConnectionEvent {
+  id          String      @id @default(uuid(7)) @db.Uuid
+  edgeAgentId String      @db.Uuid
+  status      AgentStatus
+  /// Web Factory's time of the change (the will carries the agent's start time, not its end).
+  at          DateTime
+  receivedAt  DateTime    @default(now())
+
+  agent EdgeAgent @relation(fields: [edgeAgentId], references: [id], onDelete: Cascade)
+
+  @@unique([edgeAgentId, status, at])
+  @@index([edgeAgentId, at])
 }
 
 /// A Z-Factory factory, as the agents' deployments name it (`site.factoryId`).
@@ -136,18 +169,27 @@ model Factory {
 /// A PLC an agent runs, registered from its edge deployment file. `externalPlcId` is the
 /// plcId in the topics. The registered deployment is the cloud's copy of the allow-list.
 model Plc {
-  id             String   @id @default(uuid(7)) @db.Uuid
-  edgeAgentId    String   @db.Uuid
-  factoryId      String   @db.Uuid
-  externalPlcId  String
-  name           String
-  role           String?
-  configVersion  Int
-  checksum       String
+  id                String    @id @default(uuid(7)) @db.Uuid
+  edgeAgentId       String    @db.Uuid
+  factoryId         String    @db.Uuid
+  externalPlcId     String
+  name              String
+  role              String?
+  configVersion     Int
+  checksum          String
   /// The deployment as registered: connection settings and mappings, never a secret.
-  deploymentJson Json
-  registeredAt   DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  deploymentJson    Json
+  /// The PLC worker's state as the agent last reported it on state/{plcId} (ONLINE,
+  /// DEGRADED, RECONNECTING, …; REMOVED when the agent cleared it). Null: never reported.
+  edgeState         String?
+  /// The agent's time on that state message; older ones are ignored.
+  edgeStateAt       DateTime?
+  edgeConfigVersion Int?
+  edgeLastPollAt    DateTime?
+  edgeLastError     String?
+  edgeReconnects    Int?
+  registeredAt      DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   agent    EdgeAgent    @relation(fields: [edgeAgentId], references: [id], onDelete: Cascade)
   factory  Factory      @relation(fields: [factoryId], references: [id], onDelete: Cascade)

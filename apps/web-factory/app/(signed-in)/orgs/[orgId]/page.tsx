@@ -1,19 +1,47 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ActionForm } from "@/components/action-form";
+import { ago, BrokerBanner } from "@/components/connectivity";
 import { can, ROLE_LABELS } from "@/lib/auth/roles";
 import { requireActor } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
+import { type Connectivity, CONNECTIVITY_LABELS, projectAgent } from "@/lib/domain/connectivity";
+import { brokerStatus, connectivityLimits } from "@/lib/mqtt/boundary";
 import { load } from "@/lib/page";
 import { listSites } from "@/lib/services/site-service";
 import { createSiteAction } from "../../actions";
 
 export const metadata: Metadata = { title: "Sites" };
+export const dynamic = "force-dynamic";
+
+const ORDER: Connectivity[] = ["ONLINE", "DEGRADED", "OFFLINE", "UNKNOWN"];
 
 export default async function OrganizationPage({ params }: { params: Promise<{ orgId: string }> }) {
   const { orgId } = await params;
   const actor = await requireActor();
   const { organization, role, sites } = await load(listSites(getDb(), actor, orgId));
+  const limits = connectivityLimits();
+  const now = new Date();
+  const broker = brokerStatus();
+  const summary = (agents: (typeof sites)[number]["agents"]) => {
+    const counts = new Map<Connectivity, number>();
+    for (const agent of agents) {
+      const { state } = projectAgent(
+        {
+          status: agent.status,
+          lastSeenAt: agent.lastSeenAt,
+          heartbeat: agent.heartbeatJson,
+          credentialRevokedAt: agent.credentialRevokedAt,
+        },
+        now,
+        limits,
+      );
+      counts.set(state, (counts.get(state) ?? 0) + 1);
+    }
+    return ORDER.filter((state) => counts.has(state))
+      .map((state) => `${counts.get(state)} ${CONNECTIVITY_LABELS[state]}`)
+      .join(" · ");
+  };
   return (
     <>
       <div>
@@ -29,6 +57,7 @@ export default async function OrganizationPage({ params }: { params: Promise<{ o
           ) : null}
         </p>
       </div>
+      <BrokerBanner broker={broker} />
       {sites.length === 0 ? <p className="card muted">No site yet.</p> : null}
       <div className="grid">
         {sites.map((site) => (
@@ -41,9 +70,33 @@ export default async function OrganizationPage({ params }: { params: Promise<{ o
               {site.agents.length} agent{site.agents.length === 1 ? "" : "s"} ·{" "}
               {site.agents.reduce((sum, agent) => sum + agent._count.plcs, 0)} PLCs · {site._count.factories} factories
             </span>
+            {site.agents.length > 0 ? <span className="muted">{summary(site.agents)}</span> : null}
           </section>
         ))}
       </div>
+      {can(role, "manageSites") && broker.configured ? (
+        <section className="card">
+          <h2>Broker connection</h2>
+          <dl className="kv">
+            <dt>Broker</dt>
+            <dd className="mono">{broker.broker}</dd>
+            <dt>State</dt>
+            <dd>
+              {broker.connected ? "connected" : `disconnected, retrying in ${Math.round(broker.nextRetryMs / 1000)} s`}
+            </dd>
+            <dt>Connected since</dt>
+            <dd>{broker.connected && broker.lastConnectedAt ? ago(new Date(broker.lastConnectedAt), now) : "—"}</dd>
+            <dt>Reconnects</dt>
+            <dd>{Math.max(0, broker.connects - 1)}</dd>
+            {broker.lastError ? (
+              <>
+                <dt>Last error</dt>
+                <dd>{broker.lastError}</dd>
+              </>
+            ) : null}
+          </dl>
+        </section>
+      ) : null}
       {can(role, "manageSites") ? (
         <section className="card">
           <h2>New site</h2>

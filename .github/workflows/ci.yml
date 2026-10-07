@@ -71,9 +71,13 @@ jobs:
         working-directory: apps/web-factory
       - run: npm run lint && npm run typecheck
         working-directory: apps/web-factory
+      # The broker tests start an eclipse-mosquitto container with Dynamic Security and
+      # connect the agent binary built above with the credentials Web Factory issues.
       - run: npm run db:deploy && npm test && npm run build
         working-directory: apps/web-factory
         env:
           WEB_FACTORY_DATABASE_URL: postgresql://zfactory:zfactory@localhost:5432/web_factory_test
           WEB_FACTORY_TEST_DATABASE_URL: postgresql://zfactory:zfactory@localhost:5432/web_factory_test
           AUTH_SECRET: ci-only-auth-secret-0123456789abcdef0123456789
+          WEB_FACTORY_TEST_DOCKER: "1"
+          AGENT_BIN: ${{ runner.temp }}/zfactory-agent

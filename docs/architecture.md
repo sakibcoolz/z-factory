@@ -442,6 +442,11 @@ As built (TASK-901, ADR-0018):
 - the identity model: organization, site, agent, factory, PLC, tags, modules, audit;
 - PLC registration from the edge deployment file, health and readiness, and a server-only MQTT boundary.
 
+As built (TASK-902, ADR-0019):
+- **Broker:** Mosquitto with Dynamic Security. Each agent gets its own broker client, bound to its client id, with a role for its own topics only. Web Factory issues, rotates and revokes it and shows the password once.
+- **Ingestion:** one server-side MQTT 5 connection per Web Factory process, with growing reconnect delays. It ingests status, heartbeat and PLC state in order per agent; replays and duplicates change nothing.
+- **Connectivity:** projected on read as UNKNOWN, ONLINE, DEGRADED or OFFLINE, timed by Web Factory's clock.
+
 Details: `docs/web-factory.md`.
 
 Rules:
