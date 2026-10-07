@@ -8,7 +8,7 @@ The Phase 09 cloud application (ADR-0018). It receives what Z-Factory Thin Clien
 | TASK-902 | MQTT broker integration, agent onboarding, connectivity | done |
 | TASK-903 | telemetry ingestion, persistence, latest state | done |
 | TASK-904 | monitoring dashboards, events, alarms | done |
-| TASK-905 | remote command and setpoint lifecycle | planned |
+| TASK-905 | remote command and setpoint lifecycle | done |
 | TASK-906 | production edge deployment, physical E2E | planned |
 
 ## Identity model
@@ -26,6 +26,7 @@ The Phase 09 cloud application (ADR-0018). It receives what Z-Factory Thin Clien
 | `PlcEvent` | a change of a PLC's reported connection state, or of a tag's quality, recorded once |
 | `telemetry.batch`, `telemetry.sample` | the history (outside Prisma, partitioned by day): one row per poll, one per tag per poll |
 | `Alarm` | an alarm: source, severity, message, raised, cleared and acknowledged (by whom); `activeKey` while active |
+| `Command` | a command or setpoint: who, which tag, the value, the configuration version, its status with rule and reason, the agent's read-back, and its times |
 | `AuditEvent` | who did what: sign-ins and refusals, users and roles, sites, agents and PLC registrations |
 
 ## Registering a PLC
@@ -100,6 +101,8 @@ API (JSON over the signed-in session; 401 without one, 404 for what the actor ca
 | `GET /api/v1/agents/{id}/connections?from=…&to=…` | the agent's reported status changes |
 | `GET /api/v1/alarms?organizationId=…&state=active\|history` | alarms, narrowed by `siteId`, `agentId` or `plcId`; the history takes `from`, `to` and `limit` |
 | `GET /api/v1/live?scope=…` | the live view of a scope as server-sent events (TASK-904) |
+| `GET /api/v1/plcs/{id}/commands?limit=…` | the PLC's recent commands, newest first (TASK-905) |
+| `GET /api/v1/commands/{id}` | one command: who, what, status, the agent's answer, telemetry confirmation |
 
 ## Monitoring and alarms
 ADR-0021.
@@ -125,6 +128,25 @@ ADR-0021.
 - Buckets of poor quality are shaded; gaps break the line.
 - The two short ranges refresh every 5 s.
 
+## Commands and setpoints
+ADR-0022.
+- **Where:** an operator or admin sends one from the PLC page, on a writable command tag (on/off) or setpoint (a number in its range); viewers get no controls.
+- **Checks before publishing:** Web Factory checks the tag against the registered deployment (WRITE, COMMAND or SETPOINT, EXTERNAL_COMMAND), the value's type and range, and that the agent is reachable with valid credentials. A refusal is recorded as REJECTED and audited, and never published.
+- **Publishing:** a command goes with QoS 1 to `zfactory/{site}/{agent}/command/{plc}`. It expires after 60 s and carries the user's id, never an e-mail.
+- **At the edge:** the agent checks it again against its own deployment, writes once, reads back and answers.
+
+| Status | Meaning |
+|---|---|
+| REQUESTED, PUBLISHED | checked and handed to the broker |
+| ACCEPTED | the agent's allow-list took it; the write is queued |
+| APPLIED | written and read back (shown); telemetry then confirms the value |
+| REJECTED | refused by Web Factory or by the agent, with the rule |
+| FAILED | the write failed, or the broker could not take the command |
+| TIMED_OUT | no final answer 10 s after expiry (a late answer is still taken, marked late) |
+
+- **No double actuation:** the same form sent twice is one command. A redelivered command is answered again by the agent, marked duplicate, and counted, never written again.
+- **Broker right:** Web Factory gives its own broker client the role `web-factory-commands`, which allows publishing commands and nothing else.
+
 ## Sign-in and sessions
 - **Sign-in:** e-mail and password, through Auth.js credentials (`auth.ts`).
 - **Session:** a signed cookie of at most 8 hours that carries the user id and session version, checked against the database on every request (`lib/auth/session.ts`).
@@ -143,7 +165,7 @@ ADR-0021.
 | `/factories/{id}` | members | the factory's modules and PLCs |
 | `/modules/{id}` | members | the PLCs that carry the module's signals |
 | `/agents/{id}` | members | status, heartbeat, PLC connections and alarms (live); the connection history; admins issue, rotate and revoke broker credentials and upload deployment files |
-| `/plcs/{id}` | members | factory and module links, PLC id, configuration, Modbus endpoint; tags with value, quality and age, and the PLC's alarms (live); the last week's events |
+| `/plcs/{id}` | members | factory and module links, PLC id, configuration, Modbus endpoint; tags with value, quality and age, recent commands, and the PLC's alarms (live); operators and admins send commands and setpoints; the last week's events |
 | `/plcs/{id}/tags/{tag}` | members | the live value, quality and age; the history chart; quality changes; the last samples |
 | `/orgs/{id}/users` | admins | members, roles, enable/disable, add users, the audit log |
 | `/account` | members | change one's own password; this ends one's sessions |
@@ -253,4 +275,29 @@ Tests:
   - factory and module navigation within the tenant;
   - the live stream itself: 401, 400, 404, and a new view sent when a value changes.
 - End to end (`test/telemetry-e2e.test.ts`): the real agent's alarm tag raises and clears an alarm, and a lost PLC raises its connection alarm.
+
+## As built (TASK-905)
+- **Migration `commands`.**
+- **Code:**
+  - `lib/domain/commands.ts` (pure): checks, envelope, acknowledgement schema, transitions;
+  - `lib/services/command-service.ts`: issue, `applyAck`, `expireCommands`, lists, telemetry confirmation;
+  - the ack path in `lib/mqtt/ingest.ts`;
+  - `ensureServiceRole` in `lib/mqtt/dynsec.ts`;
+  - `components/command-control.tsx` and the commands table.
+
+Tests:
+- Unit: the checks, the exact envelope, forward-only transitions, value matching.
+- Database (`test/commands.test.ts`):
+  - publishing with the exact topic and envelope;
+  - every refusal recorded and audited, never published (viewer, unknown and non-writable tags, type, range, offline and revoked agent);
+  - one command for a form sent twice, even at once;
+  - the broker unavailable;
+  - forward-only answers, counted redeliveries, refusals with the agent's rule, timeouts and late answers;
+  - acks through the MQTT handler and telemetry confirmation;
+  - tenant isolation.
+- End to end (`test/telemetry-e2e.test.ts`, the real agent and a simulated Modbus PLC that counts writes):
+  - a setpoint applied, read back and confirmed by telemetry, written exactly once;
+  - its redelivery answered as a duplicate, without a second write;
+  - a forged command to a status tag refused by the agent (`not-writable`);
+  - a command for a newer registration refused (`stale-config-version`).
 

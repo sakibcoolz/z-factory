@@ -106,7 +106,12 @@ describeBroker("Web Factory and agents through Mosquitto Dynamic Security (TASK-
       () => {},
       { agentCacheMs: 0 },
     );
-    await until("Web Factory to connect", () => runtime.status().connected || undefined, 20_000);
+    // Connected, with the command role granted (the first grant reconnects Web Factory once).
+    await until(
+      "Web Factory to connect",
+      () => (runtime.status().connected && runtime.status().commandsAllowed) || undefined,
+      20_000,
+    );
   }, 60_000);
 
   afterAll(async () => {

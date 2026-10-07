@@ -8,6 +8,8 @@ import { createServer, type Server, type Socket } from "node:net";
 export class ModbusServer {
   readonly coils = new Map<number, boolean>();
   readonly registers = new Map<number, number>();
+  /** Every write received, in order (TASK-905: a command must not actuate twice). */
+  readonly writes: Array<{ fn: number; address: number; value: number | boolean }> = [];
   private server: Server | undefined;
   private readonly sockets = new Set<Socket>();
 
@@ -60,13 +62,24 @@ export class ModbusServer {
     }
     if (fn === 5) {
       this.coils.set(start, pdu.readUInt16BE(3) === 0xff00);
+      this.writes.push({ fn, address: start, value: pdu.readUInt16BE(3) === 0xff00 });
       return reply(pdu.subarray(0, 5));
     }
     if (fn === 6) {
       this.registers.set(start, pdu.readUInt16BE(3));
+      this.writes.push({ fn, address: start, value: pdu.readUInt16BE(3) });
       return reply(pdu.subarray(0, 5));
     }
-    if (fn === 15 || fn === 16) return reply(pdu.subarray(0, 5));
+    if (fn === 16) {
+      const count = pdu.readUInt16BE(3);
+      for (let index = 0; index < count; index += 1) {
+        const value = pdu.readUInt16BE(6 + index * 2);
+        this.registers.set(start + index, value);
+        this.writes.push({ fn, address: start + index, value });
+      }
+      return reply(pdu.subarray(0, 5));
+    }
+    if (fn === 15) return reply(pdu.subarray(0, 5));
     return reply(Buffer.from([fn | 0x80, 1]));
   }
 

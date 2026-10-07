@@ -63,6 +63,12 @@ export function brokerStatus(): BrokerStatus | { configured: false } {
   return getMqttRuntime()?.status() ?? { configured: false };
 }
 
+/** Publishes a command through the broker connection, or null without MQTT (TASK-905). */
+export function getCommandPublisher(): ((topic: string, payload: string) => Promise<void>) | null {
+  const runtime = getMqttRuntime();
+  return runtime ? (topic, payload) => runtime.publishCommand(topic, payload) : null;
+}
+
 /** Forgets the PLCs the telemetry pipeline remembers, after a registration changed them. */
 export function forgetPlcs(): void {
   globalForMqtt.webFactoryMqtt?.telemetry.forgetPlcs();

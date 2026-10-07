@@ -460,6 +460,13 @@ As built (TASK-904, ADR-0021):
 - **Charts:** built-in SVG.
 - **Navigation:** site, factory, module, agent, PLC, tag.
 
+As built (TASK-905, ADR-0022):
+- **Checks:** commands and setpoints only to registered command and setpoint tags, from operators and admins, checked against the deployment and the agent's reachability before publishing.
+- **Delivery:** published with QoS 1 under Web Factory's command-only broker role, then checked again by the agent's allow-list.
+- **Tracking:** requested → published → accepted → applied, failed, rejected or timed out, audited throughout.
+- **No double actuation:** request keys in Web Factory, command ids at the agent.
+- **Authority:** the PLC program decides what follows a written command.
+
 Details: `docs/web-factory.md`.
 
 Rules:

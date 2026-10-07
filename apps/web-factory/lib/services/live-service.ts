@@ -4,6 +4,7 @@ import type { Db } from "@/lib/db/client";
 import { type ConnectivityLimits, DEFAULT_LIMITS } from "@/lib/domain/connectivity";
 import { DomainError } from "@/lib/domain/errors";
 import { listAlarms } from "./alarm-service";
+import { listCommands } from "./command-service";
 import { getAgent, getSite } from "./site-service";
 import { getLatest } from "./telemetry-service";
 
@@ -58,7 +59,11 @@ export async function liveView(
   const { alarms, role } = await listAlarms(db, actor, organizationId, { state: "active", ...narrow });
   const base = { scope, at: now, role, alarms };
   if (scope.kind === "plc") {
-    return { ...base, plc: await getLatest(db, actor, scope.id, limits, now) };
+    const [plc, recent] = await Promise.all([
+      getLatest(db, actor, scope.id, limits, now),
+      listCommands(db, actor, scope.id, { limit: 10 }),
+    ]);
+    return { ...base, plc, commands: recent.commands };
   }
   if (scope.kind === "agent") {
     const view = await getAgent(db, actor, scope.id, limits, now);

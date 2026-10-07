@@ -49,6 +49,7 @@ model Organization {
   factories   Factory[]
   auditEvents AuditEvent[]
   alarms      Alarm[]
+  commands    Command[]
 }
 
 /// A person who signs in. The password hash is scrypt (lib/auth/password.ts).
@@ -336,6 +337,65 @@ model Alarm {
   @@index([organizationId, raisedAt])
   @@index([plcId, raisedAt])
   @@index([agentId, raisedAt])
+}
+
+enum CommandStatus {
+  /// Checked by Web Factory and recorded; not yet handed to the broker.
+  REQUESTED
+  /// Handed to the broker for the agent (QoS 1).
+  PUBLISHED
+  /// The agent checked it against its own allow-list and queued the write.
+  ACCEPTED
+  /// Refused, by Web Factory before publishing or by the agent (rule and reason say why).
+  REJECTED
+  /// Written to the PLC and read back (observed). The PLC program decides what follows.
+  APPLIED
+  /// The write failed, or the command could not be published.
+  FAILED
+  /// No final answer before the command expired.
+  TIMED_OUT
+}
+
+/// A command or setpoint sent to a PLC tag (TASK-905, ADR-0022). Its id is the commandId
+/// the agent sees, so the agent answers a redelivery without writing again.
+model Command {
+  id             String        @id @default(uuid(7)) @db.Uuid
+  organizationId String        @db.Uuid
+  siteId         String        @db.Uuid
+  agentId        String        @db.Uuid
+  plcId          String        @db.Uuid
+  /// The tag's external id (the agent's mappingId) and its name when sent.
+  tag            String
+  tagName        String
+  valueNum       Float?
+  valueBool      Boolean?
+  /// The PLC configuration version the command is for; the agent refuses another.
+  configVersion  Int
+  requestedBy    String        @db.Uuid
+  /// The form's key: sending the same form twice is one command.
+  requestKey     String
+  status         CommandStatus @default(REQUESTED)
+  /// Why it was refused or failed: the rule and the reason (Web Factory's or the agent's).
+  rule           String?
+  reason         String?
+  /// The value the agent read back after writing.
+  observedJson   Json?
+  /// Acknowledgements the agent sent again for a redelivered command.
+  duplicateAcks  Int           @default(0)
+  /// An answer that came after the command had timed out.
+  lateAnswer     Boolean       @default(false)
+  requestedAt    DateTime      @default(now())
+  publishedAt    DateTime?
+  acceptedAt     DateTime?
+  completedAt    DateTime?
+  expiresAt      DateTime
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([requestedBy, requestKey])
+  @@index([plcId, requestedAt])
+  @@index([organizationId, requestedAt])
+  @@index([status, expiresAt])
 }
 
 /// Who did what, for the record: sign-ins, user and role changes, registrations.
