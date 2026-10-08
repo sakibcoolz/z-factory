@@ -17,6 +17,16 @@ npm run dev        # http://localhost:3000
 npm run format:check && npm run lint && npm run typecheck && npm test && npm run build
 ```
 
+The whole local stack — PostgreSQL, the process simulation service, the Web Factory broker,
+and the Z-Factory (:3000) and Web Factory (:3200) dev servers — is started and stopped with make:
+
+```bash
+cp .env.example .env && cp apps/web-factory/.env.example apps/web-factory/.env
+make setup    # first run: install, start everything, load the catalog
+make start    # start everything and apply migrations; make stop, make restart, make status
+make help     # every target, including one part at a time (make restart-app)
+```
+
 Toolchain, commands and the environment contract: `docs/bootstrap.md`.
 
 ## MVP architecture

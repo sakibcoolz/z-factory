@@ -29,6 +29,9 @@ next-env.d.ts
 # meshy: files downloaded while authoring assets are not source either (TASK-403)
 /meshy_output/
 
+# local stack: dev server PID files, logs and generated secrets (make start, TASK-004)
+/.run/
+
 # misc
 .DS_Store
 npm-debug.log*
