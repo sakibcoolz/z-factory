@@ -140,8 +140,7 @@ function emit(
 
 async function setDeviceState(db: PrismaClient, device: PlcRecord, runtimeStatus: RuntimeState): Promise<void> {
   await plcRepository.setDeviceRuntime(db, device.id, { runtimeStatus });
-  const summary = summarizeRuntimeStates(await plcRepository.plcRuntimeStates(db, device.factoryId));
-  await plcRepository.setFactoryRuntimeStatus(db, device.factoryId, summary);
+  await recordFactoryRuntimeState(db, device.factoryId);
 }
 
 /** A runtime failure becomes a FAULTED device and a critical event; the error is rethrown. */
@@ -475,18 +474,56 @@ export async function refreshPlcState(
 }
 
 export async function stopPlc(deps: RuntimeDeps, actor: Actor, plcId: string): Promise<void> {
-  const { db, docker } = deps;
-  const { device } = await loadPlc(db, actor, plcId);
-  const target = requireTarget(device);
+  const { device } = await loadPlc(deps.db, actor, plcId);
+  await stopContainer(deps, device, requireTarget(device).containerId);
+}
+
+async function stopContainer(deps: RuntimeDeps, device: PlcRecord, containerId: string): Promise<void> {
   // On its way down: nothing should read the stopping container as a failed one.
-  await setDeviceState(db, device, "STOPPING");
+  await setDeviceState(deps.db, device, "STOPPING");
   try {
-    await stopOpenPlc(docker, target.containerId);
+    await stopOpenPlc(deps.docker, containerId);
   } catch (error) {
     await failDevice(deps, device, "stop", error);
   }
-  await setDeviceState(db, device, "STOPPED");
+  await setDeviceState(deps.db, device, "STOPPED");
   await emit(deps, device, "DEVICE_STOPPED");
+}
+
+/**
+ * Brings a PLC to rest from whatever state it was left in (TASK-208). A running container
+ * is stopped. A container that already exited, one removed outside Z-Factory, or none at
+ * all (a start that failed before creating it) leaves nothing to stop. Either way the PLC
+ * ends STOPPED, so its stored state matches what runs.
+ */
+export async function settlePlcStopped(
+  deps: RuntimeDeps,
+  actor: Actor,
+  plcId: string,
+): Promise<{ state: RuntimeState }> {
+  const { db, docker } = deps;
+  const { device } = await loadPlc(db, actor, plcId);
+  const containerId = device.dockerContainerId;
+  const running = containerId
+    ? await inspectRuntimeContainer(docker, containerId).then(
+        (container) => container.running,
+        (error: unknown) => (isDomainError(error, "NOT_FOUND") ? false : Promise.reject(error)),
+      )
+    : false;
+  if (containerId && running) {
+    await stopContainer(deps, device, containerId);
+  } else if (device.runtimeStatus !== "STOPPED") {
+    await setDeviceState(db, device, "STOPPED");
+    await emit(deps, device, "DEVICE_STOPPED", "INFO", { reconciled: true, from: device.runtimeStatus });
+  }
+  return { state: "STOPPED" };
+}
+
+/** Stores the factory's runtime state as the summary of its PLCs' stored states. */
+export async function recordFactoryRuntimeState(db: PrismaClient, factoryId: string): Promise<RuntimeState> {
+  const summary = summarizeRuntimeStates(await plcRepository.plcRuntimeStates(db, factoryId));
+  await plcRepository.setFactoryRuntimeStatus(db, factoryId, summary);
+  return summary;
 }
 
 /** Restarts the PLC's container. The runtime reloads the program it was running. */

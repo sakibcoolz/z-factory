@@ -6,7 +6,7 @@ import { getFactory } from "./factory-service";
 import { type GatewayDeps, syncGatewayEndpoints } from "./gateway-service";
 import { type LiveDeps, stopPlcMonitoring, syncFactoryMonitoring } from "./live-service";
 import { type PlcLinkDeps, startPlcLinkMonitor, stopPlcLinkMonitor } from "./plc-communication-service";
-import { type RuntimeDeps, startPlc, stopPlc } from "./plc-runtime-service";
+import { recordFactoryRuntimeState, type RuntimeDeps, settlePlcStopped, startPlc } from "./plc-runtime-service";
 import {
   getProcessBridgeState,
   planProcessBridge,
@@ -138,6 +138,10 @@ export async function startFactory(
  * Stops the factory: the process bridge and the simulation first, so the last states are
  * stored while the PLCs still answer, then every PLC runtime. Gateway endpoints stay open and answer that
  * the PLC does not respond; containers are stopped, not removed.
+ *
+ * Every PLC is brought to rest from its real container state, also one whose start failed
+ * before a container existed (TASK-208), and the factory's stored state is summarized again,
+ * so what this reports is what is stored.
  */
 export async function stopFactory(
   deps: FactoryRuntimeDeps,
@@ -152,12 +156,11 @@ export async function stopFactory(
   const stopped: FactoryRuntimeResult["plcs"] = [];
   try {
     for (const plc of await listPlcs(deps, factory.id)) {
-      if (plc.dockerContainerId && plc.runtimeStatus !== "STOPPED") {
-        await stopPlcMonitoring(deps.live, actor, plc.id);
-        await stopPlc(deps.runtime, actor, plc.id);
-      }
-      stopped.push({ id: plc.id, name: plc.name, state: "STOPPED" });
+      if (plc.runtimeStatus !== "STOPPED") await stopPlcMonitoring(deps.live, actor, plc.id);
+      const { state } = await settlePlcStopped(deps.runtime, actor, plc.id);
+      stopped.push({ id: plc.id, name: plc.name, state });
     }
+    await recordFactoryRuntimeState(deps.runtime.db, factory.id);
   } finally {
     await syncFactoryMonitoring(deps.live, factory.id);
   }
