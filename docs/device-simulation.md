@@ -192,3 +192,33 @@ PLC program -> program-driven tag (PROGRAM_OUTPUT: %Q, or %M the program writes)
 Code: `PlcBridge.release` and `linkUp` (`lib/runtimes/device-sim/bridge.ts`), `feedbackQuality` of the device simulator and of the process bridge, `writerQuality` of the tag monitor (`lib/runtimes/tag-monitor/monitor.ts`), `feedbackQuality` in `lib/domain/live.ts`. Tests: `test/integration/command-bridge.test.ts` (Docker) runs a valve and a drive against a real OpenPLC program that opens the valve on request and runs the drive only once the open limit switch proves it open.
 
 As built (TASK-205): the bridge reads `PROGRAM_OUTPUT` tags (`%Q`, and `%M` the program writes) and delivers feedback to `%M` memory only — the `PROGRAM_INPUT` shadow of a wired DI/AI channel or `SIMULATION_FEEDBACK` memory — never to a `%Q` address, an input point or a command tag (`signal-address`). The owner model and its enforcement are in `docs/openplc-runtime.md` → As built (TASK-205); the process bridge of `docs/process-simulation.md` follows the same rule.
+
+
+## Phase 10 direction — catalog-driven Go device simulator
+
+Phase 10 expands device behavior simulation into the Go simulation runtime so the complete catalog has an explicit executable-support decision.
+
+This does **not** mean every vendor product is firmware-emulated. When no legal/usable vendor runtime, emulator or Docker image exists, Z-Factory runs a documented behavior profile. Model-specific values are used only when supported by authoritative catalog sources.
+
+Every catalog model must declare one coverage state:
+- `FULL`: every Z-Factory-declared behavior for the model is implemented.
+- `PARTIAL`: a defined subset is implemented.
+- `GENERIC`: category behavior is available but not vendor/model-specific behavior.
+- `NOT_SIMULATABLE`: configuration/metadata only.
+
+The target behavior contract includes, where meaningful:
+- commands and setpoints;
+- actual feedback and quality;
+- parameters and engineering units;
+- states and state transitions;
+- timing, ramps, travel and inertia;
+- ranges/limits;
+- faults, latching and reset;
+- protocol/register behavior from authoritative mappings;
+- relationships to other devices.
+
+Target categories include drives/starters, motors, pumps/fans/conveyors/mixers/compressors, valves/actuators, relays/contactors/SSR, heaters, indicators/buzzers, switches/buttons, proximity/photoelectric sensors, process transmitters, encoders, process/PID/temperature controllers, remote I/O, IO-Link masters, protocol converters/gateways and related catalog devices.
+
+The simulator remains subordinate to PLC program authority: it consumes program-generated commands and returns simulated feedback. It never decides local PLC physical outputs on behalf of the program.
+
+Execution tasks: TASK-1009 through TASK-1016 in `docs/phases/phase-10-agent-ready-catalog-simulator/tasks/`.
