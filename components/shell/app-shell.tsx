@@ -1,31 +1,8 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { routes } from "@/lib/navigation/routes";
+import { ACTIVITIES, type ActivityKey, type FactoryContext } from "@/lib/navigation/activities";
 
-export type ActivityKey = "factories" | "catalog" | "designer" | "runtime" | "tags" | "events" | "export";
-
-/** The factory (and its PLC) the factory-scoped activities should open. */
-export type FactoryContext = {
-  factoryId: string;
-  plcId: string;
-};
-
-type ActivityItem = {
-  key: ActivityKey;
-  short: string;
-  label: string;
-  href: (context: FactoryContext | undefined) => string | undefined;
-};
-
-const ACTIVITY_ITEMS: readonly ActivityItem[] = [
-  { key: "factories", short: "FAC", label: "Factories", href: () => routes.factories() },
-  { key: "catalog", short: "CAT", label: "Device catalog", href: () => routes.catalog() },
-  { key: "designer", short: "DSN", label: "Designer", href: (c) => c && routes.designer(c.factoryId) },
-  { key: "runtime", short: "RUN", label: "Runtime", href: (c) => c && routes.runtime(c.factoryId) },
-  { key: "tags", short: "TAG", label: "Live tags", href: (c) => c && routes.tags(c.factoryId) },
-  { key: "events", short: "EVT", label: "Events", href: (c) => c && routes.events(c.factoryId) },
-  { key: "export", short: "EXP", label: "PLC export", href: (c) => c && routes.plcExport(c.factoryId, c.plcId) },
-];
+export type { ActivityKey, FactoryContext };
 
 type StatusTone = "ok" | "flt" | "deg" | "off";
 
@@ -69,7 +46,7 @@ export function AppShell({
       </header>
       <div className="zf-body">
         <nav className="zf-act" aria-label="Activities">
-          {ACTIVITY_ITEMS.map((item) => {
+          {ACTIVITIES.map((item) => {
             const href = item.href(context);
             const badge = badges?.[item.key];
             const content = (

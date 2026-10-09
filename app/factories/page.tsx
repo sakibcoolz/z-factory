@@ -52,9 +52,12 @@ export default async function FactoriesPage() {
               <div className="zf-k">Workspace</div>
               <h1 className="zf-h mt-1.5">Factories</h1>
             </div>
-            <Button variant="primary" href={routes.newFactory()}>
-              + New factory
-            </Button>
+            <div className="flex gap-2">
+              <Button href={routes.llmIndex()}>LLM Index</Button>
+              <Button variant="primary" href={routes.newFactory()}>
+                + New factory
+              </Button>
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {SUMMARY_STATES.map((state) => (
