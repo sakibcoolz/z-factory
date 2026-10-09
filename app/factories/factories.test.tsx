@@ -130,6 +130,11 @@ describe("2b first run", () => {
 
     expect(screen.getByRole("heading", { name: "Build a virtual plant." })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /New factory…/ })).toHaveAttribute("href", "/factories/new");
+    // The landing area points an agent at the LLM Index (TASK-1001).
+    expect(screen.getByRole("link", { name: /how an AI agent should use Z-Factory/ })).toHaveAttribute(
+      "href",
+      "/llm-index",
+    );
     expect(screen.getByText("no factories yet")).toBeInTheDocument();
     expect(screen.queryByRole("table")).toBeNull();
   });

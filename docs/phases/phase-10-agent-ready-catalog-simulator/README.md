@@ -1,6 +1,6 @@
 # Phase 10 — Agent-Ready Engineering & Full Catalog Go Simulation
 
-Status: **PLANNED**
+Status: **IN PROGRESS** (TASK-1001 started 2026-10-09)
 
 ## Goal
 
@@ -51,7 +51,7 @@ Simulation coverage is explicit per catalog model:
 
 | Task | Status | Scope |
 |---|---|---|
-| TASK-1001 | PLANNED | Global LLM Index & complete agent guide |
+| TASK-1001 | DONE | Global LLM Index & complete agent guide |
 | TASK-1002 | PLANNED | Reusable page-level LLM Context framework |
 | TASK-1003 | PLANNED | LLM Context tabs across active engineering pages |
 | TASK-1004 | PLANNED | Agent navigation index and cross-page guidance |

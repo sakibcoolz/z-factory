@@ -7,6 +7,7 @@ import { routes } from "@/lib/navigation/routes";
 const START_ACTIONS: ReadonlyArray<{ label: string; href: string }> = [
   { label: "New factory…", href: routes.newFactory() },
   { label: "Browse device catalog", href: routes.catalog() },
+  { label: "LLM Index: how an AI agent should use Z-Factory", href: routes.llmIndex() },
 ];
 
 type WelcomeProps = {

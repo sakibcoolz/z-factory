@@ -12,6 +12,9 @@ const plc = (factoryId: string, plcId: string) => `${factory(factoryId)}/plcs/${
 
 export const routes = {
   factories: () => "/factories",
+  /** The LLM Index (TASK-1001): the guide for external browser agents, as a page and as Markdown. */
+  llmIndex: () => "/llm-index",
+  llmIndexMarkdown: () => "/llm-index.md",
   newFactory: () => "/factories/new",
   /** The catalog, optionally on one model and/or narrowed to one device category. */
   catalog: (query: { model?: string; type?: string } = {}) => {

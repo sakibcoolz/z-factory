@@ -194,6 +194,7 @@ Source: Claude Design project `2fc6a75c-7a5d-4a8c-a17c-17afa2d37f6c`, file `Z-Fa
 | — | External gateways | `/factories/[factoryId]/gateways` (database) |
 | — | Process modules | `/factories/[factoryId]/modules`, per module `/modules/[moduleId]` (database) |
 | — | PLC communication | `/factories/[factoryId]/plcs/[plcId]/communication` (database) |
+| — | LLM Index (agent guide) | `/llm-index`, as Markdown `/llm-index.md` (no database; TASK-1001) |
 
 Every screen reads the database: 2a–2c and the factory overview/edit (TASK-103), 2e the device catalog (TASK-301), 2f, 2g, 2h and 2j (TASK-302) together with the PLC connections screen `/factories/[factoryId]/plcs/[plcId]/connections`, 2d (designer) and 2o (topology) (TASK-303), 2p (export) (TASK-304), 2i, 2k and 2n (program, versions, simulator and runtime) (TASK-305), 2l and 2m (live tags and events) (TASK-401), 2q (3D view) (TASK-402), the device screens (TASK-308), and the process-module screens (TASK-604). The design fixtures of TASK-104 (`factory_001`, `factory_003`, PLC `dev_001`) were retired in TASK-309; an unknown id returns the not-found screen.
 
@@ -355,7 +356,10 @@ A catalog model's screen has a **3D asset** section: a pill with what is rendere
 - Host status shows only what is real today: PostgreSQL connected; Docker Engine and OpenPLC are marked "phase 02".
 
 ### Activity bar
-FAC factories · CAT catalog · DSN designer (also PLC, topology, 3D, device configuration) · RUN runtime and simulator · TAG live tags · EVT events · EXP PLC export. Factory-scoped activities are disabled until a factory is open.
+FAC factories · CAT catalog · DSN designer (also PLC, topology, 3D, device configuration) · RUN runtime and simulator · TAG live tags · EVT events · EXP PLC export · LLM the LLM Index (TASK-1001). Factory-scoped activities are disabled until a factory is open. The bar is one registry, `lib/navigation/activities.ts`, which the LLM Index also reads.
+
+### LLM Index as built (TASK-1001, ADR-0024)
+`/llm-index` is the guide an external browser or coding agent reads first: what Z-Factory is and its engineering model; what is real (OpenPLC, the network) and what is simulated; the activity bar; every engineering area with its routes as `[factoryId]`-style patterns, what to bring there and which decisions to ask the user for; which pages have an LLM Context tab (none until TASK-1003); the files an agent can fetch; the recommended workflow; and the rules. Each part is a `section` with `data-llm-section`, each area an `article` with `data-llm-area`, so an agent reading the DOM finds them by name. A "Markdown" button opens `/llm-index.md`, the same content as text. The page is reached from the LLM activity, from the Factories page and from the first-run welcome. It reads no database.
 
 
 ## Simulation test controls (Phase 08)

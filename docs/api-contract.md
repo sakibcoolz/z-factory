@@ -413,6 +413,12 @@ Dependencies from `getFactoryRuntimeDeps()` and `getGatewayDeps()`.
 | `createDemoFactoryAction(…)` (`app/factories/actions.ts`) | `createDemoFactory`, then opens the new factory's Runtime screen |
 
 
+### `llm index` (TASK-1001, ADR-0024)
+| Operation | Contract | Notes |
+|---|---|---|
+| the LLM Index | `buildLlmIndex()` in `lib/agent/llm-index.ts`; `renderLlmIndexMarkdown(index)` in `lib/agent/llm-index-markdown.ts` | pure: no database, no actor. Derived from `routes` and `ACTIVITIES`; `lib/agent/llm-index.test.ts` fails when a route builder is not listed |
+| `GET /llm-index.md` | the index as `text/markdown; charset=utf-8`, `Cache-Control: no-store` | the same content as the `/llm-index` page |
+
 ### Simulation overrides (Phase 08)
 Browser code calls Z-Factory actions/routes; only the server talks to the Go simulation service. As built (TASK-801): `setProcessOverride(deps, actor, moduleId, signal, { mode: "AUTO" | "MANUAL_OVERRIDE" | "SCENARIO", value? , profile? })`, `clearProcessOverride(deps, actor, moduleId, signal)` and `listProcessOverrides(deps, actor, moduleId)` in `lib/services/process-bridge-service.ts`; refusals `process-override-signal` (a command or alarm), `process-bridge-not-running`, `process-sim-configuration` (range, kind, profile). The Go resources and semantics are in `docs/process-simulation.md` → Overrides. The scenario start/stop of the list below is TASK-804. The screen (TASK-802) uses `overrideAction(factoryId, moduleId, signal, …)` in `app/factories/[factoryId]/modules/[moduleId]/actions.ts` (`operation` set with `mode` MANUAL_OVERRIDE + `value` or SCENARIO + `from`/`to`/`durationS`, or clear) and reads the values through `getModuleDesigner` (`runtime.testInputs`).
 
