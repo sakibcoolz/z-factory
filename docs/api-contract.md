@@ -419,6 +419,13 @@ Dependencies from `getFactoryRuntimeDeps()` and `getGatewayDeps()`.
 | the LLM Index | `buildLlmIndex()` in `lib/agent/llm-index.ts`; `renderLlmIndexMarkdown(index)` in `lib/agent/llm-index-markdown.ts` | pure: no database, no actor. Derived from `routes` and `ACTIVITIES`; `lib/agent/llm-index.test.ts` fails when a route builder is not listed |
 | `GET /llm-index.md` | the index as `text/markdown; charset=utf-8`, `Cache-Control: no-store` | the same content as the `/llm-index` page |
 
+### `llm context` (TASK-1002, ADR-0024)
+| Operation | Contract | Notes |
+|---|---|---|
+| a page's LLM Context | `createLlmContext(identity, parts)` and `renderLlmContextMarkdown(document)` in `lib/agent/llm-context.ts`; `LlmContextDocument` version 1 with the ten sections | pure; a builder per page under `lib/agent/contexts/` from the page's own view models |
+| the factory overview's | `buildFactoryOverviewContext({ factory, devices, plcs, docker })` in `lib/agent/contexts/factory-overview.ts` | `plcs` from `listFactoryPlcSummaries(db, actor, factoryId)` in `lib/services/plc-config-service.ts`: per PLC, whether a program is selected, the I/O mapping version and channel occupancy; NOT_FOUND for another owner's factory |
+| which areas have a panel | `LLM_CONTEXT_AREAS` in `lib/agent/contexts/registry.ts` | the LLM Index's "LLM Context" column; every key must be an area of the index (tested) |
+
 ### Simulation overrides (Phase 08)
 Browser code calls Z-Factory actions/routes; only the server talks to the Go simulation service. As built (TASK-801): `setProcessOverride(deps, actor, moduleId, signal, { mode: "AUTO" | "MANUAL_OVERRIDE" | "SCENARIO", value? , profile? })`, `clearProcessOverride(deps, actor, moduleId, signal)` and `listProcessOverrides(deps, actor, moduleId)` in `lib/services/process-bridge-service.ts`; refusals `process-override-signal` (a command or alarm), `process-bridge-not-running`, `process-sim-configuration` (range, kind, profile). The Go resources and semantics are in `docs/process-simulation.md` → Overrides. The scenario start/stop of the list below is TASK-804. The screen (TASK-802) uses `overrideAction(factoryId, moduleId, signal, …)` in `app/factories/[factoryId]/modules/[moduleId]/actions.ts` (`operation` set with `mode` MANUAL_OVERRIDE + `value` or SCENARIO + `from`/`to`/`durationS`, or clear) and reads the values through `getModuleDesigner` (`runtime.testInputs`).
 

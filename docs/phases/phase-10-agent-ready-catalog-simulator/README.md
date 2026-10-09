@@ -52,7 +52,7 @@ Simulation coverage is explicit per catalog model:
 | Task | Status | Scope |
 |---|---|---|
 | TASK-1001 | DONE | Global LLM Index & complete agent guide |
-| TASK-1002 | PLANNED | Reusable page-level LLM Context framework |
+| TASK-1002 | DONE | Reusable page-level LLM Context framework |
 | TASK-1003 | PLANNED | LLM Context tabs across active engineering pages |
 | TASK-1004 | PLANNED | Agent navigation index and cross-page guidance |
 | TASK-1005 | PLANNED | Sidebar cleanup and active-feature navigation |
