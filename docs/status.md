@@ -1,6 +1,6 @@
 # Project Status
 
-Last architecture documentation update: 2026-10-06
+Last architecture documentation update: 2026-10-09
 
 ## Current state
 - Repository initialized on `develop`.
@@ -111,3 +111,15 @@ Phases 00 to 05, the MVP, are done. One thing was not exercised: an external gat
 - Phase 09 created as **MVP 2 — Production Edge & Cloud Integration** (PLANNED). It defines the next delivery boundary after the current foundations: deploy the Go Z-Factory Thin Client Agent on physical/industrial edge hardware, dynamically manage exported per-PLC configurations, operate multiple PLC workers with bounded concurrency and fault isolation, send telemetry/state/heartbeat to cloud over secure MQTT, receive validated command/setpoint messages, survive cloud outages with local store-and-forward, and prove physical multi-PLC failure/recovery E2E behaviour. TASK-503 remains the primary Thin Client Agent dependency; detailed TASK-9xx execution units will be created before Phase 09 implementation starts.
 
 - Phase 09 MVP 2 now includes **Web Factory**, a cloud-hosted TypeScript web application. Thin Client Agents publish PLC telemetry/state/heartbeat through secure MQTT; Web Factory consumes those topics server-side, keeps cloud telemetry/events/alarms/command history and latest-state views, provides factory/site/agent/PLC/module dashboards, and publishes authorized command/setpoint requests back through MQTT. MQTT credentials and PLC/Modbus access remain server/agent-side rather than in the browser. The Thin Client re-validates writable mappings, and PLC program/interlocks remain authoritative for physical outputs.
+
+
+## Planned Phase 10 — Agent-Ready Engineering & Full Catalog Go Simulation
+- Add a home-page **LLM Index** that explains the complete Z-Factory engineering application to external browser-based AI/coding agents.
+- Add a consistent **LLM Context** tab to every active engineering page. Phase 10 does not require an embedded LLM, third-party model API or MCP server; external browser agents read visible application context and use normal UI controls.
+- Hide inactive/future/duplicate sidebar destinations so human users and browser agents see only usable product workflows.
+- Make missing engineering decisions and validation failures agent-readable without weakening existing validation.
+- Expand the Go simulator into a catalog-driven industrial device behavior runtime. Catalog models without a legal/usable vendor Docker/runtime are simulated from documented behavior rather than represented as vendor firmware.
+- Require every catalog model to declare simulation coverage as FULL, PARTIAL, GENERIC or NOT_SIMULATABLE.
+- Extend behavior coverage across drives/starters, motors, process loads, valves/actuators, relays/contactors, heaters/indicators, switches, sensors/transmitters, encoders, controllers, remote I/O, IO-Link and protocol/gateway devices where meaningful.
+- Preserve ADR-0015: external agents and simulators may provide engineering/test inputs, but PLC program/interlocks remain authoritative for local physical outputs.
+- Execution plan: `docs/phases/phase-10-agent-ready-catalog-simulator/`.
