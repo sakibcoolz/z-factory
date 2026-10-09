@@ -1,6 +1,6 @@
 # TASK-004 — Makefile to Start, Stop and Restart the Local Development Stack
 
-Status: **IN REVIEW**
+Status: **DONE**
 Linear: [ZFA-55](https://linear.app/recruit-verse/issue/ZFA-55)
 
 A follow-up of TASK-003 (development bootstrap specification).
@@ -57,12 +57,20 @@ The owner asked for a Makefile to start, stop and restart the project locally, i
 - **`make stop`, twice:** everything stopped, then "not running" or "stopped" again, with no `next` process and none of ports 3000, 3200, 1883, 7700 or 5432 left listening.
 - **Fresh database:** `prisma migrate deploy` for Web Factory against a database that did not exist created it and applied every migration. The check database was dropped afterwards.
 - **Gates:** `npx prettier --check .`, `npm run lint`, `npx tsc --noEmit` and `npm run build` are clean. `TEST_DOCKER=1 npm test`: 97 files, 1044 tests passed.
+- **Final gates on the PR branch (2026-10-09, commit 1651ee9).** They ran in a clean worktree with its own `npm ci`, so the owner's running stack was untouched.
+  - Root: prettier, lint, `tsc --noEmit` and build are clean. `TEST_DOCKER=1 npm test`: 97 files, 1044 tests passed.
+  - Web Factory: lint, `tsc --noEmit` and build are clean. `npm test`: 13 files passed, 3 skipped, 72 tests.
+  - In the first run, `test/telemetry.test.ts` ("drops partitions past the retention") failed. A day partition, `d20260908`, was left in the shared test database by an earlier day's run, and today's maintenance dropped it as well. This does not depend on this change: the test passed when re-run alone, and the whole suite passed after that.
 - **Left as found:** PostgreSQL running, everything else stopped.
 - **Not run:** `make setup`'s `npm ci` (it reinstalls `node_modules`); its other steps are the ones above.
 
 - **Tailnet:**
   - After `make restart-app restart-web`, the app server's environment held `DEV_ALLOWED_ORIGINS=localhost-1.taildb081d.ts.net,100.103.104.50`.
   - `make serve` stopped after 15 s with Tailscale's "Serve is not enabled on your tailnet" and its link, exit 1. `make status` showed "not served".
+
+## Open after this task
+- **HTTPS on the tailnet** is ready but not yet switched on. The owner has to enable HTTPS certificates for the tailnet once (the link `make serve` prints, or Admin console → DNS → HTTPS Certificates), then run `make serve`. Until then the apps are reachable over the tailnet by plain HTTP, which Tailscale encrypts.
+- **Test isolation:** Web Factory's telemetry retention test depends on partitions earlier runs left in the shared test database. It needs its own clean-up to be repeatable on any day. Not part of this task.
 
 ## Notes
 - **Running dev server and the typecheck:** while a dev server runs, `npx tsc --noEmit` at the root fails on `.next/dev/types/validator.ts`, with or without this change. That folder is included by `tsconfig.json`, and the running server's route types clash with the build's. Run the gates with the stack stopped.
