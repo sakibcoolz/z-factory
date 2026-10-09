@@ -11,7 +11,7 @@
 | 06 | Process Module Framework & Go Simulation Service | IN PROGRESS | Phase 02–05 foundations stable; ADR-0008 |
 | 07 | PLC-to-PLC Communication | PLANNED | Multi-PLC OpenPLC runtime + Modbus mapping stable |
 | 08 | Simulation Control, Overrides & Closed-Loop Testing | PLANNED | Go simulation + PLC bridge stable; ADR-0015 |
-| 09 | MVP 2 — Production Edge & Cloud Integration | PLANNED | Thin Client Agent + closed-loop test foundations ready |
+| 09 | MVP 2 — Production Edge & Cloud Integration | IN PROGRESS | Thin Client Agent + closed-loop test foundations ready |\n| 10 | Agent-Ready Engineering & Full Catalog Go Simulation | PLANNED | Active engineering model + catalog/runtime foundations stable |
 
 Cross-cutting requirements now included in the roadmap:
 - PostgreSQL + Prisma domain model
@@ -33,7 +33,7 @@ Cross-cutting requirements now included in the roadmap:
 - independent PLC containers/programs with validated inter-PLC data exchange
 - production Go Thin Client Agent with dynamic file-driven PLC workers
 - secure MQTT edge-to-cloud transport
-- Web Factory TypeScript cloud application for monitoring, history and remote command orchestration
+- Web Factory TypeScript cloud application for monitoring, history and remote command orchestration\n- browser-agent-readable LLM Index and page-level LLM Context, without embedded LLM/MCP dependency\n- catalog-driven Go device behavior simulation with explicit fidelity/coverage
 
 Phase 06 execution units:
 - TASK-601 Process module domain & persistence
@@ -65,3 +65,22 @@ Phase 09 execution units:
 Phase 09 is the **MVP 2** delivery boundary. TASK-503 (Z-Factory Thin Client Agent) remains its primary edge-agent dependency, with Phase 08 providing closed-loop validation foundations.
 
 A phase can start only when prerequisites are met. Individual task files are the execution unit.
+
+
+Phase 10 execution units:
+- TASK-1001 Global LLM Index & complete agent guide
+- TASK-1002 Reusable page-level LLM Context framework
+- TASK-1003 LLM Context tabs across active engineering pages
+- TASK-1004 Agent navigation index and cross-page guidance
+- TASK-1005 Sidebar cleanup and active-feature navigation
+- TASK-1006 User-decision and recommendation guidance
+- TASK-1007 Agent-readable validation and error explanations
+- TASK-1008 Browser-agent end-to-end engineering validation
+- TASK-1009 Go Catalog Simulation Runtime foundation
+- TASK-1010 Catalog device capability and behavior schema
+- TASK-1011 Full industrial device behavior library
+- TASK-1012 Vendor catalog model to simulation-profile mapping
+- TASK-1013 Protocol/register-controlled device simulation
+- TASK-1014 Fault, failure and degraded-quality simulation
+- TASK-1015 Dynamic catalog-driven simulator instantiation
+- TASK-1016 Catalog simulation coverage report and validation
