@@ -102,13 +102,62 @@ A task that introduces a variable adds it to this table, to `.env.example` and t
 | `npm run format` / `npm run format:check` | Prettier write / check |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm test` | unit and component tests; database integration tests when `TEST_DATABASE_URL` is set; Docker lifecycle tests when `TEST_DOCKER=1` |
-| `npm run db:up` / `npm run db:down` | start / stop the local PostgreSQL container |
+| `make start` / `make stop` / `make restart` / `make status` | the whole local stack (see Local stack) |
+| `make serve` / `make unserve` | publish both dev servers over HTTPS on the tailnet (see Local stack) |
+| `npm run db:up` / `npm run db:down` | start / stop the local PostgreSQL container (no `PROCESS_SIM_TOKEN` needed) |
 | `npm run db:generate` | generate the Prisma client (also runs on `npm install`) |
 | `npm run db:migrate` | create/apply migrations in development |
 | `npm run db:deploy` | apply committed migrations (CI, production) |
 | `npm run db:seed` | load the device categories and the shipped catalog (verified vendor records, generic simulated models); safe to repeat |
 | `go test -race ./...` in `services/process-sim` | tests of the process simulation service; `go build ./cmd/process-sim` builds the binary the harness starts (`PROCESS_SIM_BIN`) |
 | `npm run assets -- <command>` | author catalog 3D assets: `list`, `prompt`, `generate`, `resume`, `import`, `share`, `activate`, `retire` (`docs/device-catalog.md` → Authoring assets). `generate` spends Meshy credits and asks for `--yes` |
+
+## Local stack (TASK-004)
+`make` starts, stops and restarts the whole local development stack; `scripts/dev-stack.sh` does the work.
+
+| Part | What it is | Address |
+|---|---|---|
+| `db` | PostgreSQL from `compose.yaml`, both apps' databases | `127.0.0.1:5432` |
+| `sim` | the process simulation service from `compose.yaml` (profile `sim`) | `http://127.0.0.1:7700` |
+| `broker` | Mosquitto with Dynamic Security for Web Factory (container `web-factory-broker`, data in the `web-factory-broker-data` volume) | `mqtt://127.0.0.1:1883` |
+| `app` | the Z-Factory dev server | `http://localhost:3000` |
+| `web` | the Web Factory dev server | `http://localhost:3200` |
+
+**Targets**
+- `make start`, `make stop`, `make restart` and `make status` act on all parts, in the order above; `stop` goes in reverse.
+- `make start-<part>`, `stop-<part>` and `restart-<part>` act on one part.
+- `make setup` is the first run: `npm ci` in both apps, the database, the catalog seed, then everything.
+- `make migrate` and `make seed` run on their own; `make logs`, `logs-app` and `logs-web` follow the dev servers' logs.
+- `make stop-runtimes` is described under "What stop leaves alone".
+
+**How the parts are started**
+- **Migrations:** starting the database applies the committed migrations of both apps (`prisma migrate deploy`, which also creates a missing database).
+- **Dev servers:** they run in the background, each in its own session.
+  - Their PID files and logs are in `.run/` (git-ignored).
+  - `stop` ends the whole session, and only a server the script started: a port held by another process is reported and left alone.
+  - Starting something that already runs, and stopping something already stopped, change nothing.
+- **Ports:** `APP_PORT`, `WEB_PORT`, `BROKER_PORT` and `PROCESS_SIM_PORT` move them, e.g. `make start APP_PORT=3001`.
+
+**Secrets** are generated once, readable by their owner only, and never printed.
+- **The process simulation token:** `PROCESS_SIM_TOKEN` from the environment or `.env`, otherwise `.run/process-sim-token`. The container and the Z-Factory server get the same token (and `PROCESS_SIM_URL`).
+- **The broker admin password:** `apps/web-factory/mqtt-admin-password`.
+  - Mosquitto reads it on its first start only; Dynamic Security keeps it in the broker's volume. Delete the volume as well if you delete the file.
+  - Web Factory gets `WEB_FACTORY_MQTT_URL`, `_USERNAME` (`admin`) and `_PASSWORD_FILE` for this broker, unless its `.env` sets them.
+
+**What stop leaves alone:** the PLC runtime containers that factories started are not part of the stack.
+- "Stop factory" in the app stops them and keeps the stored states right.
+- `make stop-runtimes` stops every one behind the app's back. The app keeps showing those factories as they were until each is stopped or refreshed there.
+
+**HTTPS on the tailnet:** opened from another device by its tailnet address (`http://100.x.y.z:3000`), the browser warns before every form submit that the connection is not secure. The traffic is in fact encrypted by Tailscale, but the browser cannot know that. `make serve` publishes both dev servers over HTTPS with Tailscale's own certificates, on the tailnet only:
+- Z-Factory: `https://<machine>.<tailnet>.ts.net`;
+- Web Factory: `https://<machine>.<tailnet>.ts.net:8443`.
+
+Setup and behaviour:
+- **One-time setup:** HTTPS must be enabled for the tailnet. The first `make serve` prints Tailscale's link to enable it, and gives up after 15 s. If Tailscale refuses the configuration, `sudo tailscale set --operator=$USER` lets your user change it.
+- **Persistence:** Tailscale keeps the setting across restarts. `make unserve` removes it, and `make status` shows the addresses.
+- **Allowed origins:** the dev servers accept the machine's tailnet name and address as origins for their dev resources, hot reload included (`DEV_ALLOWED_ORIGINS`, set by `make start`).
+
+**Agent-generated files:** `next dev` started by an AI coding agent (detected by Next.js from its environment) writes a Next.js block into `AGENTS.md` and creates `apps/web-factory/AGENTS.md`. Do not commit them; started from a normal terminal, nothing is written.
 
 ## Docker development prerequisites
 - Docker Engine with the Compose plugin; the developer's user can reach the Docker daemon.

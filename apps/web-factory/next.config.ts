@@ -10,6 +10,9 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: root,
   turbopack: { root },
   poweredByHeader: false,
+  // Hosts other than localhost that may load dev resources such as hot reload, e.g. the
+  // machine's tailnet name (TASK-004). `make start` sets it; production ignores it.
+  allowedDevOrigins: process.env.DEV_ALLOWED_ORIGINS?.split(",").filter(Boolean),
   // Web Factory is internet-facing: no framing, no sniffing, no referrer leaks.
   async headers() {
     return [

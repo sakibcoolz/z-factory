@@ -1,0 +1,76 @@
+---
+references:
+  - "File: /apps/web-factory/app/(signed-in)/actions.ts"
+  - "File: /apps/web-factory/app/(signed-in)/agents/[agentId]/page.tsx"
+  - "File: /apps/web-factory/app/(signed-in)/orgs/[orgId]/page.tsx"
+  - "File: /apps/web-factory/app/(signed-in)/plcs/[plcId]/page.tsx"
+  - "File: /apps/web-factory/app/(signed-in)/sites/[siteId]/page.tsx"
+  - "File: /apps/web-factory/app/api/ready/route.ts"
+  - "File: /apps/web-factory/components/connectivity.tsx"
+  - "File: /apps/web-factory/components/credentials-form.tsx"
+  - "File: /apps/web-factory/instrumentation.ts"
+  - "File: /apps/web-factory/lib/domain/agent-messages.test.ts"
+  - "File: /apps/web-factory/lib/domain/agent-messages.ts"
+  - "File: /apps/web-factory/lib/domain/broker-access.ts"
+  - "File: /apps/web-factory/lib/domain/connectivity.test.ts"
+  - "File: /apps/web-factory/lib/domain/connectivity.ts"
+  - "File: /apps/web-factory/lib/domain/errors.ts"
+  - "File: /apps/web-factory/lib/env.ts"
+  - "File: /apps/web-factory/lib/mqtt/boundary.ts"
+  - "File: /apps/web-factory/lib/mqtt/dynsec.ts"
+  - "File: /apps/web-factory/lib/mqtt/ingest.ts"
+  - "File: /apps/web-factory/lib/mqtt/runtime.ts"
+  - "File: /apps/web-factory/lib/services/onboarding-service.ts"
+  - "File: /apps/web-factory/lib/services/site-service.ts"
+  - "File:
+    /apps/web-factory/prisma/migrations/20261007120000_agent_connectivity/migra\
+    tion.sql"
+  - "File: /apps/web-factory/test/broker.test.ts"
+  - "File: /apps/web-factory/test/connectivity.test.ts"
+  - "File: /apps/web-factory/test/harness.ts"
+generationTime: 2026-10-07T04:55:55.349Z
+---
+architecture-beta
+    group ui(internet)[UI Layer]
+    group server(server)[Server Actions]
+    group domain(cloud)[Domain Layer]
+    group services(cloud)[Service Layer]
+    group mqtt(server)[MQTT Boundary]
+    group ext(cloud)[External Systems]
+
+    service pages(server)[Signed In Pages] in ui
+    service components(server)[Connectivity Components] in ui
+
+    service actions(server)[Server Actions] in server
+
+    service connectivity(server)[Connectivity Projection] in domain
+    service messages(server)[Agent Messages] in domain
+    service brokeracc(server)[Broker Access] in domain
+
+    service siteservice(server)[Site Service] in services
+    service onboarding(server)[Onboarding Service] in services
+
+    service boundary(server)[Mqtt Boundary] in mqtt
+    service runtime(server)[Mqtt Runtime] in mqtt
+    service ingest(server)[Ingestor] in mqtt
+    service dynsec(server)[Dynamic Security] in mqtt
+
+    service db(database)[Postgres] in ext
+    service broker(internet)[Mosquitto Broker] in ext
+
+    pages:B --> T:components
+    pages{group}:R --> L:actions{group}
+    actions{group}:R --> L:siteservice{group}
+    onboarding:T -- B:siteservice
+    siteservice{group}:B --> T:connectivity{group}
+    messages:R -- L:brokeracc
+    onboarding{group}:B --> T:dynsec{group}
+    siteservice{group}:B --> T:db{group}
+    boundary:R -- L:runtime
+    runtime:B --> T:ingest
+    runtime:R --> L:dynsec
+    ingest{group}:B --> T:db{group}
+    runtime{group}:B --> T:broker{group}
+
+    align column siteservice connectivity
+    align row boundary runtime

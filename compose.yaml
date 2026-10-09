@@ -22,12 +22,14 @@ services:
 
   # The process simulation service (ADR-0008, TASK-602): one container for every factory,
   # bound to localhost, with the limits an internal runtime component gets. Started on
-  # request: `docker compose --profile sim up -d process-sim`, with PROCESS_SIM_TOKEN set.
+  # request: `make start-sim`, or `docker compose --profile sim up -d process-sim` with
+  # PROCESS_SIM_TOKEN set. The service itself refuses to start without a token of at least
+  # 16 characters; it is not required here, so starting only postgres needs no token (TASK-004).
   process-sim:
     profiles: ["sim"]
     build: ./services/process-sim
     environment:
-      PROCESS_SIM_TOKEN: ${PROCESS_SIM_TOKEN:?set PROCESS_SIM_TOKEN to a secret of at least 16 characters}
+      PROCESS_SIM_TOKEN: ${PROCESS_SIM_TOKEN:-}
       PROCESS_SIM_MAX_INSTANCES: ${PROCESS_SIM_MAX_INSTANCES:-256}
     ports:
       - "127.0.0.1:${PROCESS_SIM_PORT:-7700}:7700"
