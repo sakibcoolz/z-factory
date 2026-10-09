@@ -1,3 +1,4 @@
+import { LLM_CONTEXT_AREAS } from "@/lib/agent/contexts/registry";
 import { ACTIVITIES, type ActivityKey } from "@/lib/navigation/activities";
 import { routes } from "@/lib/navigation/routes";
 
@@ -38,9 +39,11 @@ export type EngineeringArea = {
   tasks: readonly string[];
   /** The decisions the agent asks the user for here, instead of guessing. */
   decisions: readonly string[];
-  /** Whether its pages have an LLM Context tab (TASK-1002, TASK-1003). */
+  /** Whether its pages have an LLM Context panel (TASK-1002, TASK-1003); from `LLM_CONTEXT_AREAS`. */
   llmContext: boolean;
 };
+
+type AreaDefinition = Omit<EngineeringArea, "llmContext">;
 
 export type AgentFile = {
   key: RouteKey;
@@ -95,7 +98,7 @@ export function routePattern(path: string): string {
 
 const route = (key: RouteKey, path: string, note?: string): AreaRoute => ({ key, pattern: routePattern(path), note });
 
-const AREAS: readonly EngineeringArea[] = [
+const AREAS: readonly AreaDefinition[] = [
   {
     key: "factories",
     label: "Factories",
@@ -108,7 +111,6 @@ const AREAS: readonly EngineeringArea[] = [
     purpose: "The entry point: the list of factories, their state, and where a factory is created.",
     tasks: ["open an existing factory", "create a factory", "build the pump station demo to learn the product"],
     decisions: ["the factory's name and slug", "its subnet, when the suggested free one is not wanted"],
-    llmContext: false,
   },
   {
     key: "catalog",
@@ -126,7 +128,6 @@ const AREAS: readonly EngineeringArea[] = [
     decisions: [
       "which model: a vendor model (a hardware profile with sources, never vendor firmware) or a generic simulated one",
     ],
-    llmContext: false,
   },
   {
     key: "factory",
@@ -147,7 +148,6 @@ const AREAS: readonly EngineeringArea[] = [
       "delete a factory",
     ],
     decisions: ["deleting a factory, which removes its devices, programs and history"],
-    llmContext: false,
   },
   {
     key: "designer",
@@ -167,7 +167,6 @@ const AREAS: readonly EngineeringArea[] = [
       "which relationship, when the canvas asks because more than one applies",
       "which device to wire to, when several PLCs or channels are compatible",
     ],
-    llmContext: false,
   },
   {
     key: "topology",
@@ -181,7 +180,6 @@ const AREAS: readonly EngineeringArea[] = [
     purpose: "Read-only views of the same factory: the wiring and network topology, and the 3D scene.",
     tasks: ["read the wiring without changing it", "show the plant in 3D"],
     decisions: [],
-    llmContext: false,
   },
   {
     key: "devices",
@@ -209,7 +207,6 @@ const AREAS: readonly EngineeringArea[] = [
       "the instance name, when the next numbered name is not wanted",
       "parameter values that change how the machine behaves",
     ],
-    llmContext: false,
   },
   {
     key: "plc",
@@ -237,7 +234,6 @@ const AREAS: readonly EngineeringArea[] = [
       "read the Modbus address and tag of a channel",
     ],
     decisions: ["which module to install, and in which slot"],
-    llmContext: false,
   },
   {
     key: "program",
@@ -252,7 +248,6 @@ const AREAS: readonly EngineeringArea[] = [
       "The control logic of a PLC: edit, Check (compile), Save version, Save & deploy. A new PLC opens with a starter program that declares its tags.",
     tasks: ["write or change the control logic", "compile and read the findings", "select or roll back a version"],
     decisions: ["the control strategy, setpoints and interlocks: these are the user's engineering choices"],
-    llmContext: false,
   },
   {
     key: "plc-communication",
@@ -263,7 +258,6 @@ const AREAS: readonly EngineeringArea[] = [
     purpose: "Modbus TCP links between PLCs of one factory, with their tag-to-tag mappings and link health.",
     tasks: ["link two PLCs", "map a value from one PLC into another"],
     decisions: ["which PLC is client and which is server", "which values cross the link"],
-    llmContext: false,
   },
   {
     key: "modules",
@@ -278,7 +272,6 @@ const AREAS: readonly EngineeringArea[] = [
       "Process behaviour (a tank, a boiler) composed from the factory's devices and bound to PLC I/O; run by the Go process simulation service.",
     tasks: ["model a process around existing devices", "bind a module's signals to PLC tags"],
     decisions: ["which devices play which role in the module", "which PLC tags carry its signals"],
-    llmContext: false,
   },
   {
     key: "runtime",
@@ -301,7 +294,6 @@ const AREAS: readonly EngineeringArea[] = [
       "Running the plant. A PLC runs as an OpenPLC runtime in its own container on the factory's isolated network; the simulation and the gateway endpoints follow.",
     tasks: ["start or stop the factory", "start, deploy to, restart or stop one PLC", "read a runtime's real state"],
     decisions: ["starting or stopping anything that is running: say what will happen and ask first"],
-    llmContext: false,
   },
   {
     key: "simulation",
@@ -324,7 +316,6 @@ const AREAS: readonly EngineeringArea[] = [
       "run a closed-loop scenario",
     ],
     decisions: ["which faults or overrides to apply to a running plant"],
-    llmContext: false,
   },
   {
     key: "tags",
@@ -335,7 +326,6 @@ const AREAS: readonly EngineeringArea[] = [
     purpose: "The live values of every tag, read from the running PLCs, with writes to command and setpoint tags.",
     tasks: ["read what the PLC sees and drives", "write a command or setpoint tag that is externally writable"],
     decisions: ["the value to write, and whether to write at all while the plant runs"],
-    llmContext: false,
   },
   {
     key: "events",
@@ -346,7 +336,6 @@ const AREAS: readonly EngineeringArea[] = [
     purpose: "What happened: runtime events, device state changes, alarms and their history.",
     tasks: ["find out why a device faulted", "see the active alarms", "follow what a scenario did"],
     decisions: [],
-    llmContext: false,
   },
   {
     key: "gateways",
@@ -362,7 +351,6 @@ const AREAS: readonly EngineeringArea[] = [
       "download the register map an edge client uses",
     ],
     decisions: ["which host address and port to publish", "which tags an external client may write"],
-    llmContext: false,
   },
   {
     key: "export",
@@ -381,7 +369,6 @@ const AREAS: readonly EngineeringArea[] = [
       "The engineering snapshot of a PLC: specs, I/O, tags, Modbus map, connected devices, versions and topology, as a report and as files.",
     tasks: ["hand the design to a person or another tool", "generate the Thin Client Agent's deployment file"],
     decisions: [],
-    llmContext: false,
   },
   {
     key: "llm-index",
@@ -392,7 +379,6 @@ const AREAS: readonly EngineeringArea[] = [
     purpose: "This guide: the product, its areas and routes, the agent workflow and the rules.",
     tasks: ["understand the whole application before navigating"],
     decisions: [],
-    llmContext: false,
   },
 ];
 
@@ -526,7 +512,7 @@ export function buildLlmIndex(): LlmIndex {
       label: activity.label,
       factoryScoped: activity.href(undefined) === undefined,
     })),
-    areas: AREAS,
+    areas: AREAS.map((area) => ({ ...area, llmContext: LLM_CONTEXT_AREAS.has(area.key) })),
     files: FILES,
     workflow: WORKFLOW,
     rules: RULES,

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { LlmContextPanel } from "@/components/agent/llm-context";
 import { DeleteFactory } from "@/components/factories/delete-factory";
 import { DeviceTree } from "@/components/factories/device-tree";
 import { FactoryExplorer } from "@/components/factories/factory-explorer";
@@ -7,11 +8,12 @@ import { Content, EditorTabs } from "@/components/shell/editor";
 import { Button } from "@/components/ui/button";
 import { SectionRule } from "@/components/ui/primitives";
 import { RuntimeStatePill } from "@/components/ui/state-pill";
+import { buildFactoryOverviewContext } from "@/lib/agent/contexts/factory-overview";
 import { getDb } from "@/lib/db/client";
 import { flattenDeviceTree } from "@/lib/domain/device-tree";
 import { formatUtc } from "@/lib/factories/format";
 import { routes } from "@/lib/navigation/routes";
-import { getFactoryDeviceTree } from "@/lib/services/plc-config-service";
+import { getFactoryDeviceTree, listFactoryPlcSummaries } from "@/lib/services/plc-config-service";
 import { deleteFactoryAction } from "../actions";
 import { loadFactory } from "./load-factory";
 
@@ -27,8 +29,12 @@ type FactoryPageProps = {
 export default async function FactoryPage({ params }: FactoryPageProps) {
   const { factoryId } = await params;
   const { factory, factories, docker, actor } = await loadFactory(factoryId);
-  const devices = await getFactoryDeviceTree(getDb(), actor, factory.id);
+  const [devices, plcs] = await Promise.all([
+    getFactoryDeviceTree(getDb(), actor, factory.id),
+    listFactoryPlcSummaries(getDb(), actor, factory.id),
+  ]);
   const deviceTotal = flattenDeviceTree(devices).length;
+  const llmContext = buildFactoryOverviewContext({ factory, devices, plcs, docker });
 
   return (
     <AppShell
@@ -130,6 +136,7 @@ export default async function FactoryPage({ params }: FactoryPageProps) {
           This is the factory&apos;s desired configuration; nothing here starts Docker. A PLC is started from its
           Runtime screen, the device simulation from the Simulator.
         </p>
+        <LlmContextPanel document={llmContext} />
       </Content>
     </AppShell>
   );

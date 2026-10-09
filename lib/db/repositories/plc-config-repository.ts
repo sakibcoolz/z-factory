@@ -142,6 +142,23 @@ export const plcConfigRepository = {
     });
   },
 
+  /** The PLCs of a factory with what the overview's LLM Context needs: program selected, I/O versions, point status. */
+  listFactoryPlcProfiles(db: Db, factoryId: string) {
+    return db.deviceInstance.findMany({
+      where: { factoryId, plcProfile: { isNot: null } },
+      select: {
+        id: true,
+        name: true,
+        runtimeStatus: true,
+        deviceModel: { select: { architectureType: true } },
+        plcProfile: {
+          select: { programVersionId: true, ioMappingVersion: true, ioPoints: { select: { status: true } } },
+        },
+      },
+      orderBy: { name: "asc" },
+    });
+  },
+
   /** Which devices of a factory are connected: wiring and relationships, and a gateway with the PLC it reads. */
   async listFactoryLinks(
     db: Db,

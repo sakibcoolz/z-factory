@@ -20,7 +20,7 @@ const service = vi.hoisted(() => ({
   updateFactory: vi.fn(),
   deleteFactory: vi.fn(),
 }));
-const plcConfig = vi.hoisted(() => ({ getFactoryDeviceTree: vi.fn() }));
+const plcConfig = vi.hoisted(() => ({ getFactoryDeviceTree: vi.fn(), listFactoryPlcSummaries: vi.fn() }));
 const actor = vi.hoisted(() => ({ requireActor: vi.fn() }));
 const dockerStatus = vi.hoisted(() => ({ getDockerEngineStatus: vi.fn() }));
 
@@ -66,6 +66,7 @@ beforeEach(() => {
   service.getFactory.mockResolvedValue(factory());
   service.suggestFactorySubnet.mockResolvedValue("172.20.2.0/24");
   dockerStatus.getDockerEngineStatus.mockResolvedValue({ reachable: true, version: "29.7.2" });
+  plcConfig.listFactoryPlcSummaries.mockResolvedValue([]);
 });
 
 describe("2a factories list", () => {
@@ -227,6 +228,16 @@ describe("factory view and edit", () => {
     expect(screen.getByText("6 devices · 1 PLCs")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Edit" })).toHaveAttribute("href", `/factories/${FACTORY_ID}/edit`);
     expect(screen.getByText("No devices yet. Start with a PLC, then connect peripherals to it.")).toBeInTheDocument();
+    // The LLM Context panel (TASK-1002) is built from the same data: no PLC is an issue and a question.
+    const panel = screen.getByText("LLM Context · Pump House · validation issues").closest("details") as HTMLElement;
+    expect(panel).toHaveAttribute("data-llm-context", "factory");
+    const validation = within(within(panel).getByRole("region", { name: "Validation state" }));
+    expect(validation.getByText("No PLC")).toBeInTheDocument();
+    expect(within(panel).getByText("Which PLC?")).toBeInTheDocument();
+    expect(within(panel).getByRole("link", { name: "Edit factory" })).toHaveAttribute(
+      "href",
+      `/factories/${FACTORY_ID}/edit`,
+    );
   });
 
   it("lists the factory's devices under the PLC they are connected to and offers both PLC paths", async () => {
@@ -258,9 +269,11 @@ describe("factory view and edit", () => {
       { device: { ...valve, id: "01a10a0d-e48d-744e-ba58-dfb344f7e885", name: "XV-900" }, children: [] },
     ]);
     render(await FactoryPage({ params }));
+    // The device tree is the table; the LLM Context panel below names the same devices.
+    const tree = within(screen.getByRole("table"));
 
     expect(screen.getByText("Devices · 3")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "PLC-01" })).toHaveAttribute(
+    expect(tree.getByRole("link", { name: "PLC-01" })).toHaveAttribute(
       "href",
       `/factories/${FACTORY_ID}/plcs/01a10a0d-e48d-744e-ba58-dfb344f7e883`,
     );
@@ -268,23 +281,25 @@ describe("factory view and edit", () => {
     expect(screen.getByText("Pump station")).toBeInTheDocument();
     // What is connected to the PLC is under its drop-down; a device connected to nothing is listed beside it.
     expect(screen.getByText("1 device")).toBeInTheDocument();
-    expect(screen.queryByText("XV-101")).not.toBeInTheDocument();
-    expect(screen.getByText("XV-900")).toBeInTheDocument();
+    expect(tree.queryByText("XV-101")).not.toBeInTheDocument();
+    expect(tree.getByText("XV-900")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Show the devices connected to PLC-01" }));
     // A peripheral has a screen of its own since TASK-308.
-    expect(screen.getByRole("link", { name: "XV-101" })).toHaveAttribute(
+    expect(tree.getByRole("link", { name: "XV-101" })).toHaveAttribute(
       "href",
       `/factories/${FACTORY_ID}/devices/01a10a0d-e48d-744e-ba58-dfb344f7e884`,
     );
-    expect(screen.getByRole("link", { name: "Add compact PLC" })).toHaveAttribute(
-      "href",
-      `/factories/${FACTORY_ID}/devices/new/compact`,
-    );
-    expect(screen.getByRole("link", { name: "Add modular PLC" })).toHaveAttribute(
-      "href",
-      `/factories/${FACTORY_ID}/devices/new/modular`,
-    );
+    // Offered as a page button and as an LLM Context action; both lead to the same screen.
+    for (const [name, architecture] of [
+      ["Add compact PLC", "compact"],
+      ["Add modular PLC", "modular"],
+    ]) {
+      const links = screen.getAllByRole("link", { name });
+      expect(links).toHaveLength(2);
+      for (const link of links)
+        expect(link).toHaveAttribute("href", `/factories/${FACTORY_ID}/devices/new/${architecture}`);
+    }
   });
 
   it("answers unknown, foreign and malformed ids with not-found", async () => {

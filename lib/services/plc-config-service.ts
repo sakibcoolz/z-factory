@@ -22,7 +22,7 @@ import type {
   PlcPointView,
 } from "@/lib/domain/plc-config-view";
 import { findSignal, isSimulatedType } from "@/lib/domain/simulation";
-import type { PrismaClient } from "@/lib/generated/prisma/client";
+import type { PlcArchitecture, PrismaClient, RuntimeState } from "@/lib/generated/prisma/client";
 import { assignTerminals, type DeviceTerminal, type PlcChannel, sharedProtocols } from "@/lib/validation/compatibility";
 import { requiredIoPointType } from "@/lib/validation/connection";
 import {
@@ -704,6 +704,42 @@ export async function listFactoryDevices(
     architectureType: device.deviceModel.architectureType,
     runtimeStatus: device.runtimeStatus,
   }));
+}
+
+/** A PLC of a factory as the factory overview's LLM Context summarizes it (TASK-1002). */
+export type FactoryPlcSummary = {
+  id: string;
+  name: string;
+  architectureType: PlcArchitecture;
+  runtimeStatus: RuntimeState;
+  /** Whether a program version is selected to run on the next start. */
+  programSelected: boolean;
+  ioMappingVersion: number;
+  occupancy: { total: number; occupied: number };
+};
+
+export async function listFactoryPlcSummaries(
+  db: PrismaClient,
+  actor: Actor,
+  factoryId: string,
+): Promise<FactoryPlcSummary[]> {
+  if (!(await factoryRepository.findById(db, actor.ownerId, factoryId))) throw notFound("factory");
+  return (await plcConfigRepository.listFactoryPlcProfiles(db, factoryId)).flatMap((plc) => {
+    // The query keeps PLCs only; the model's architecture is set for every controller.
+    if (!plc.plcProfile || !plc.deviceModel.architectureType) return [];
+    const points = plc.plcProfile.ioPoints;
+    return [
+      {
+        id: plc.id,
+        name: plc.name,
+        architectureType: plc.deviceModel.architectureType,
+        runtimeStatus: plc.runtimeStatus,
+        programSelected: plc.plcProfile.programVersionId !== null,
+        ioMappingVersion: plc.plcProfile.ioMappingVersion,
+        occupancy: { total: points.length, occupied: points.filter((point) => point.status !== "FREE").length },
+      },
+    ];
+  });
 }
 
 /**
