@@ -13,6 +13,7 @@ import {
   getPlcConfiguration,
   installModule,
   listFactoryDevices,
+  listFactoryPlcSummaries,
   listInstallableModules,
   listPlcModels,
   removeModule,
@@ -206,6 +207,26 @@ describeDb("PLC configuration against PostgreSQL", () => {
       ["closed", "OUT", "COIL", 8192],
       ["opened", "OUT", "COIL", 8193],
     ]);
+  });
+
+  it("summarizes a factory's PLCs for the overview's LLM Context: program, versions, occupancy (TASK-1002)", async () => {
+    const { factoryId, plcId } = await newPlc("CPU 1214C DC/DC/DC");
+    await add(plcId, "Generic on/off valve, 24 V DC", "XV-101");
+
+    expect(await listFactoryPlcSummaries(db, alice, factoryId)).toEqual([
+      {
+        id: plcId,
+        name: "PLC-01",
+        architectureType: "COMPACT",
+        runtimeStatus: "STOPPED",
+        programSelected: false,
+        ioMappingVersion: 1,
+        occupancy: { total: 26, occupied: 3 },
+      },
+    ]);
+    // A peripheral is not a PLC; another owner's factory is not found.
+    expect((await listFactoryPlcSummaries(db, alice, factoryId)).map((plc) => plc.name)).not.toContain("XV-101");
+    await expectDomainError(listFactoryPlcSummaries(db, bob, factoryId), "NOT_FOUND");
   });
 
   it("honours a chosen channel and never assigns an occupied or incompatible one", async () => {
