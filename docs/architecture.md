@@ -484,3 +484,11 @@ Rules:
 - Command lifecycle is auditable through command ids and acknowledgements.
 - Browser/UI never connects directly to PLC Modbus endpoints.
 - PLC scan-cycle logic/interlocks remain the final authority for local outputs.
+
+## Agent-facing engineering surface — Phase 10 (ADR-0024)
+External browser and coding agents operate Z-Factory through the same pages and validation a person uses: nothing is embedded in the product for them, and no MCP server exists. What the product adds is context they can read:
+
+- **The LLM Index** (`/llm-index`, `/llm-index.md`; TASK-1001) is derived from the route registry and the activity bar (`lib/agent/llm-index.ts`, `lib/navigation/activities.ts`). It lists every engineering area with its routes, the agent workflow, and the rules: normal UI and validation only, no database or runtime access behind the application, never a forced physical output (ADR-0015), no invented vendor facts, and the user's confirmation before material engineering decisions. A test keeps it complete.
+- **Page-level LLM Context** (TASK-1002 onwards) will be generated from each page's own services, so agent-facing and human-facing content never disagree.
+
+The boundaries that make this safe already exist: Docker and the database are server-only, every service validates its input, and live state lives in the runtime.

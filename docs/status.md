@@ -113,7 +113,8 @@ Phases 00 to 05, the MVP, are done. One thing was not exercised: an external gat
 - Phase 09 MVP 2 now includes **Web Factory**, a cloud-hosted TypeScript web application. Thin Client Agents publish PLC telemetry/state/heartbeat through secure MQTT; Web Factory consumes those topics server-side, keeps cloud telemetry/events/alarms/command history and latest-state views, provides factory/site/agent/PLC/module dashboards, and publishes authorized command/setpoint requests back through MQTT. MQTT credentials and PLC/Modbus access remain server/agent-side rather than in the browser. The Thin Client re-validates writable mappings, and PLC program/interlocks remain authoritative for physical outputs.
 
 
-## Planned Phase 10 — Agent-Ready Engineering & Full Catalog Go Simulation
+## Phase 10 — Agent-Ready Engineering & Full Catalog Go Simulation (IN PROGRESS)
+- TASK-1001 (ZFA-56, ADR-0024): the global LLM Index at `/llm-index` and `/llm-index.md`, derived from the route registry and the activity bar, with the agent workflow and rules; the activity bar gained an LLM entry.
 - Add a home-page **LLM Index** that explains the complete Z-Factory engineering application to external browser-based AI/coding agents.
 - Add a consistent **LLM Context** tab to every active engineering page. Phase 10 does not require an embedded LLM, third-party model API or MCP server; external browser agents read visible application context and use normal UI controls.
 - Hide inactive/future/duplicate sidebar destinations so human users and browser agents see only usable product workflows.
