@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { LlmContextPanel } from "@/components/agent/llm-context";
 import { DeleteModule } from "@/components/modules/delete-module";
 import { MODULE_SECTIONS, ModuleEditor } from "@/components/modules/module-editor";
 import { AppShell } from "@/components/shell/app-shell";
@@ -8,6 +9,7 @@ import { SideBar, SideSection, Tree } from "@/components/shell/side-bar";
 import { AutoRefresh } from "@/components/ui/auto-refresh";
 import { KeyValue } from "@/components/ui/primitives";
 import { RuntimeStatePill } from "@/components/ui/state-pill";
+import { buildModuleEditorContext } from "@/lib/agent/contexts/factory-engineering";
 import { requireActor } from "@/lib/auth/actor";
 import { getDb } from "@/lib/db/client";
 import { isDomainError } from "@/lib/domain/errors";
@@ -117,6 +119,7 @@ export default async function ModulePage({ params }: ModulePageProps) {
             override: (signal) => overrideAction.bind(null, factoryId, moduleId, signal),
           }}
         />
+        <LlmContextPanel document={buildModuleEditorContext(view)} />
       </Content>
     </AppShell>
   );

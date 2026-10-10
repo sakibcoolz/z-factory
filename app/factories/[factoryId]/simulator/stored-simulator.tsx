@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { LlmContextPanel } from "@/components/agent/llm-context";
 import { AppShell } from "@/components/shell/app-shell";
 import { Content, EditorTabs } from "@/components/shell/editor";
 import { AutoRefresh } from "@/components/ui/auto-refresh";
 import { type OperationButton, OperationForm } from "@/components/ui/operation-form";
 import { SectionRule } from "@/components/ui/primitives";
 import { RuntimeStatePill, StatePill } from "@/components/ui/state-pill";
+import { buildSimulatorContext } from "@/lib/agent/contexts/factory-operations";
 import { requireActor } from "@/lib/auth/actor";
 import { getDb } from "@/lib/db/client";
 import { isDomainError } from "@/lib/domain/errors";
@@ -259,6 +261,7 @@ export async function StoredSimulator({ factoryId }: { factoryId: string }) {
             </ul>
           </>
         ) : null}
+        <LlmContextPanel document={buildSimulatorContext({ factory, view })} />
       </Content>
     </AppShell>
   );

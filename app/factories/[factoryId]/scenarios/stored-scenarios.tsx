@@ -1,10 +1,12 @@
 import { notFound } from "next/navigation";
+import { LlmContextPanel } from "@/components/agent/llm-context";
 import { ScenarioRunner } from "@/components/scenarios/scenario-runner";
 import { AppShell } from "@/components/shell/app-shell";
 import { Content, EditorTabs } from "@/components/shell/editor";
 import { OperationForm } from "@/components/ui/operation-form";
 import { SectionRule } from "@/components/ui/primitives";
 import { StatePill } from "@/components/ui/state-pill";
+import { buildScenariosContext } from "@/lib/agent/contexts/factory-operations";
 import { requireActor } from "@/lib/auth/actor";
 import { getDb } from "@/lib/db/client";
 import { plcRepository } from "@/lib/db/repositories/plc-repository";
@@ -179,6 +181,16 @@ export async function StoredScenarios({ factoryId }: { factoryId: string }) {
             </tbody>
           </table>
         )}
+        <LlmContextPanel
+          document={buildScenariosContext({
+            factory,
+            active,
+            runs,
+            examplePlc: plc
+              ? { name: plc.name, command: command?.name ?? null, expected: expected?.name ?? null }
+              : null,
+          })}
+        />
       </Content>
     </AppShell>
   );

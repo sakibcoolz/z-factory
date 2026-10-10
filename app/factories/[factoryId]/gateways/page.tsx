@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { LlmContextPanel } from "@/components/agent/llm-context";
 import { GatewaysScreen } from "@/components/gateway/gateway-view";
 import { AppShell } from "@/components/shell/app-shell";
 import { Content, EditorTabs } from "@/components/shell/editor";
 import { AutoRefresh } from "@/components/ui/auto-refresh";
 import { StatePill } from "@/components/ui/state-pill";
+import { buildGatewaysContext } from "@/lib/agent/contexts/factory-engineering";
 import { requireActor } from "@/lib/auth/actor";
 import { isDomainError } from "@/lib/domain/errors";
 import { routes } from "@/lib/navigation/routes";
@@ -71,6 +73,7 @@ export default async function GatewaysPage({ params }: GatewaysPageProps) {
             mapHref: (connectionId) => routes.gatewayMap(view.factory.id, connectionId),
           }}
         />
+        <LlmContextPanel document={buildGatewaysContext(view)} />
       </Content>
     </AppShell>
   );
