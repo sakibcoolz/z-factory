@@ -118,6 +118,47 @@ export default function LlmIndexPage() {
           </p>
         </Section>
 
+        <Section id="navigation">
+          <p className="zf-sub">
+            What the user wants, and the area it is done in. The route is the area&apos;s first screen; the area&apos;s
+            card above lists the rest.
+          </p>
+          <table className="zf-tbl mt-2">
+            <thead>
+              <tr>
+                <th>I want to…</th>
+                <th>Go to</th>
+                <th>Route</th>
+              </tr>
+            </thead>
+            <tbody>
+              {index.areas.flatMap((area) =>
+                area.intents.map((intent) => (
+                  <tr key={`${area.key}:${intent}`} data-llm-intent={area.key}>
+                    <td>{intent}</td>
+                    <td>
+                      <a href={`#area-${area.key}`}>{area.label}</a>
+                    </td>
+                    <td className="mono">{area.routes[0]?.pattern}</td>
+                  </tr>
+                )),
+              )}
+            </tbody>
+          </table>
+          <h3 className="zf-k mt-3">How the areas follow each other</h3>
+          <ul className="mt-1.5 flex max-w-180 flex-col gap-0.5">
+            {index.areas
+              .filter((area) => area.upstream.length > 0 || area.downstream.length > 0)
+              .map((area) => (
+                <li key={area.key} className="zf-sub">
+                  <b className="text-fg-strong">{area.label}</b>: after{" "}
+                  {area.upstream.map(areaLabel).join(", ") || "nothing"}; before{" "}
+                  {area.downstream.map(areaLabel).join(", ") || "nothing"}
+                </li>
+              ))}
+          </ul>
+        </Section>
+
         <Section id="files">
           <table className="zf-tbl">
             <thead>
@@ -189,6 +230,11 @@ function Area({ area }: { area: EngineeringArea }) {
         </StatePill>
       </div>
       <p className="max-w-180 leading-normal text-fg-muted">{area.purpose}</p>
+      {area.upstream.length > 0 || area.downstream.length > 0 ? (
+        <p className="zf-sub" data-llm-flow={area.key}>
+          Before: {area.upstream.join(", ") || "nothing"} · after: {area.downstream.join(", ") || "nothing"}
+        </p>
+      ) : null}
       <table className="zf-tbl">
         <thead>
           <tr>

@@ -91,6 +91,11 @@ function Items({ items }: { items: readonly LlmContextItem[] }) {
           data-tone={item.tone ?? "info"}
           className="flex flex-wrap items-baseline gap-x-2"
         >
+          {item.relation ? (
+            <span className="zf-k" data-llm-relation={item.relation}>
+              {item.relation === "upstream" ? "before" : "after"}
+            </span>
+          ) : null}
           {item.href ? (
             <Link href={item.href} className="text-info hover:underline">
               {item.label}

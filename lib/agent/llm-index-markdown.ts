@@ -6,6 +6,7 @@ export const LLM_INDEX_SECTIONS = [
   { id: "activities", title: "Activity bar" },
   { id: "areas", title: "Engineering areas and routes" },
   { id: "llm-context", title: "Pages with an LLM Context tab" },
+  { id: "navigation", title: "Where to go" },
   { id: "files", title: "Files an agent can fetch" },
   { id: "workflow", title: "Recommended agent workflow" },
   { id: "rules", title: "Rules for agents" },
@@ -68,6 +69,7 @@ export function renderLlmIndexMarkdown(index: LlmIndex): string {
       "",
       `- Scope: ${area.scope}${area.activity ? `; activity bar: ${area.activity.toUpperCase()}` : "; reached from another page"}`,
       `- LLM Context tab: ${area.llmContext ? "yes" : "not yet"}`,
+      `- Before: ${area.upstream.map(areaLabel).join(", ") || "nothing"}; after: ${area.downstream.map(areaLabel).join(", ") || "nothing"}`,
       "",
       "| Route | What it is |",
       "|---|---|",
@@ -87,6 +89,27 @@ export function renderLlmIndexMarkdown(index: LlmIndex): string {
     withContext.length > 0
       ? `These areas have an LLM Context tab with the page's objects, relationships, validation state, available actions and missing decisions: ${withContext.map((area) => area.label).join(", ")}.`
       : "None yet. The LLM Context tab is added to every active engineering page by TASK-1002 and TASK-1003; until then, read each page's normal content.",
+    "",
+    `## ${sectionTitle("navigation")}`,
+    "",
+    "What the user wants, and the area it is done in. The route is the area's first screen; the area's section above lists the rest.",
+    "",
+    "| I want to… | Go to | Route |",
+    "|---|---|---|",
+    ...index.areas.flatMap((area) =>
+      area.intents.map((intent) => `| ${cell(intent)} | ${area.label} | \`${area.routes[0]?.pattern ?? ""}\` |`),
+    ),
+    "",
+    "**How the areas follow each other**",
+    "",
+    list(
+      index.areas
+        .filter((area) => area.upstream.length > 0 || area.downstream.length > 0)
+        .map(
+          (area) =>
+            `${area.label}: after ${area.upstream.map(areaLabel).join(", ") || "nothing"}; before ${area.downstream.map(areaLabel).join(", ") || "nothing"}`,
+        ),
+    ),
     "",
     `## ${sectionTitle("files")}`,
     "",

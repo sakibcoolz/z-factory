@@ -8,6 +8,9 @@
  * loaded and returns a document; `components/agent/llm-context.tsx` renders it.
  */
 
+import { buildLlmIndex } from "./llm-index";
+import { crossPageLinks, routeIds } from "./navigation";
+
 export const LLM_CONTEXT_VERSION = 1;
 
 export const LLM_CONTEXT_SECTIONS = [
@@ -50,6 +53,8 @@ export type LlmContextItem = {
   /** A sentence more, when the label and value are not enough. */
   detail?: string;
   tone?: LlmContextTone;
+  /** For a navigation item: whether the area comes before or after this page (TASK-1004). */
+  relation?: "upstream" | "downstream";
 };
 
 export type LlmContextIdentity = {
@@ -83,7 +88,10 @@ type ListParts = Partial<Record<LlmContextListSectionId, readonly LlmContextItem
 
 /**
  * A complete document from an identity and whatever sections the page has. Missing list
- * sections are empty, and the validation status follows its items unless given.
+ * sections are empty, and the validation status follows its items unless given. The
+ * navigation ends with the areas before and after this page's area (TASK-1004), generated
+ * from `AREA_GUIDANCE` with the ids the page's route carries, except those the page
+ * already links.
  */
 export function createLlmContext(
   identity: LlmContextIdentity,
@@ -99,7 +107,25 @@ export function createLlmContext(
     validation: { status, items: validationItems },
   } as LlmContextDocument;
   for (const section of LLM_CONTEXT_LIST_SECTIONS) document[section] = parts[section] ?? [];
+  document.navigation = [...document.navigation, ...crossPageNavigation(identity, document.navigation)];
   return document;
+}
+
+/** The upstream and downstream areas of a page as navigation items, minus those already linked. */
+function crossPageNavigation(identity: LlmContextIdentity, existing: readonly LlmContextItem[]): LlmContextItem[] {
+  const linked = new Set(existing.map((item) => item.href).filter(Boolean));
+  const areas = new Map(buildLlmIndex().areas.map((area) => [area.key, area]));
+  return crossPageLinks(identity.area, routeIds(identity.route))
+    .filter((link) => link.area !== identity.area && !(link.href && linked.has(link.href)))
+    .map((link) => {
+      const area = areas.get(link.area);
+      return {
+        label: area?.label ?? link.area,
+        href: link.href,
+        detail: area?.purpose,
+        relation: link.relation,
+      };
+    });
 }
 
 export function sectionTitle(id: LlmContextSectionId): string {
@@ -107,7 +133,8 @@ export function sectionTitle(id: LlmContextSectionId): string {
 }
 
 function itemLine(item: LlmContextItem): string {
-  const head = item.href ? `[${item.label}](${item.href})` : item.label;
+  const name = item.relation ? `${item.relation === "upstream" ? "Before" : "After"}: ${item.label}` : item.label;
+  const head = item.href ? `[${name}](${item.href})` : name;
   const parts = [item.value ? `${head}: ${item.value}` : head];
   if (item.detail) parts.push(item.detail);
   const line = parts.join(" — ");

@@ -1,4 +1,5 @@
 import { LLM_CONTEXT_AREAS } from "@/lib/agent/contexts/registry";
+import { AREA_GUIDANCE } from "@/lib/agent/navigation";
 import { ACTIVITIES, type ActivityKey } from "@/lib/navigation/activities";
 import { routes } from "@/lib/navigation/routes";
 
@@ -41,9 +42,14 @@ export type EngineeringArea = {
   decisions: readonly string[];
   /** Whether its pages have an LLM Context panel (TASK-1002, TASK-1003); from `LLM_CONTEXT_AREAS`. */
   llmContext: boolean;
+  /** What a user wants that this area is for, in their words (TASK-1004); from `AREA_GUIDANCE`. */
+  intents: readonly string[];
+  /** Areas usually visited before and after this one (keys), from `AREA_GUIDANCE`. */
+  upstream: readonly string[];
+  downstream: readonly string[];
 };
 
-type AreaDefinition = Omit<EngineeringArea, "llmContext">;
+type AreaDefinition = Omit<EngineeringArea, "llmContext" | "intents" | "upstream" | "downstream">;
 
 export type AgentFile = {
   key: RouteKey;
@@ -512,7 +518,16 @@ export function buildLlmIndex(): LlmIndex {
       label: activity.label,
       factoryScoped: activity.href(undefined) === undefined,
     })),
-    areas: AREAS.map((area) => ({ ...area, llmContext: LLM_CONTEXT_AREAS.has(area.key) })),
+    areas: AREAS.map((area) => {
+      const guidance = AREA_GUIDANCE[area.key];
+      return {
+        ...area,
+        llmContext: LLM_CONTEXT_AREAS.has(area.key),
+        intents: guidance?.intents ?? [],
+        upstream: guidance?.upstream ?? [],
+        downstream: guidance?.downstream ?? [],
+      };
+    }),
     files: FILES,
     workflow: WORKFLOW,
     rules: RULES,

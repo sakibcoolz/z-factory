@@ -38,7 +38,11 @@ describe("an LLM Context document", () => {
       "decisions",
       "navigation",
     ]);
-    for (const section of LLM_CONTEXT_LIST_SECTIONS) expect(document[section]).toEqual([]);
+    for (const section of LLM_CONTEXT_LIST_SECTIONS) {
+      // The navigation is never empty: it ends with the generated upstream and downstream areas (TASK-1004).
+      if (section === "navigation") expect(document.navigation.every((item) => item.relation)).toBe(true);
+      else expect(document[section]).toEqual([]);
+    }
     expect(document.validation).toEqual({ status: "ok", items: [] });
     expect(document.version).toBe(1);
     expect(document.identity).toEqual(identity);
@@ -65,7 +69,8 @@ describe("an LLM Context document", () => {
     expect(markdown).toContain("- [Edit factory](/factories/f1/edit) — Name and description.");
     expect(markdown).toContain("- Which PLC? (warn)");
     expect(markdown).toContain("Status: ok");
-    expect((markdown.match(/^None\.$/gm) ?? []).length).toBe(7);
+    expect((markdown.match(/^None\.$/gm) ?? []).length).toBe(6);
+    expect(markdown).toContain("- [Before: Factories](/factories)");
   });
 
   it("registers every area with a context as an area of the LLM Index, and the index names them", () => {
