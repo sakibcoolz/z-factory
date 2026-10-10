@@ -19,6 +19,7 @@ import {
 } from "@/lib/services/plc-runtime-view-service";
 import { getRuntimeDeps } from "@/lib/services/runtime-deps";
 import { programAction, programVersionAction, runtimeAction } from "../runtime-actions";
+import { buildPlcContext } from "@/lib/agent/contexts/plc";
 import { loadPlc } from "./load-plc";
 
 /**
@@ -64,7 +65,12 @@ export async function StoredPlcProgram({ factoryId, plcId, version }: Ids & { ve
   const runtime = await getPlcRuntimeView(db, actor, plcId);
 
   return (
-    <StoredPlcShell factory={factory} view={view} section="program">
+    <StoredPlcShell
+      factory={factory}
+      view={view}
+      section="program"
+      llmContext={buildPlcContext({ factory, view, section: "program", program, runtime })}
+    >
       <Header view={view} title="Program" kicker="edit › save version › compile › deploy › run" />
       <div className="grid min-h-0 flex-1 grid-cols-[1fr_18.75rem] gap-3">
         <ProgramEditor
@@ -146,7 +152,12 @@ export async function StoredPlcVersions({ factoryId, plcId }: Ids) {
   ];
 
   return (
-    <StoredPlcShell factory={factory} view={view} section="versions">
+    <StoredPlcShell
+      factory={factory}
+      view={view}
+      section="versions"
+      llmContext={buildPlcContext({ factory, view, section: "versions", versions })}
+    >
       <Header view={view} title="Versions" kicker="program versions · deployment snapshots" />
       <SectionRule>
         <span className="zf-k">{`Program versions · ${versions.versions.length}`}</span>
@@ -298,7 +309,12 @@ export async function StoredPlcRuntime({ factoryId, plcId }: Ids) {
   ];
 
   return (
-    <StoredPlcShell factory={factory} view={view} section="runtime">
+    <StoredPlcShell
+      factory={factory}
+      view={view}
+      section="runtime"
+      llmContext={buildPlcContext({ factory, view, section: "runtime", runtime })}
+    >
       {/* Events of the factory refresh the page at once; the slower poll notices a container that died. */}
       <LiveRefresh streamUrl={routes.stream(factoryId)} />
       {runtime.created ? <AutoRefresh intervalMs={15000} /> : null}

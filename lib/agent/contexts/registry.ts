@@ -4,4 +4,10 @@
  * Index derives its "LLM Context" column from this set, and `llm-index.test.ts` checks that
  * every key names an area that exists.
  */
-export const LLM_CONTEXT_AREAS: ReadonlySet<string> = new Set(["factory"]);
+export const LLM_CONTEXT_AREAS: ReadonlySet<string> = new Set([
+  "factory",
+  "plc",
+  "program",
+  "plc-communication",
+  "export",
+]);
