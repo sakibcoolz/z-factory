@@ -1,9 +1,11 @@
 import type { ReactNode } from "react";
+import { LlmContextPanel } from "@/components/agent/llm-context";
 import { AppShell } from "@/components/shell/app-shell";
 import { Content, EditorTabs } from "@/components/shell/editor";
 import { SideBar, SideSection, Tree, type TreeNode } from "@/components/shell/side-bar";
 import { KeyValue } from "@/components/ui/primitives";
 import { RuntimeStatePill, runtimeStateTone } from "@/components/ui/state-pill";
+import type { LlmContextDocument } from "@/lib/agent/llm-context";
 import { DEVICE_CAPABILITY_LABELS, hasCapability } from "@/lib/domain/device-capabilities";
 import type { PlcConfigurationView } from "@/lib/domain/plc-config-view";
 import { routes } from "@/lib/navigation/routes";
@@ -23,6 +25,8 @@ type StoredPlcShellProps = {
   factory: { id: string; name: string };
   view: PlcConfigurationView;
   section: StoredPlcSection;
+  /** The screen's LLM Context (TASK-1003), rendered after its content. */
+  llmContext?: LlmContextDocument;
   children: ReactNode;
 };
 
@@ -92,7 +96,7 @@ function sections(view: PlcConfigurationView, active: StoredPlcSection): TreeNod
 }
 
 /** Shell shared by the screens of a stored PLC: section list, identity and tabs. */
-export function StoredPlcShell({ factory, view, section, children }: StoredPlcShellProps) {
+export function StoredPlcShell({ factory, view, section, llmContext, children }: StoredPlcShellProps) {
   const { plc, model, occupancy } = view;
   return (
     <AppShell
@@ -141,7 +145,10 @@ export function StoredPlcShell({ factory, view, section, children }: StoredPlcSh
         ]}
         crumb={`${factory.name.toLowerCase()} › ${plc.name.toLowerCase()} › ${SECTION_LABELS[section].toLowerCase()}`}
       />
-      <Content plain>{children}</Content>
+      <Content plain>
+        {children}
+        {llmContext ? <LlmContextPanel document={llmContext} /> : null}
+      </Content>
     </AppShell>
   );
 }

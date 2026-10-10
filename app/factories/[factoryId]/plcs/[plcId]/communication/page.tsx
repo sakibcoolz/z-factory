@@ -3,6 +3,7 @@ import { PlcCommunication } from "@/components/plc/plc-communication";
 import { StoredPlcShell } from "@/components/plc/stored-plc-shell";
 import { AutoRefresh } from "@/components/ui/auto-refresh";
 import { routes } from "@/lib/navigation/routes";
+import { buildPlcContext } from "@/lib/agent/contexts/plc";
 import { getPlcCommunicationView } from "@/lib/services/plc-communication-service";
 import { getPlcLinkDeps } from "@/lib/services/runtime-deps";
 import { loadPlc } from "../load-plc";
@@ -22,7 +23,12 @@ export default async function CommunicationPage({ params }: CommunicationPagePro
   const deps = getPlcLinkDeps();
   const communication = await getPlcCommunicationView(db, actor, view.plc.id, deps.monitor);
   return (
-    <StoredPlcShell factory={factory} view={view} section="communication">
+    <StoredPlcShell
+      factory={factory}
+      view={view}
+      section="communication"
+      llmContext={buildPlcContext({ factory, view, section: "communication", communication })}
+    >
       {communication.watched ? <AutoRefresh intervalMs={3000} /> : null}
       <div>
         <div className="zf-k">{`${view.model.categoryCode === "RTU" ? "RTU" : "PLC"} · ${view.plc.name}`}</div>

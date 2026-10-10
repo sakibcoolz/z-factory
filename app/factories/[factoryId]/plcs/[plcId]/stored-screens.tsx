@@ -10,6 +10,7 @@ import { signalTypeLabel } from "@/lib/catalog/format";
 import type { PlcConfigurationView } from "@/lib/domain/plc-config-view";
 import { type PlcExportFile, routes } from "@/lib/navigation/routes";
 import { modbusDisplayAddress, parseLocatedAddress, toModbusLocation } from "@/lib/protocols/modbus/located-address";
+import { buildPlcContext } from "@/lib/agent/contexts/plc";
 import { listInstallableModules } from "@/lib/services/plc-config-service";
 import { buildPlcExport } from "@/lib/services/plc-export-service";
 import { deletePlcAction, installModuleAction, removeModuleAction } from "../actions";
@@ -79,7 +80,12 @@ export async function StoredPlcOverview({ factoryId, plcId }: Ids) {
   const { factory, view } = await loadPlc(factoryId, plcId);
   const { plc, model } = view;
   return (
-    <StoredPlcShell factory={factory} view={view} section="overview">
+    <StoredPlcShell
+      factory={factory}
+      view={view}
+      section="overview"
+      llmContext={buildPlcContext({ factory, view, section: "overview" })}
+    >
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="zf-k">
@@ -154,7 +160,12 @@ export async function StoredPlcHardware({ factoryId, plcId, pin }: Ids & { pin?:
   const installed = view.rack?.slots.filter((slot) => slot.module) ?? [];
 
   return (
-    <StoredPlcShell factory={factory} view={view} section="hardware">
+    <StoredPlcShell
+      factory={factory}
+      view={view}
+      section="hardware"
+      llmContext={buildPlcContext({ factory, view, section: "hardware", installable: modules })}
+    >
       <Header view={view} title={view.rack ? "Rack, modules & channels" : "Built-in I/O & pin view"} />
       <HardwareFacts view={view} />
       {view.rack ? (
@@ -231,7 +242,12 @@ export async function StoredPlcConnections({ factoryId, plcId }: Ids) {
   const { factory, view } = await loadPlc(factoryId, plcId);
 
   return (
-    <StoredPlcShell factory={factory} view={view} section="connections">
+    <StoredPlcShell
+      factory={factory}
+      view={view}
+      section="connections"
+      llmContext={buildPlcContext({ factory, view, section: "connections" })}
+    >
       <Header view={view} title="Connected devices" />
       {view.peripherals.length > 0 ? (
         <table className="zf-tbl">
@@ -288,7 +304,12 @@ export async function StoredPlcIoMapping({ factoryId, plcId }: Ids) {
   };
 
   return (
-    <StoredPlcShell factory={factory} view={view} section="io-mapping">
+    <StoredPlcShell
+      factory={factory}
+      view={view}
+      section="io-mapping"
+      llmContext={buildPlcContext({ factory, view, section: "io-mapping" })}
+    >
       <Header view={view} title="I/O mapping" />
       <p className="zf-sub">
         Outputs use the output image (%Q). Inputs use memory addresses (%M): the OpenPLC runtime takes simulated field
@@ -342,7 +363,12 @@ export async function StoredPlcExport({ factoryId, plcId, runtime }: Ids & { run
   ];
 
   return (
-    <StoredPlcShell factory={factory} view={view} section="export">
+    <StoredPlcShell
+      factory={factory}
+      view={view}
+      section="export"
+      llmContext={buildPlcContext({ factory, view, section: "export", exportDocument: document })}
+    >
       <Header view={view} title="Engineering export" />
       <div className="grid grid-cols-3 gap-2.5">
         <div className="zf-cell">
