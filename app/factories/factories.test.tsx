@@ -110,7 +110,8 @@ describe("2a factories list", () => {
 
     dockerStatus.getDockerEngineStatus.mockResolvedValue({ reachable: false });
     render(await FactoriesPage());
-    expect(screen.getByText("unreachable")).toHaveAttribute("data-tone", "flt");
+    // The host check in the explorer; the LLM Context panel names the engine too.
+    expect(within(screen.getByRole("complementary")).getByText("unreachable")).toHaveAttribute("data-tone", "flt");
     expect(screen.getByText("Docker unreachable")).toBeInTheDocument();
     // An unreachable engine is shown, not thrown: the factory list still renders.
     expect(screen.getByRole("table")).toBeInTheDocument();

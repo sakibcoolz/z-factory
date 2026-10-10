@@ -1,8 +1,10 @@
+import { LlmContextPanel } from "@/components/agent/llm-context";
 import { SceneView } from "@/components/scene/scene-view";
 import { AppShell } from "@/components/shell/app-shell";
 import { EditorTabs, Toolbar } from "@/components/shell/editor";
 import { Button } from "@/components/ui/button";
 import { RuntimeStatePill } from "@/components/ui/state-pill";
+import { buildView3dContext } from "@/lib/agent/contexts/design-pages";
 import { getDb } from "@/lib/db/client";
 import { routes } from "@/lib/navigation/routes";
 import { getFactoryScene } from "@/lib/services/scene-service";
@@ -57,6 +59,7 @@ export async function StoredView3d({ factoryId }: { factoryId: string }) {
         plcLinks={plcLinks}
         designerHref={routes.designer(factory.id)}
       />
+      <LlmContextPanel document={buildView3dContext({ factory, scene })} />
     </AppShell>
   );
 }

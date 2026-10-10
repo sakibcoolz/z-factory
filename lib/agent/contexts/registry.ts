@@ -5,15 +5,20 @@
  * every key names an area that exists.
  */
 export const LLM_CONTEXT_AREAS: ReadonlySet<string> = new Set([
+  "factories",
+  "catalog",
   "factory",
+  "designer",
+  "topology",
+  "devices",
   "plc",
   "program",
   "plc-communication",
-  "export",
+  "modules",
   "runtime",
   "simulation",
   "tags",
   "events",
   "gateways",
-  "modules",
+  "export",
 ]);
