@@ -43,22 +43,25 @@ function sectionHref(device: DeviceDetailView, section: DeviceSection): string |
 }
 
 /**
- * The section list of a device, from its model's capabilities: a screen the model has no
- * capability for is not listed, not greyed out. Program and Versions of a programmable
- * model without an adapter are listed with the reason they are empty.
+ * The section list of a device, from its model's capabilities. Since TASK-1005 every entry
+ * is a screen that can be opened: a section the model has but no screen exists for, and
+ * the Program and Versions of a programmable model without an adapter, are not listed
+ * (the overview and the LLM Context say why). The runtime entry is the factory's
+ * simulator, and is named so.
  */
-function sections(device: DeviceDetailView, active: DeviceSection): TreeNode[] {
-  const items: TreeNode[] = device.sections.map(({ key, label }) => {
+export function deviceSections(device: DeviceDetailView, active: DeviceSection): TreeNode[] {
+  const items: TreeNode[] = device.sections.flatMap(({ key, label }) => {
     const href = sectionHref(device, key);
-    if ((key === "program" || key === "versions") && device.programNote) {
-      return { label, meta: "no adapter", muted: true };
-    }
-    return {
-      label,
-      href,
-      active: key === active,
-      meta: key === "runtime" ? "factory" : key === "connections" ? String(device.wires.length) : undefined,
-    };
+    if (!href) return [];
+    if ((key === "program" || key === "versions") && device.programNote) return [];
+    return [
+      {
+        label: key === "runtime" ? "Simulator" : label,
+        href,
+        active: key === active,
+        meta: key === "runtime" ? "factory" : key === "connections" ? String(device.wires.length) : undefined,
+      },
+    ];
   });
   return [
     ...items,
@@ -78,7 +81,7 @@ export function DeviceShell({ device, section, llmContext, children }: DeviceShe
       sidebar={
         <SideBar title={device.name}>
           <SideSection title="Device">
-            <Tree items={sections(device, section)} />
+            <Tree items={deviceSections(device, section)} />
           </SideSection>
           <SideSection title="Instance">
             <KeyValue

@@ -45,13 +45,15 @@ const SECTION_LABELS: Record<StoredPlcSection, string> = {
 /** Status bar colour for the PLC's runtime state: red for a fault, amber for degraded, grey when stopped. */
 const STATUS_TONE: Partial<Record<string, "ok" | "flt" | "deg" | "off">> = { flt: "flt", deg: "deg", off: "off" };
 
-/** Sections of the PLC edit view (docs/design.md → PLC edit). Those without a screen for stored PLCs yet are listed, not linked. */
-function sections(view: PlcConfigurationView, active: StoredPlcSection): TreeNode[] {
+/**
+ * The PLC's own screens (docs/design.md → PLC edit). Every entry is a screen that exists:
+ * since TASK-1005 nothing is listed that cannot be opened (Logs, which has no screen, is gone).
+ */
+export function plcSections(view: PlcConfigurationView, active: StoredPlcSection): TreeNode[] {
   const { factoryId, id } = view.plc;
   const modular = view.plc.architectureType === "MODULAR";
   const programmable = hasCapability(view.model, "PROGRAMMABLE");
   const installed = view.rack?.slots.filter((slot) => slot.module).length ?? 0;
-  const pending = (label: string): TreeNode => ({ label, meta: "not wired yet", muted: true });
   return [
     { label: SECTION_LABELS.overview, href: routes.plc(factoryId, id), active: active === "overview" },
     {
@@ -82,16 +84,22 @@ function sections(view: PlcConfigurationView, active: StoredPlcSection): TreeNod
       href: routes.plcIoMapping(factoryId, id),
       active: active === "io-mapping",
     },
-    // The device simulation belongs to the factory, not to one PLC.
-    { label: "Simulator", meta: "factory", href: routes.simulator(factoryId) },
-    { label: "Live Tags", meta: "factory", href: routes.tags(factoryId, id) },
-    { label: "Events", meta: "factory", href: routes.events(factoryId, { device: id }) },
-    pending("Logs"),
     ...(programmable
       ? [{ label: SECTION_LABELS.versions, href: routes.plcVersions(factoryId, id), active: active === "versions" }]
       : []),
     { label: SECTION_LABELS.runtime, href: routes.plcRuntime(factoryId, id), active: active === "runtime" },
     { label: SECTION_LABELS.export, href: routes.plcExport(factoryId, id), active: active === "export" },
+  ];
+}
+
+/** The factory's screens this PLC takes part in, narrowed to it where they can be. */
+export function factorySections(view: PlcConfigurationView): TreeNode[] {
+  const { factoryId, id } = view.plc;
+  return [
+    // The device simulation belongs to the factory, not to one PLC.
+    { label: "Simulator", href: routes.simulator(factoryId) },
+    { label: "Live Tags", meta: "this PLC", href: routes.tags(factoryId, id) },
+    { label: "Events", meta: "this PLC", href: routes.events(factoryId, { device: id }) },
   ];
 }
 
@@ -106,7 +114,10 @@ export function StoredPlcShell({ factory, view, section, llmContext, children }:
       sidebar={
         <SideBar title={plc.name}>
           <SideSection title={model.categoryCode === "RTU" ? "RTU" : "PLC"}>
-            <Tree items={sections(view, section)} />
+            <Tree items={plcSections(view, section)} />
+          </SideSection>
+          <SideSection title="Factory">
+            <Tree items={factorySections(view)} />
           </SideSection>
           <SideSection title="Instance">
             <KeyValue

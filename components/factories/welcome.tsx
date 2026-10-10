@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { type DockerHostStatus, dockerStatusLabel } from "@/components/factories/factory-explorer";
+import { type DockerHostStatus, dockerStatusLabel, openPlcImageLabel } from "@/components/factories/factory-explorer";
 import { SectionRule } from "@/components/ui/primitives";
 import { StatePill, type Tone } from "@/components/ui/state-pill";
 import { routes } from "@/lib/navigation/routes";
@@ -19,7 +19,7 @@ export function Welcome({ docker }: WelcomeProps) {
   const hostChecks: ReadonlyArray<{ label: string; tone: Tone; status: string }> = [
     { label: "PostgreSQL", tone: "run", status: "connected" },
     { label: "Docker Engine", tone: docker.reachable ? "run" : "flt", status: dockerStatusLabel(docker) },
-    { label: "OpenPLC image", tone: "off", status: "TASK-202" },
+    { label: "OpenPLC image", tone: "off", status: openPlcImageLabel(docker) },
   ];
 
   return (

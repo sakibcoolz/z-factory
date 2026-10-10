@@ -8,6 +8,7 @@ const engine = (version: () => Promise<unknown>) => ({ version }) as unknown as 
 describe("docker engine status", () => {
   it("reports the engine version when it answers", async () => {
     expect(await getDockerEngineStatus(engine(async () => ({ Version: "29.7.2" })))).toEqual({
+      openPlcImage: "v4.2.4",
       reachable: true,
       version: "29.7.2",
     });
@@ -17,11 +18,11 @@ describe("docker engine status", () => {
     const failing = engine(async () => {
       throw Object.assign(new Error("connect ENOENT /var/run/docker.sock"), { code: "ENOENT" });
     });
-    expect(await getDockerEngineStatus(failing)).toEqual({ reachable: false });
+    expect(await getDockerEngineStatus(failing)).toEqual({ reachable: false, openPlcImage: "v4.2.4" });
   });
 
   it("gives up on an engine that never answers", async () => {
     const hanging = engine(() => new Promise(() => {}));
-    expect(await getDockerEngineStatus(hanging)).toEqual({ reachable: false });
+    expect(await getDockerEngineStatus(hanging)).toEqual({ reachable: false, openPlcImage: "v4.2.4" });
   }, 5000);
 });

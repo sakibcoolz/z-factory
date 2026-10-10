@@ -1,7 +1,15 @@
 import "server-only";
 import type Docker from "dockerode";
+import { OPENPLC_IMAGE_KEY, RUNTIME_IMAGES } from "./runtime-images";
 
-export type DockerEngineStatus = { reachable: true; version: string } | { reachable: false };
+/** The pinned OpenPLC runtime image's tag, shown with the host status (TASK-1005). */
+const openPlcImage =
+  (RUNTIME_IMAGES.find((image) => image.key === OPENPLC_IMAGE_KEY)?.reference ?? "").split(":").pop() ?? "";
+
+export type DockerEngineStatus = ({ reachable: true; version: string } | { reachable: false }) & {
+  /** The tag of the pinned OpenPLC runtime image, what a PLC starts with. */
+  openPlcImage: string;
+};
 
 const TIMEOUT_MS = 1500;
 
@@ -18,9 +26,9 @@ export async function getDockerEngineStatus(docker: Docker): Promise<DockerEngin
         timer = setTimeout(() => reject(new Error("timeout")), TIMEOUT_MS);
       }),
     ]);
-    return { reachable: true, version: version.Version };
+    return { reachable: true, version: version.Version, openPlcImage };
   } catch {
-    return { reachable: false };
+    return { reachable: false, openPlcImage };
   } finally {
     clearTimeout(timer);
   }
