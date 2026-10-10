@@ -57,6 +57,48 @@ export type LlmContextItem = {
   relation?: "upstream" | "downstream";
 };
 
+/**
+ * The kinds of engineering decision an agent asks the user for (TASK-1006), and what each
+ * means. A decision names its kind, whether the user must confirm before the agent acts,
+ * a safe default when one exists, and what the application enforces whatever is chosen.
+ */
+export const DECISION_KINDS = {
+  model: "which catalog model: a vendor hardware profile with sources, or a generic simulated one",
+  architecture: "compact or modular PLC",
+  "signal-standard": "which signal standard, when a terminal or channel accepts more than one",
+  channel: "which channel, point or tag, when more than one is free and compatible",
+  protocol: "which protocol, when a port or device offers more than one",
+  relationship: "which relationship or role between devices, when more than one applies",
+  endpoint: "which host, port, PLC or peer to connect to",
+  "control-logic": "the control strategy, setpoints and interlocks of a program",
+  "run-state": "starting, stopping, deploying to or rewiring a running plant",
+  write: "a value written to a command or setpoint tag of a running plant",
+  "test-input": "a fault, override or scenario applied to a running plant",
+  parameters: "parameter values that change how a device behaves",
+  scope: "what the plant, a PLC or a module should do",
+  name: "a name, slug, role or subnet",
+  deletion: "deleting or removing something that holds configuration or history",
+} as const;
+
+export type DecisionKind = keyof typeof DECISION_KINDS;
+
+export type DecisionGuidance = {
+  kind: DecisionKind;
+  /** `required`: the agent acts only when the user confirms. `optional`: a safe default may be applied and reported. */
+  confirm: "required" | "optional";
+  /** A safe default the agent may recommend, when one exists. */
+  defaultChoice?: string;
+  /** What the application enforces whatever the user chooses; guidance never overrides it. */
+  enforced?: string;
+};
+
+/** A missing decision: an item of the decisions section, always with its guidance. */
+export type LlmContextDecisionItem = LlmContextItem & { decision: DecisionGuidance };
+
+/** The rule every decision follows, stated once for agents. */
+export const DECISION_RULE =
+  "Recommend a safe default when one exists and say why. Apply a material engineering choice only when the user confirms it. Whatever is chosen, the application's compatibility and validation rules decide what is possible; guidance never overrides them.";
+
 export type LlmContextIdentity = {
   /** The page, as the LLM Index names it. */
   page: string;
@@ -82,9 +124,12 @@ export type LlmContextDocument = {
   version: typeof LLM_CONTEXT_VERSION;
   identity: LlmContextIdentity;
   validation: LlmContextValidation;
-} & Record<LlmContextListSectionId, readonly LlmContextItem[]>;
+  decisions: readonly LlmContextDecisionItem[];
+} & Record<Exclude<LlmContextListSectionId, "decisions">, readonly LlmContextItem[]>;
 
-type ListParts = Partial<Record<LlmContextListSectionId, readonly LlmContextItem[]>>;
+type ListParts = Partial<Record<Exclude<LlmContextListSectionId, "decisions">, readonly LlmContextItem[]>> & {
+  decisions?: readonly LlmContextDecisionItem[];
+};
 
 /**
  * A complete document from an identity and whatever sections the page has. Missing list
@@ -106,7 +151,9 @@ export function createLlmContext(
     identity,
     validation: { status, items: validationItems },
   } as LlmContextDocument;
-  for (const section of LLM_CONTEXT_LIST_SECTIONS) document[section] = parts[section] ?? [];
+  for (const section of LLM_CONTEXT_LIST_SECTIONS) {
+    (document as Record<string, unknown>)[section] = parts[section] ?? [];
+  }
   document.navigation = [...document.navigation, ...crossPageNavigation(identity, document.navigation)];
   return document;
 }
@@ -132,11 +179,24 @@ export function sectionTitle(id: LlmContextSectionId): string {
   return LLM_CONTEXT_SECTIONS.find((section) => section.id === id)!.title;
 }
 
-function itemLine(item: LlmContextItem): string {
+function itemLine(item: LlmContextItem | LlmContextDecisionItem): string {
   const name = item.relation ? `${item.relation === "upstream" ? "Before" : "After"}: ${item.label}` : item.label;
   const head = item.href ? `[${name}](${item.href})` : name;
   const parts = [item.value ? `${head}: ${item.value}` : head];
   if (item.detail) parts.push(item.detail);
+  if ("decision" in item && item.decision) {
+    const { kind, confirm, defaultChoice, enforced } = item.decision;
+    parts.push(
+      [
+        `${kind}`,
+        confirm === "required" ? "confirm before acting" : "a default may be applied",
+        defaultChoice ? `default: ${defaultChoice}` : null,
+        enforced ? `enforced: ${enforced}` : null,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    );
+  }
   const line = parts.join(" — ");
   return item.tone && item.tone !== "info" ? `- ${line} (${item.tone})` : `- ${line}`;
 }

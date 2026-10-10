@@ -1,4 +1,9 @@
-import { createLlmContext, type LlmContextDocument, type LlmContextItem } from "@/lib/agent/llm-context";
+import {
+  createLlmContext,
+  type LlmContextDecisionItem,
+  type LlmContextDocument,
+  type LlmContextItem,
+} from "@/lib/agent/llm-context";
 import { routePattern } from "@/lib/agent/llm-index";
 import type { DeviceTreeNode } from "@/lib/domain/device-tree";
 import type { FactoryDeviceView } from "@/lib/domain/plc-config-view";
@@ -153,27 +158,39 @@ export function buildFactoryOverviewContext({
     },
   ];
 
-  const decisions: LlmContextItem[] = [];
+  const decisions: LlmContextDecisionItem[] = [];
   if (plcs.length === 0)
     decisions.push({
       label: "Which PLC?",
+      decision: {
+        kind: "model" as const,
+        confirm: "required" as const,
+        enforced: "PLC identity is manufacturer, family and exact model; a vendor model runs on OpenPLC.",
+      },
       detail: "Ask for the architecture (compact or modular) and the catalog model before creating one.",
       href: routes.catalog({ type: "PLC" }),
     });
   if (peripherals.length === 0)
     decisions.push({
       label: "What should the plant do?",
+      decision: { kind: "scope" as const, confirm: "required" as const },
       detail: "Ask which process and which field devices (sensors, drives, motors, pumps, valves) before adding any.",
     });
   for (const plc of unprogrammed)
     decisions.push({
       label: `Control logic for ${plc.name}`,
+      decision: {
+        kind: "control-logic" as const,
+        confirm: "required" as const,
+        enforced: "The program is compiled and checked; it owns the PLC's local outputs (ADR-0015).",
+      },
       detail: "Ask for the control strategy, setpoints and interlocks before writing a program.",
       href: routes.plcProgram(factory.id, plc.id),
     });
   if (!stopped)
     decisions.push({
       label: "The factory is running",
+      decision: { kind: "run-state" as const, confirm: "required" as const },
       detail: "Ask before any change that stops it, rewires it or writes to it.",
     });
 

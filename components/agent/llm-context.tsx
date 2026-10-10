@@ -3,6 +3,7 @@ import { StatePill, type Tone } from "@/components/ui/state-pill";
 import {
   LLM_CONTEXT_SECTIONS,
   LLM_CONTEXT_VERSION,
+  type LlmContextDecisionItem,
   type LlmContextDocument,
   type LlmContextItem,
   type LlmContextTone,
@@ -81,7 +82,7 @@ export function LlmContextPanel({ document }: LlmContextPanelProps) {
   );
 }
 
-function Items({ items }: { items: readonly LlmContextItem[] }) {
+function Items({ items }: { items: ReadonlyArray<LlmContextItem | LlmContextDecisionItem> }) {
   if (items.length === 0) return <p className="zf-sub mt-1.5">None.</p>;
   return (
     <ul className="mt-1.5 flex flex-col gap-1">
@@ -106,6 +107,19 @@ function Items({ items }: { items: readonly LlmContextItem[] }) {
           {item.value ? <span className="mono">{item.value}</span> : null}
           {item.tone && item.tone !== "info" ? <StatePill tone={PILL_TONE[item.tone]}>{item.tone}</StatePill> : null}
           {item.detail ? <span className="zf-sub basis-full">{item.detail}</span> : null}
+          {"decision" in item && item.decision ? (
+            <span
+              className="zf-sub basis-full"
+              data-llm-decision={item.decision.kind}
+              data-llm-confirm={item.decision.confirm}
+            >
+              <span className="mono">{item.decision.kind}</span>
+              {" · "}
+              {item.decision.confirm === "required" ? "confirm before acting" : "a default may be applied"}
+              {item.decision.defaultChoice ? ` · default: ${item.decision.defaultChoice}` : ""}
+              {item.decision.enforced ? ` · enforced: ${item.decision.enforced}` : ""}
+            </span>
+          ) : null}
         </li>
       ))}
     </ul>

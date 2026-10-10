@@ -1,4 +1,9 @@
-import { createLlmContext, type LlmContextDocument, type LlmContextItem } from "@/lib/agent/llm-context";
+import {
+  createLlmContext,
+  type LlmContextDecisionItem,
+  type LlmContextDocument,
+  type LlmContextItem,
+} from "@/lib/agent/llm-context";
 import { routePattern } from "@/lib/agent/llm-index";
 import type { PlcCommunicationView } from "@/lib/domain/plc-communication-view";
 import type { InstallableModuleView, PlcConfigurationView } from "@/lib/domain/plc-config-view";
@@ -255,20 +260,76 @@ export function buildPlcContext(input: PlcContextInput): LlmContextDocument {
       ? [{ label: "A module needs a free, compatible slot", detail: "The install form offers only those." }]
       : [{ label: "A compact PLC has no rack", detail: "Its I/O is what the model has." }]),
   ];
-  const decisions: LlmContextItem[] = [];
+  const decisions: LlmContextDecisionItem[] = [];
   if (peripherals.length === 0)
     decisions.push({
       label: "What should this PLC control?",
+      decision: { kind: "scope" as const, confirm: "required" as const },
       detail: "Ask which devices to wire before adding any.",
       href: routes.designer(f),
     });
   if (modular && freeSlots > 0)
     decisions.push({
       label: "Which modules?",
+      decision: {
+        kind: "model" as const,
+        confirm: "required" as const,
+        enforced: "Only modules the CPU accepts, into a free slot.",
+      },
       detail: "Ask what signals the plant needs before installing modules.",
       href: routes.plcHardware(f, p),
     });
-  if (running) decisions.push({ label: "The runtime is running", detail: ASK_BEFORE_RUNTIME });
+  if (running)
+    decisions.push({
+      label: "The runtime is running",
+      decision: { kind: "run-state" as const, confirm: "required" as const },
+      detail: ASK_BEFORE_RUNTIME,
+    });
+  // Where more than one choice is compatible, the agent asks; the designer takes the first free one otherwise.
+  const multiStandard = banks
+    .flatMap((bank) => bank.points)
+    .filter((point) => point.status === "FREE" && point.signalTypes.length > 1);
+  if (multiStandard.length > 0)
+    decisions.push({
+      label: "Which signal standard?",
+      decision: {
+        kind: "signal-standard" as const,
+        confirm: "required" as const,
+        defaultChoice: "the device terminal's own standard, when it has one",
+        enforced: "A terminal and a channel must share a signal standard; a mismatch is refused.",
+      },
+      value: `${multiStandard.length} free point${multiStandard.length === 1 ? " accepts" : "s accept"} more than one`,
+      detail: `e.g. ${multiStandard[0]!.label}: ${multiStandard[0]!.signalTypes.join(", ")}`,
+      href: routes.plcHardware(f, p),
+    });
+  const crowded = banks.filter((bank) => bank.points.filter((point) => point.status === "FREE").length > 1);
+  if (crowded.length > 0 && peripherals.length > 0)
+    decisions.push({
+      label: "Which channel?",
+      decision: {
+        kind: "channel" as const,
+        confirm: "optional" as const,
+        defaultChoice: "the first free compatible channel, as the designer assigns it",
+        enforced: "Occupied and incompatible channels are refused; the choice is among free compatible ones.",
+      },
+      value: crowded
+        .map((bank) => `${bank.label}: ${bank.points.filter((point) => point.status === "FREE").length} free`)
+        .join("; "),
+      detail: "When the user wants a specific terminal on a specific channel, wire it pin to pin in the designer.",
+      href: routes.designer(f),
+    });
+  const multiProtocol = ports.filter((port) => port.protocols.length > 1);
+  if (multiProtocol.length > 0)
+    decisions.push({
+      label: "Which protocol?",
+      decision: {
+        kind: "protocol" as const,
+        confirm: "optional" as const,
+        defaultChoice: "Modbus TCP, the protocol Z-Factory runs today",
+        enforced: "Only protocols both ends offer; Modbus TCP is the one the runtime serves.",
+      },
+      value: multiProtocol.map((port) => `${port.name}: ${port.protocols.join(", ")}`).join("; "),
+    });
 
   const sectionItems = applySection(input, { actions, validation, decisions, context, objects, relationships });
 
@@ -312,7 +373,9 @@ export function buildPlcContext(input: PlcContextInput): LlmContextDocument {
   );
 }
 
-type Lists = Record<"actions" | "validation" | "decisions" | "context" | "objects" | "relationships", LlmContextItem[]>;
+type Lists = Record<"actions" | "validation" | "context" | "objects" | "relationships", LlmContextItem[]> & {
+  decisions: LlmContextDecisionItem[];
+};
 
 /** What each screen adds to the common PLC context: its own data, actions and issues. */
 function applySection(input: PlcContextInput, lists: Lists): Lists {
@@ -403,6 +466,11 @@ function applySection(input: PlcContextInput, lists: Lists): Lists {
         if (program.versions.length === 0)
           decisions.push({
             label: "Control logic",
+            decision: {
+              kind: "control-logic" as const,
+              confirm: "required" as const,
+              enforced: "The program is compiled and checked; it owns the PLC's local outputs (ADR-0015).",
+            },
             detail: "Ask for the control strategy, setpoints and interlocks before writing the program.",
           });
       }
@@ -609,6 +677,12 @@ function applySection(input: PlcContextInput, lists: Lists): Lists {
         );
         decisions.push({
           label: "Which PLC is the client?",
+          decision: {
+            kind: "endpoint" as const,
+            confirm: "required" as const,
+            defaultChoice: "the PLC that reads: the client polls the server",
+            enforced: "A link joins two PLCs of one factory over a protocol both serve; one writer per value.",
+          },
           detail: "Ask which end polls and which values cross the link.",
         });
       }
