@@ -55,7 +55,7 @@ Simulation coverage is explicit per catalog model:
 | TASK-1002 | DONE | Reusable page-level LLM Context framework |
 | TASK-1003 | DONE | LLM Context tabs across active engineering pages |
 | TASK-1004 | DONE | Agent navigation index and cross-page guidance |
-| TASK-1005 | PLANNED | Sidebar cleanup and active-feature navigation |
+| TASK-1005 | DONE | Sidebar cleanup and active-feature navigation |
 | TASK-1006 | PLANNED | User-decision and recommendation guidance |
 | TASK-1007 | PLANNED | Agent-readable validation and error explanations |
 | TASK-1008 | PLANNED | Browser-agent end-to-end engineering validation |

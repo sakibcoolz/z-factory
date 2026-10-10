@@ -316,7 +316,7 @@ Differences from wireframes 2f, 2g, 2h and 2j:
 - No draft state and no "Next" step: each step is saved when submitted.
 - The channel panel is read-only; wiring is done in the designer, pin by pin (TASK-307), not by editing a pin.
 - Devices are placed in the designer and wired there; the Connections screen is a projection of that wiring (TASK-307).
-- Section list of the PLC: Overview, Hardware, Connections and I/O Mapping are wired. Export is wired since TASK-304; Program, Versions, Runtime and Simulator since TASK-305. Live Tags and Events open the factory's screens narrowed to the PLC (TASK-401). Logs is listed but not wired.
+- Section list of the PLC: Overview, Hardware, Connections and I/O Mapping are wired. Export is wired since TASK-304; Program, Versions, Runtime and Simulator since TASK-305. Live Tags and Events open the factory's screens narrowed to the PLC (TASK-401). Since TASK-1005 the list holds the PLC's own screens only, in their order, and a separate "Factory" section holds Simulator, Live Tags and Events; Logs, which has no screen, is no longer listed.
 - The Pump House Demo and the modular bench design fixtures are gone since TASK-309; "Create pump station demo" builds a stored factory instead (`docs/demo-runbook.md`).
 
 ### Gateways as built (TASK-501)
@@ -353,10 +353,13 @@ A catalog model's screen has a **3D asset** section: a pill with what is rendere
 - No published-port field: published ports belong to runtime ports of devices (Phase 02).
 - No template picker. One template exists since TASK-502: "Create pump station demo" below the form builds the MVP demo factory (`docs/demo-runbook.md`) and opens its Runtime screen. JSON import has no task yet.
 - The submit button creates the factory and opens its overview; the designer for stored factories arrives with TASK-303.
-- Host status shows only what is real today: PostgreSQL connected; Docker Engine and OpenPLC are marked "phase 02".
+- Host status shows only what is real today: PostgreSQL connected, the Docker Engine's reachability and version, and the tag of the pinned OpenPLC runtime image (TASK-1005; `DockerEngineStatus.openPlcImage`).
 
 ### Activity bar
-FAC factories · CAT catalog · DSN designer (also PLC, topology, 3D, device configuration) · RUN runtime and simulator · TAG live tags · EVT events · EXP PLC export · LLM the LLM Index (TASK-1001). Factory-scoped activities are disabled until a factory is open. The bar is one registry, `lib/navigation/activities.ts`, which the LLM Index also reads.
+FAC factories · CAT catalog · DSN designer (also PLC, topology, 3D, device configuration) · RUN runtime and simulator · TAG live tags · EVT events · EXP PLC export · LLM the LLM Index (TASK-1001). Factory-scoped activities are disabled until a factory is open. The bar is one registry, `lib/navigation/activities.ts`, which the LLM Index also reads. Since TASK-1005 the bar holds nothing without a screen: the settings gear is gone.
+
+### Active-feature navigation (TASK-1005)
+Every sidebar entry opens a screen that exists, and nothing else is offered: no muted "not wired yet" or "no adapter" rows, no section a model has but no screen exists for. The PLC list is the PLC's screens, then a Factory section (Simulator, Live Tags and Events narrowed to the PLC); the device list names the factory simulator "Simulator · factory", since that is where it leads, and omits Program and Versions when no adapter runs the model (the overview and the LLM Context say why). `components/shell/navigation.test.tsx` checks that every entry of the activity bar, the PLC list and the device list links to a route the LLM Index lists, so the index and the sidebars describe the same active set.
 
 ### LLM Index as built (TASK-1001, ADR-0024)
 `/llm-index` is the guide an external browser or coding agent reads first: what Z-Factory is and its engineering model; what is real (OpenPLC, the network) and what is simulated; the activity bar; every engineering area with its routes as `[factoryId]`-style patterns, what to bring there and which decisions to ask the user for; which pages have an LLM Context tab (none until TASK-1003); the files an agent can fetch; the recommended workflow; and the rules. Each part is a `section` with `data-llm-section`, each area an `article` with `data-llm-area`, so an agent reading the DOM finds them by name. A "Markdown" button opens `/llm-index.md`, the same content as text. The page is reached from the LLM activity, from the Factories page and from the first-run welcome. It reads no database.

@@ -78,9 +78,6 @@ export function AppShell({
               </span>
             );
           })}
-          <span className="zf-act-item zf-act-end" aria-label="Settings" aria-disabled="true" title="Settings">
-            ⚙
-          </span>
         </nav>
         {sidebar}
         <main className="zf-ed">{children}</main>

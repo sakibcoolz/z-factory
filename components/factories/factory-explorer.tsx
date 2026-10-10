@@ -14,8 +14,13 @@ const STATE_SHORT: Record<RuntimeState, string> = {
   DISCONNECTED: "DISC",
 };
 
-/** Docker Engine reachability, probed on the server and passed down as plain data. */
-export type DockerHostStatus = { reachable: boolean; version?: string };
+/** Docker Engine reachability and the pinned OpenPLC image, probed on the server and passed down as plain data. */
+export type DockerHostStatus = { reachable: boolean; version?: string; openPlcImage?: string };
+
+/** The pinned OpenPLC runtime image, by its tag: what a PLC starts with. */
+export function openPlcImageLabel(docker: DockerHostStatus): string {
+  return docker.openPlcImage ? `${docker.openPlcImage} · pinned` : "not configured";
+}
 
 type FactoryExplorerProps = {
   factories: ReadonlyArray<{ id: string; name: string; runtimeStatus: RuntimeState }>;
@@ -63,7 +68,7 @@ export function FactoryExplorer({ factories, activeFactoryId, docker }: FactoryE
             [
               "OpenPLC image",
               <StatePill key="v" tone="off">
-                TASK-202
+                {openPlcImageLabel(docker)}
               </StatePill>,
             ],
           ]}

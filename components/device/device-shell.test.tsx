@@ -56,13 +56,15 @@ describe("device shell", () => {
       `/factories/${FACTORY_ID}/devices/${DEVICE_ID}/parameters`,
     );
     expect(nav.getByRole("link", { name: /Communications/ })).toBeInTheDocument();
-    expect(nav.getByRole("link", { name: /Runtime/ })).toHaveAttribute("href", `/factories/${FACTORY_ID}/simulator`);
+    // The factory simulator is named as what it is (TASK-1005).
+    expect(nav.getByRole("link", { name: /Simulator/ })).toHaveAttribute("href", `/factories/${FACTORY_ID}/simulator`);
+    expect(nav.queryByRole("link", { name: /Runtime/ })).not.toBeInTheDocument();
     expect(nav.queryByText("Program")).not.toBeInTheDocument();
     expect(nav.queryByText("Versions")).not.toBeInTheDocument();
     expect(nav.getByText("parameter-configurable, remote control, Modbus server")).toBeInTheDocument();
   });
 
-  it("lists a programmable model's program screens without a link when no adapter runs them", () => {
+  it("hides a programmable model's program screens when no adapter runs them (TASK-1005)", () => {
     render(
       <DeviceShell
         device={device({
@@ -81,9 +83,11 @@ describe("device shell", () => {
       </DeviceShell>,
     );
     const nav = within(screen.getByRole("complementary", { name: "VFD-02" }));
-    expect(nav.getByText("Program")).toBeInTheDocument();
-    expect(nav.queryByRole("link", { name: /Program/ })).not.toBeInTheDocument();
-    expect(nav.getAllByText("no adapter")).toHaveLength(2);
+    // No dead entry: the overview and the LLM Context say why there is no program.
+    expect(nav.queryByText("Program")).not.toBeInTheDocument();
+    expect(nav.queryByText("Versions")).not.toBeInTheDocument();
+    expect(nav.queryByText("no adapter")).not.toBeInTheDocument();
+    expect(nav.getByRole("link", { name: /Connections/ })).toBeInTheDocument();
   });
 });
 
