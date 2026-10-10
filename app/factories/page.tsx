@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { LlmContextPanel } from "@/components/agent/llm-context";
 import { FactoryExplorer } from "@/components/factories/factory-explorer";
 import { Welcome } from "@/components/factories/welcome";
 import { AppShell } from "@/components/shell/app-shell";
@@ -6,6 +7,7 @@ import { Content, EditorTabs } from "@/components/shell/editor";
 import { Button } from "@/components/ui/button";
 import { RuntimeStatePill } from "@/components/ui/state-pill";
 import { requireActor } from "@/lib/auth/actor";
+import { buildFactoriesContext } from "@/lib/agent/contexts/design-pages";
 import { getDb } from "@/lib/db/client";
 import { getDocker } from "@/lib/docker/client";
 import { getDockerEngineStatus } from "@/lib/docker/status";
@@ -44,6 +46,7 @@ export default async function FactoriesPage() {
       {isEmpty ? (
         <Content plain className="gap-4.5">
           <Welcome docker={docker} />
+          <LlmContextPanel document={buildFactoriesContext({ factories, docker })} />
         </Content>
       ) : (
         <Content>
@@ -111,6 +114,7 @@ export default async function FactoriesPage() {
               <RuntimeStatePill key={state} state={state} />
             ))}
           </div>
+          <LlmContextPanel document={buildFactoriesContext({ factories, docker })} />
         </Content>
       )}
     </AppShell>

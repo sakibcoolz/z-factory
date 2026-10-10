@@ -1,4 +1,5 @@
 import { DevicePalette } from "@/components/canvas/device-palette";
+import { LlmContextPanel } from "@/components/agent/llm-context";
 import { TopologyCanvas } from "@/components/canvas/topology-canvas";
 import { LiveRefresh } from "@/components/live/live-refresh";
 import { AppShell } from "@/components/shell/app-shell";
@@ -6,6 +7,7 @@ import { EditorTabs, Toolbar } from "@/components/shell/editor";
 import { SideBar } from "@/components/shell/side-bar";
 import { Button } from "@/components/ui/button";
 import { RuntimeStatePill } from "@/components/ui/state-pill";
+import { buildTopologyContext } from "@/lib/agent/contexts/design-pages";
 import { getDb } from "@/lib/db/client";
 import { routes } from "@/lib/navigation/routes";
 import { getTopology } from "@/lib/services/topology-service";
@@ -117,6 +119,7 @@ export async function StoredCanvas({ factoryId, mode }: StoredCanvasProps) {
             : undefined
         }
       />
+      <LlmContextPanel document={buildTopologyContext({ factory, view, mode })} />
     </AppShell>
   );
 }

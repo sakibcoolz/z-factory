@@ -1,4 +1,6 @@
 import type { ReactNode } from "react";
+import type { LlmContextDocument } from "@/lib/agent/llm-context";
+import { LlmContextPanel } from "@/components/agent/llm-context";
 import { AppShell } from "@/components/shell/app-shell";
 import { Content, EditorTabs } from "@/components/shell/editor";
 import { SideBar, SideSection, Tree, type TreeNode } from "@/components/shell/side-bar";
@@ -11,6 +13,8 @@ import type { DeviceDetailView } from "@/lib/domain/device-detail-view";
 type DeviceShellProps = {
   device: DeviceDetailView;
   section: DeviceSection;
+  /** The screen's LLM Context (TASK-1003), rendered after its content. */
+  llmContext?: LlmContextDocument;
   children: ReactNode;
 };
 
@@ -64,7 +68,7 @@ function sections(device: DeviceDetailView, active: DeviceSection): TreeNode[] {
 }
 
 /** Shell shared by the screens of a device that is not a controller: sections, identity and tabs. */
-export function DeviceShell({ device, section, children }: DeviceShellProps) {
+export function DeviceShell({ device, section, llmContext, children }: DeviceShellProps) {
   const label = device.sections.find((item) => item.key === section)?.label ?? section;
   return (
     <AppShell
@@ -106,7 +110,10 @@ export function DeviceShell({ device, section, children }: DeviceShellProps) {
         ]}
         crumb={`${device.factoryName.toLowerCase()} › ${device.name.toLowerCase()} › ${label.toLowerCase()}`}
       />
-      <Content plain>{children}</Content>
+      <Content plain>
+        {children}
+        {llmContext ? <LlmContextPanel document={llmContext} /> : null}
+      </Content>
     </AppShell>
   );
 }

@@ -9,6 +9,7 @@ import { formatUtc } from "@/lib/factories/format";
 import { routes } from "@/lib/navigation/routes";
 import type { DeviceDetailView } from "@/lib/domain/device-detail-view";
 import { saveParametersAction } from "./actions";
+import { buildDeviceContext } from "@/lib/agent/contexts/design-pages";
 import { loadDevice } from "./load-device";
 
 type Ids = { factoryId: string; deviceId: string };
@@ -47,7 +48,7 @@ function WiresTable({ device }: { device: DeviceDetailView }) {
 export async function StoredDeviceOverview({ factoryId, deviceId }: Ids) {
   const { device } = await loadDevice(factoryId, deviceId, "overview");
   return (
-    <DeviceShell device={device} section="overview">
+    <DeviceShell device={device} section="overview" llmContext={buildDeviceContext({ device, section: "overview" })}>
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="zf-k">{`Device · ${device.categoryName}`}</div>
@@ -92,7 +93,11 @@ export async function StoredDeviceOverview({ factoryId, deviceId }: Ids) {
 export async function StoredDeviceConnections({ factoryId, deviceId }: Ids) {
   const { device } = await loadDevice(factoryId, deviceId, "connections");
   return (
-    <DeviceShell device={device} section="connections">
+    <DeviceShell
+      device={device}
+      section="connections"
+      llmContext={buildDeviceContext({ device, section: "connections" })}
+    >
       <h1 className="zf-h">Connections</h1>
       <WiresTable device={device} />
       <div>
@@ -110,7 +115,11 @@ export async function StoredDeviceParameters({ factoryId, deviceId }: Ids) {
   const { device } = await loadDevice(factoryId, deviceId, "parameters");
   const parameters = device.parameters;
   return (
-    <DeviceShell device={device} section="parameters">
+    <DeviceShell
+      device={device}
+      section="parameters"
+      llmContext={buildDeviceContext({ device, section: "parameters" })}
+    >
       <h1 className="zf-h">Parameters</h1>
       {!parameters || parameters.fields.length === 0 ? (
         <p className="zf-sub">
@@ -167,7 +176,7 @@ export async function StoredDeviceParameters({ factoryId, deviceId }: Ids) {
 export async function StoredDeviceRegisters({ factoryId, deviceId }: Ids) {
   const { device } = await loadDevice(factoryId, deviceId, "registers");
   return (
-    <DeviceShell device={device} section="registers">
+    <DeviceShell device={device} section="registers" llmContext={buildDeviceContext({ device, section: "registers" })}>
       <h1 className="zf-h">Registers</h1>
       {device.registers.length === 0 ? (
         <p className="zf-sub">
@@ -216,7 +225,11 @@ export async function StoredDeviceCommunications({ factoryId, deviceId }: Ids) {
   const { device } = await loadDevice(factoryId, deviceId, "communications");
   const links = device.wires.filter((wire) => wire.kind === "BUS");
   return (
-    <DeviceShell device={device} section="communications">
+    <DeviceShell
+      device={device}
+      section="communications"
+      llmContext={buildDeviceContext({ device, section: "communications" })}
+    >
       <h1 className="zf-h">Communications</h1>
       <table className="zf-tbl">
         <thead>

@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { LlmContextPanel } from "@/components/agent/llm-context";
 import { CatalogModelView } from "@/components/catalog/catalog-view";
 import { AppShell } from "@/components/shell/app-shell";
 import { Content, EditorTabs } from "@/components/shell/editor";
 import { SideBar, SideSection, Tree, type TreeNode } from "@/components/shell/side-bar";
 import { StatePill } from "@/components/ui/state-pill";
+import { buildCatalogContext } from "@/lib/agent/contexts/design-pages";
 import { requireActor } from "@/lib/auth/actor";
 import { getDb } from "@/lib/db/client";
 import type { CatalogOverview } from "@/lib/domain/catalog-view";
@@ -153,6 +155,7 @@ export default async function CatalogPage({ searchParams }: CatalogPageProps) {
             </p>
           </div>
         )}
+        <LlmContextPanel document={buildCatalogContext({ overview, model: model ?? null, peripherals, type })} />
       </Content>
     </AppShell>
   );

@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { FactoryExplorer } from "@/components/factories/factory-explorer";
 import { PlcCreateForm } from "@/components/plc/plc-create-form";
+import { LlmContextPanel } from "@/components/agent/llm-context";
 import { AppShell } from "@/components/shell/app-shell";
 import { Content, EditorTabs } from "@/components/shell/editor";
+import { buildNewPlcContext } from "@/lib/agent/contexts/design-pages";
 import { getDb } from "@/lib/db/client";
 import { PLC_ARCHITECTURE_SLUGS, type PlcArchitectureSlug, routes } from "@/lib/navigation/routes";
 import { listFactoryDevices, listPlcModels } from "@/lib/services/plc-config-service";
@@ -41,6 +43,11 @@ export default async function NewDevicePage({ params }: NewDevicePageProps) {
     listFactoryDevices(db, actor, factory.id),
   ]);
 
+  const suggestedName = suggestDeviceName(
+    "PLC",
+    devices.map((device) => device.name),
+  );
+
   return (
     <AppShell
       title={`${factory.name} — Z-FACTORY`}
@@ -72,15 +79,13 @@ export default async function NewDevicePage({ params }: NewDevicePageProps) {
             action={createPlcAction.bind(null, factory.id)}
             architecture={architecture}
             models={models}
-            suggestedName={suggestDeviceName(
-              "PLC",
-              devices.map((device) => device.name),
-            )}
+            suggestedName={suggestedName}
             cancelHref={routes.factory(factory.id)}
           />
         ) : (
           <p className="zf-sub">The catalog has no {architecture} PLC. Run npm run db:seed to load the catalog.</p>
         )}
+        <LlmContextPanel document={buildNewPlcContext({ factory, architecture, models, devices, suggestedName })} />
       </Content>
     </AppShell>
   );
