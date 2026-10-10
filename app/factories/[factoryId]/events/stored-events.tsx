@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LlmContextPanel } from "@/components/agent/llm-context";
 import { LiveEventLog } from "@/components/live/live-event-log";
 import { AppShell } from "@/components/shell/app-shell";
 import { Content, EditorTabs } from "@/components/shell/editor";
@@ -6,6 +7,7 @@ import { SideBar, SideSection, Tree } from "@/components/shell/side-bar";
 import { OperationForm } from "@/components/ui/operation-form";
 import { KeyValue, SectionRule } from "@/components/ui/primitives";
 import { StatePill, type Tone } from "@/components/ui/state-pill";
+import { buildEventsContext } from "@/lib/agent/contexts/factory-operations";
 import { getDb } from "@/lib/db/client";
 import { alarmCodeLabel, type AlarmState } from "@/lib/domain/alarms";
 import { EVENT_FAMILIES, type EventFamily, type EventSeverity } from "@/lib/domain/events";
@@ -231,6 +233,16 @@ export async function StoredEvents({ factoryId, filter }: { factoryId: string; f
           streamUrl={routes.stream(factory.id)}
           filter={{ family, severity, deviceId }}
           deviceNames={Object.fromEntries(devices.map((candidate) => [candidate.id, candidate.name]))}
+        />
+        <LlmContextPanel
+          document={buildEventsContext({
+            factory,
+            alarms,
+            events,
+            counts,
+            filter: { family, severity, deviceName: device?.name },
+            retention,
+          })}
         />
       </Content>
     </AppShell>

@@ -1,10 +1,12 @@
 import Link from "next/link";
+import { LlmContextPanel } from "@/components/agent/llm-context";
 import { LiveRefresh } from "@/components/live/live-refresh";
 import { AppShell } from "@/components/shell/app-shell";
 import { Content, EditorTabs } from "@/components/shell/editor";
 import { Button } from "@/components/ui/button";
 import { OperationForm } from "@/components/ui/operation-form";
 import { RuntimeStatePill, StatePill } from "@/components/ui/state-pill";
+import { buildFactoryRuntimeContext } from "@/lib/agent/contexts/factory-operations";
 import { getDb } from "@/lib/db/client";
 import { routes } from "@/lib/navigation/routes";
 import { listFactoryDevices } from "@/lib/services/plc-config-service";
@@ -150,6 +152,7 @@ export async function StoredFactoryRuntime({ factoryId }: { factoryId: string })
           then the gateway endpoints; a PLC&apos;s own Runtime screen reads its live state and starts, stops or removes
           that one runtime.
         </p>
+        <LlmContextPanel document={buildFactoryRuntimeContext({ factory, devices, simulation, docker })} />
       </Content>
     </AppShell>
   );

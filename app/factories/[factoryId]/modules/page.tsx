@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { LlmContextPanel } from "@/components/agent/llm-context";
 import { NewModuleForm } from "@/components/modules/module-form";
 import { ModuleList } from "@/components/modules/module-list";
 import { AppShell } from "@/components/shell/app-shell";
 import { Content, EditorTabs } from "@/components/shell/editor";
 import { SectionRule } from "@/components/ui/primitives";
 import { StatePill } from "@/components/ui/state-pill";
+import { buildModulesContext } from "@/lib/agent/contexts/factory-engineering";
 import { requireActor } from "@/lib/auth/actor";
 import { getDb } from "@/lib/db/client";
 import { isDomainError } from "@/lib/domain/errors";
@@ -72,6 +74,7 @@ export default async function ModulesPage({ params }: ModulesPageProps) {
           Module types are generic templates shipped with Z-Factory: they name device categories and logical signals,
           never a manufacturer&apos;s hardware. Nothing here changes a device.
         </p>
+        <LlmContextPanel document={buildModulesContext(view)} />
       </Content>
     </AppShell>
   );

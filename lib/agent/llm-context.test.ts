@@ -71,7 +71,7 @@ describe("an LLM Context document", () => {
   it("registers every area with a context as an area of the LLM Index, and the index names them", () => {
     const index = buildLlmIndex();
     for (const key of LLM_CONTEXT_AREAS) expect(index.areas.map((area) => area.key)).toContain(key);
-    expect(index.areas.filter((area) => area.llmContext).map((area) => area.key)).toEqual([...LLM_CONTEXT_AREAS]);
+    expect(new Set(index.areas.filter((area) => area.llmContext).map((area) => area.key))).toEqual(LLM_CONTEXT_AREAS);
     expect(LLM_CONTEXT_AREAS.has("factory")).toBe(true);
   });
 });

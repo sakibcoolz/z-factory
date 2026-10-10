@@ -10,4 +10,10 @@ export const LLM_CONTEXT_AREAS: ReadonlySet<string> = new Set([
   "program",
   "plc-communication",
   "export",
+  "runtime",
+  "simulation",
+  "tags",
+  "events",
+  "gateways",
+  "modules",
 ]);

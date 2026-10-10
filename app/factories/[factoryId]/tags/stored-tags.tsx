@@ -1,8 +1,10 @@
+import { LlmContextPanel } from "@/components/agent/llm-context";
 import { LiveTagTable } from "@/components/live/live-tag-table";
 import { AppShell } from "@/components/shell/app-shell";
 import { Content, EditorTabs } from "@/components/shell/editor";
 import { SideBar, SideSection, Tree } from "@/components/shell/side-bar";
 import { RuntimeStatePill, StatePill } from "@/components/ui/state-pill";
+import { buildLiveTagsContext } from "@/lib/agent/contexts/factory-operations";
 import { routes } from "@/lib/navigation/routes";
 import { getLiveTags } from "@/lib/services/live-service";
 import { getLiveDeps } from "@/lib/services/runtime-deps";
@@ -108,6 +110,7 @@ export async function StoredTags({ factoryId, plcId }: { factoryId: string; plcI
           staleAfterMs={view.staleAfterMs}
           showPlc={!selected && view.plcs.length > 1}
         />
+        <LlmContextPanel document={buildLiveTagsContext({ factory, view, selectedPlcId: plcId })} />
       </Content>
     </AppShell>
   );
