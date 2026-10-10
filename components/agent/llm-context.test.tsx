@@ -49,7 +49,11 @@ describe("the LLM Context panel", () => {
     const validation = within(screen.getByRole("region", { name: "Validation state" }));
     expect(validation.getByText("issues")).toHaveAttribute("data-tone", "deg");
     expect(validation.getByText("No PLC").closest("li")).toHaveAttribute("data-tone", "warn");
-    expect(screen.getAllByText("None.")).toHaveLength(6);
+    expect(screen.getAllByText("None.")).toHaveLength(5);
+    // The generated cross-page links say whether the area comes before or after this page.
+    const navigation = within(screen.getByRole("region", { name: "Navigation guidance" }));
+    expect(navigation.getAllByText("before").length).toBeGreaterThan(0);
+    expect(navigation.getByRole("link", { name: "Factories" })).toHaveAttribute("href", "/factories");
   });
 
   it("carries the whole document as JSON an agent can parse", () => {
