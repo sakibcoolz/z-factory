@@ -152,6 +152,9 @@ Each PLC's Modbus server is published on one host endpoint, stored as a `Runtime
 - The tag registry is not yet checked against the located variables a program declares.
 - PLC-to-PLC links exist since TASK-701 (`docs/architecture.md` → PLC-to-PLC communication). Their mappings (TASK-702) join a tag of the client and a tag of the server, so they reuse the tag registry's areas, addresses, types, word spans, orders and scaling and the codecs above; a PLC link writes only the server's writable command/setpoint tags, exactly as a gateway does (`docs/database.md` → PlcCommunicationMapping).
 
+## The device side (TASK-1013, ADR-0027)
+The reverse direction, a PLC commanding a device over Modbus TCP, is served by the catalog device runtime: a protocol-controlled device runs its behaviour profile behind a declared register map, and the runtime answers the PLC's reads and writes at the device's unit id with exactly those registers, within the signals' ranges and write permissions. The maps, the listener and the rules are in `docs/process-simulation.md` → Register maps and the Modbus listener; the shipped map is in `docs/device-simulation.md` → Protocol-controlled devices. The gateway endpoints below are untouched: they filter an external device's access to a PLC, the runtime's listeners serve simulated devices to a PLC.
+
 ## Implementation (TASK-501, ADR-0013): gateway endpoints
 Code: `lib/domain/gateway.ts` (what a gateway may read and write, pure), `lib/protocols/modbus/server.ts` (Modbus TCP server), `lib/runtimes/gateway-endpoint/` (the endpoints of this server process), `lib/services/gateway-service.ts`, screen `/factories/[factoryId]/gateways`.
 

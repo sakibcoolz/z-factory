@@ -273,6 +273,43 @@ A behaviour can raise a fault of its profile from its own physics (`Context.Rais
 
 Step order of the runtime since TASK-1011: what supplies a motor (drives, relays, starters) and servo drives, then motors and servo motors, then loads, then controllers, then valves, heaters, indicators, cylinders and everything else that acts, then what observes (sensors, switches, encoders, signal conditioners), in configuration order within a stage. A controller reads its transmitter's value from the previous step and the devices it controls take its output in the same step; a conditioner reads a transmitter configured before it in the same step.
 
+### Protocol-controlled devices (TASK-1013, ADR-0027)
+A device the PLC commands over a network instead of terminals runs the same behaviour
+profile behind a **declared register map**: one signal of the profile per register, in
+the area its direction and kind dictate (commands as coils, setpoints as holding
+registers, boolean feedback as discrete inputs, numeric feedback as input registers),
+with data type, scale, unit, access and role, and the signal's range on every writable
+register. Maps are stated in `lib/domain/register-maps.ts` and declared identically in
+the runtime (`internal/device/registers.go`), which serves them over Modbus TCP, one
+listener per factory, each device at its unit id; the parity test holds the two together
+and `docs/process-simulation.md` → Register maps and the Modbus listener has the request
+rules. Writes set the behaviour's inputs only on writable registers and within range,
+reads return commands as written and feedback as produced, and everything else answers a
+Modbus exception before the device is touched. The PLC stays the authority: the runtime
+takes what the PLC writes to the device and never writes a PLC output.
+
+The one shipped map is the generic Modbus drive's, Z-Factory's own declaration for the
+generic model, not any vendor's:
+
+| `VFD_MODBUS_TCP` v1 (profile `VFD` v1) | Area | Address | Type | Access | Role |
+|---|---|---|---|---|---|
+| `run` | coil | 0 | BOOL | read / write | command |
+| `reverse` | coil | 1 | BOOL | read / write | command |
+| `faultReset` | coil | 2 | BOOL | read / write | command |
+| `frequencySetpoint` (0.1 Hz; 0 … `maxFrequencyHz`) | holding register | 0 | UINT16 | read / write | setpoint |
+| `running` | discrete input | 0 | BOOL | read only | status |
+| `atSetpoint` | discrete input | 1 | BOOL | read only | status |
+| `faulted` | discrete input | 2 | BOOL | read only | alarm |
+| `actualFrequency` (0.1 Hz) | input register | 0 | UINT16 | read only | feedback |
+| `outputCurrent` (0.1 A) | input register | 1 | UINT16 | read only | feedback |
+
+Zero-based addresses, big-endian, high word first; engineering value = raw × scale.
+A vendor drive's register map would be a vendor fact with its source (TASK-1012); none is
+declared, and the catalog refuses a model that names a map that is not declared. The
+generic Modbus drive of the catalog names this map and stays `NOT_SIMULATABLE` until
+TASK-1015 moves factories to the runtime and gives the PLC a path to the listener; a
+remote I/O station and a gateway have no profile (`docs/device-catalog.md`).
+
 ### As built (TASK-1009, ADR-0025)
 The catalog device runtime is part of `services/process-sim`: behaviour profiles in
 `internal/device` (the ten behaviours above, ported value for value, each described over
