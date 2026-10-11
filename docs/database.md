@@ -23,6 +23,8 @@ Examples: PLC, VFD, MOTOR, PUMP, FAN, BLOWER, CONVEYOR, MIXER, COMPRESSOR, VALVE
 
 `id, code, name, simulatorType, requiresMotor, requiresDrive, preferredDriveType`
 
+`simulatorType` names the behaviour profile of the category's devices (`lib/domain/behavior-contract.ts`): the ten the server's simulator runs (`SENSOR`, `SWITCH`, `VALVE`, `VFD`, `MOTOR`, `PUMP`, `FAN`, `CONVEYOR`, `MIXER`, `COMPRESSOR`), `RELAY`, and since TASK-1011 (migration `simulator_types`) the runtime's library: `HEATER`, `INDICATOR`, `SOFT_STARTER`, `MOTOR_STARTER`, `SERVO_DRIVE`, `SERVO_MOTOR`, `ENCODER`, `PID_CONTROLLER`, `SIGNAL_CONDITIONER`, `ACTUATOR`; `GENERIC` and `NONE` have no profile.
+
 ### DeviceFamily
 `id, manufacturerId, name, deviceCategoryId`
 
@@ -332,7 +334,7 @@ For high-volume history, partitioning/retention should be introduced first. Time
 Every factual vendor hardware profile keeps source URL plus verification metadata. Never fabricate pinouts, I/O counts, register maps, or electrical limits.
 
 ## Implementation (TASK-102)
-- Schema: `prisma/schema.prisma`; migrations: `prisma/migrations/` (`init`, `device_io_endpoint`, `factory_subnet_no_overlap`, `plc_api_host_port`, `tag_source_signal`, `catalog_capabilities`, `device_io_simulator_signal`, `device_canvas_position`, `catalog_3d_assets`, `catalog_asset_generation`, `process_modules`, `endpoint_wiring`, `device_capabilities`, `process_model_link`, `module_plc_io_mapping`, `io_point_tags_read_only`, `plc_communications`, `plc_link_mappings`, `catalog_simulation_coverage`); generated client: `lib/generated/prisma/` (git-ignored).
+- Schema: `prisma/schema.prisma`; migrations: `prisma/migrations/` (`init`, `device_io_endpoint`, `factory_subnet_no_overlap`, `plc_api_host_port`, `tag_source_signal`, `catalog_capabilities`, `device_io_simulator_signal`, `device_canvas_position`, `catalog_3d_assets`, `catalog_asset_generation`, `process_modules`, `endpoint_wiring`, `device_capabilities`, `process_model_link`, `module_plc_io_mapping`, `io_point_tags_read_only`, `plc_communications`, `plc_link_mappings`, `catalog_simulation_coverage`, `simulator_types`); generated client: `lib/generated/prisma/` (git-ignored).
 - Primary keys are UUID v7 (`@default(uuid(7))`, PostgreSQL `uuid`), except `TelemetrySample.id` (`bigint` identity) and the one-to-one tables keyed by their owner (`ElectricalProfile`, `PlcInstanceProfile`, `DeviceRuntimeSnapshot`).
 - Catalog rows referenced by factory data are protected with `ON DELETE RESTRICT`; factory-owned rows cascade from `Factory`.
 - `DeviceInstance.dockerContainerId` is server-side only and never sent to the browser.

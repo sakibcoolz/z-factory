@@ -159,7 +159,7 @@ A latching fault trips the device: it stays faulted after the cause is cleared u
 - A motor drives one load; a second `MECHANICALLY_DRIVES` connection from the same motor refuses the start.
 - The measured signal of a sensor is named in its profile, not on the `MEASURES` connection.
 - A device fault raises an alarm (`AlarmEvent`, code `FAULT:<code>`) that ends when the fault is gone, for a latching fault when the device leaves its faulted state, and in any case when the simulation stops (TASK-401).
-- Relays and contactors are not simulated.
+- Relays, contactors, heaters and indicators are not simulated by the server's simulator; the runtime models them (Behaviour library below) and TASK-1015 brings them to factories.
 
 
 ## PLC I/O authority in simulation
@@ -239,6 +239,22 @@ Execution tasks: TASK-1009 through TASK-1016 in `docs/phases/phase-10-agent-read
 | `fidelity` | the approximations in words and what is deliberately not modelled |
 
 The Go runtime describes the same profiles (`GET /v1/profiles`, now with `parameterSchema` beside the defaults) and its `Configure` refuses exactly what the schema excludes (`internal/device/schema_test.go` walks every bound); `test/integration/process-sim.test.ts` compares the two descriptions field by field, so the contract and the code that runs it cannot drift apart. `checkParameterValue` is the one check the catalog applies to a model's parameter values. `coverageStatement` is the sentence shown with a coverage state: a behaviour model, not vendor firmware.
+
+### The behaviour library (TASK-1011)
+Runtime-only profiles (`runsOn.server` false in the contract): implemented and tested in `services/process-sim/internal/device`, described over `GET /v1/profiles` and in `lib/domain/behavior-contract.ts`, held together by the parity test. The server's simulator does not run them, so catalog models of these categories stay `NOT_SIMULATABLE` with that reason until TASK-1015 moves factories to the runtime; the catalog refuses a `DEVICE_SIM` model on such a profile. Every profile is a documented generic approximation; what is absent is stated, nothing vendor-specific is invented. Owner's decisions in `docs/phases/phase-10-agent-ready-catalog-simulator/tasks/TASK-1011.md`.
+
+| Profile | Signals from the PLC (IN) | Signals to the PLC (OUT) | Links | Parameters (default) | Faults |
+|---|---|---|---|---|---|
+| `RELAY` (relay, contactor, solid-state relay) | `coil` | `closed`, `auxNo`, `auxNc` | feeds a motor (`drive` of the motor) or a heater (`contactor` of the heater) | `kind` (ELECTROMECHANICAL / SOLID_STATE), `pickupTimeS` (0.02), `dropoutTimeS` (0.02) | `WELDED_CONTACTS`, `COIL_OPEN` (both silent) |
+| `HEATER` | `on`, `power` (%), `faultReset` | `heating`, `temperature` (°C), `powerOutput` (kW), `cutout`, `faulted` | `contactor` (a RELAY; without one, `on` energizes it) | `ratedPowerKw` (5), `ambientC` (20), `riseAtFullPowerC` (100), `timeConstantS` (300), `maxTemperatureC` (250), `cutoutHysteresisC` (10), `initialTemperatureC` | `OVERTEMPERATURE` (latching), `ELEMENT_FAILURE` (silent) |
+| `INDICATOR` (stack light, lamp, buzzer) | `red`, `amber`, `green`, `blue`, `buzzer`, `flash` | `redLit`, `amberLit`, `greenLit`, `blueLit`, `buzzerOn` | — | `flashRateHz` (1) | `LAMP_FAILURE` (silent) |
+
+Approximations:
+- **Relay:** one pickup and one dropout delay (none for a solid-state relay); the auxiliary contacts follow the main contacts exactly; welded contacts stay closed whatever the coil does, an open coil never closes them. No bounce, arcing, wear, inrush or contact resistance. A motor whose `drive` is a relay runs at line frequency while the contacts are closed (the motor's supply is abstracted: a drive gives a frequency, a relay or starter the line, a starter may limit the speed while it ramps).
+- **Heater:** one lumped thermal mass with one time constant: the element temperature moves with a first-order lag towards ambient plus the rise at the delivered power share, and cools the same way; a thermostat cutout removes power above the maximum temperature until the element has cooled by the hysteresis. No element resistance, supply voltage, radiation or air flow, and not the process being heated (that is process simulation).
+- **Indicator:** lamps are on or off, lit for the first half of every flash period while the flash command is on; one buzzer tone. No brightness, lamp test or sound level.
+
+Step order of the runtime since TASK-1011: what supplies a motor (drives, relays, starters), then motors, then loads, then controllers (TASK-1011 PR B), then valves, heaters, indicators and everything else that acts, then what observes.
 
 ### As built (TASK-1009, ADR-0025)
 The catalog device runtime is part of `services/process-sim`: behaviour profiles in
