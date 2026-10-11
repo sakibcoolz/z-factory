@@ -8,6 +8,7 @@
  * loaded and returns a document; `components/agent/llm-context.tsx` renders it.
  */
 
+import { explanationLine, type ValidationExplanation } from "@/lib/domain/validation-explanations";
 import { buildLlmIndex } from "./llm-index";
 import { crossPageLinks, routeIds } from "./navigation";
 
@@ -55,6 +56,8 @@ export type LlmContextItem = {
   tone?: LlmContextTone;
   /** For a navigation item: whether the area comes before or after this page (TASK-1004). */
   relation?: "upstream" | "downstream";
+  /** For a validation item: the rule behind it, what it requires and what to do (TASK-1007). */
+  explanation?: ValidationExplanation;
 };
 
 /**
@@ -184,6 +187,7 @@ function itemLine(item: LlmContextItem | LlmContextDecisionItem): string {
   const head = item.href ? `[${name}](${item.href})` : name;
   const parts = [item.value ? `${head}: ${item.value}` : head];
   if (item.detail) parts.push(item.detail);
+  if (item.explanation) parts.push(explanationLine(item.explanation));
   if ("decision" in item && item.decision) {
     const { kind, confirm, defaultChoice, enforced } = item.decision;
     parts.push(

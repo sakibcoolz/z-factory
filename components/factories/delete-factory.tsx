@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import { RefusalExplanation } from "@/components/ui/refusal";
 import type { DeleteFactoryState } from "@/lib/factories/form-state";
 import { Button } from "@/components/ui/button";
 
@@ -27,6 +28,7 @@ export function DeleteFactory({ factoryName, action }: DeleteFactoryProps) {
     <form action={formAction} className="flex flex-wrap items-center gap-1.5">
       <span className="zf-error" role="alert">
         {state.message ?? `Delete ${factoryName} and its devices? This cannot be undone.`}
+        {state.message && state.explanation ? <RefusalExplanation explanation={state.explanation} /> : null}
       </span>
       <Button size="sm" variant="danger" type="submit" disabled={pending}>
         {pending ? "Deleting…" : "Confirm delete"}

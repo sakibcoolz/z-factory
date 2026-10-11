@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { explainDomainError } from "@/lib/domain/validation-explanations";
 import { redirect } from "next/navigation";
 import { requireActor } from "@/lib/auth/actor";
 import { getDb } from "@/lib/db/client";
@@ -88,7 +89,10 @@ export async function deleteFactoryAction(
     await deleteFactory(getDb(), actor, factoryId, (id) => removeFactoryResources(getDocker(), id));
   } catch (error) {
     logUnexpected("factory.delete", error);
-    return { message: toErrorMessage(error) };
+    return {
+      message: toErrorMessage(error),
+      explanation: isDomainError(error) ? explainDomainError(error) : undefined,
+    };
   }
   revalidatePath(routes.factories());
   redirect(routes.factories());

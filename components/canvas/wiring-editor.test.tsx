@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { explainRule } from "@/lib/domain/validation-explanations";
 import { describe, expect, it, vi } from "vitest";
 import { type WiringActions, WiringEditor } from "@/components/canvas/wiring-editor";
 import type { PairWiringView, WireView, WiringEndpointView } from "@/lib/domain/wiring-view";
@@ -76,6 +77,14 @@ const pair = (overrides: Partial<PairWiringView> = {}): PairWiringView => ({
       "PLC_IO_POINT:ai1": REFUSED_SUPPLY,
     },
   },
+  rules: {
+    "DEVICE_IO:out": { "PLC_IO_POINT:di0": "wire-signal-class" },
+    "DEVICE_IO:v24": {
+      "PLC_IO_POINT:di0": "wire-kind",
+      "PLC_IO_POINT:ai0": "wire-kind",
+      "PLC_IO_POINT:ai1": "wire-kind",
+    },
+  },
   replacingWireId: null,
   ...overrides,
 });
@@ -143,6 +152,13 @@ describe("wiring editor", () => {
     fireEvent.change(screen.getByLabelText("PLC-01 endpoint"), { target: { value: "PLC_IO_POINT:di0" } });
 
     expect(screen.getByRole("alert")).toHaveTextContent(REFUSED_DI);
+    // The refusal is explained from its rule: the kind, what the rule expects and what to do (TASK-1007).
+    const explained = screen.getByRole("alert").querySelector("[data-llm-refusal]") as HTMLElement;
+    expect(explained.dataset.llmRefusal).toBe("wire-signal-class");
+    expect(explained).toHaveTextContent("rule wire-signal-class");
+    expect(explained).toHaveTextContent("object OUT");
+    expect(explained).toHaveTextContent("destination DI Ia.0");
+    expect(explained).toHaveTextContent(/Expected: .+Do: /);
     expect(screen.getByRole("button", { name: "Add wire" })).toBeDisabled();
     fireEvent.submit(screen.getByRole("button", { name: "Add wire" }));
     expect(actions.connect).not.toHaveBeenCalled();
@@ -155,12 +171,16 @@ describe("wiring editor", () => {
 
   it("shows what the server refuses and keeps the choice", async () => {
     const message = "PLC-01 / AI 0 already has its wire, to PT-102 / OUT.";
-    const { onChanged } = setup(pair(), { connect: vi.fn(async () => ({ ok: false as const, message })) });
+    const explanation = explainRule("wire-occupied", message, { object: "AI 0" });
+    const { onChanged } = setup(pair(), {
+      connect: vi.fn(async () => ({ ok: false as const, message, explanation })),
+    });
     await screen.findByLabelText("PLC-01 endpoint");
 
     fireEvent.click(screen.getByRole("button", { name: "Add wire" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(message);
+    expect(screen.getByRole("alert").querySelector("[data-llm-refusal]")).toHaveTextContent("rule wire-occupied");
     expect(onChanged).not.toHaveBeenCalled();
     expect(screen.getByLabelText("PLC-01 endpoint")).toHaveValue("PLC_IO_POINT:ai0");
   });

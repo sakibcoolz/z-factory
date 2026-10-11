@@ -532,6 +532,14 @@ describe("the process module contexts", () => {
     expect(labels(context.relationships)).toEqual(["TK-01 is the Tank of Tank T-01"]);
     expect(context.capacity[0]).toMatchObject({ label: "Tank", tone: "warn" });
     expect(labels(context.validation.items)).toEqual(["Tank T-01: The role Level sensor has no device."]);
+    // The issue carries its rule's explanation, so an agent knows what the rule expects and what to do.
+    expect(context.validation.items[0]?.explanation).toMatchObject({
+      rule: "module-role-empty",
+      kind: "fixable",
+      object: "Tank T-01",
+      destination: "level",
+      area: "modules",
+    });
     complete(context);
   });
 
@@ -669,6 +677,7 @@ describe("the process module contexts", () => {
       "Required signal Level is not bound",
       "Process simulation service",
     ]);
+    expect(context.validation.items[0]?.explanation).toMatchObject({ rule: "module-role-empty", object: "Tank T-01" });
     expect(labels(context.decisions)).toEqual([
       "Which device for Level sensor?",
       "Which PLC tags carry the required signals?",

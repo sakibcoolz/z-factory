@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
+import { RefusalExplanation } from "@/components/ui/refusal";
 import { EMPTY_OPERATION_STATE, type OperationState } from "@/lib/plc/operation-state";
 
 export type OperationButton = {
@@ -112,6 +113,9 @@ export function OperationForm({ action, buttons, size = "md", pendingHint, label
         {asked && !pending ? <p className="zf-error whitespace-normal">{asked.confirm}</p> : null}
         {pending && pendingHint ? <p className="zf-sub">{pendingHint}</p> : null}
         {!pending && !asked && state.message ? <p className="zf-error whitespace-normal">{state.message}</p> : null}
+        {!pending && !asked && state.message && state.explanation ? (
+          <RefusalExplanation explanation={state.explanation} />
+        ) : null}
         {!pending && !asked && state.notice ? <p className="zf-notice whitespace-normal">{state.notice}</p> : null}
       </div>
     </form>

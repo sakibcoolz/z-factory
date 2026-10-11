@@ -69,6 +69,7 @@ describe("factory form state", () => {
       message: undefined,
       fieldErrors: { subnetCidr: "Use a private range.", slug: "Use lowercase letters." },
       values,
+      explanation: expect.objectContaining({ code: "VALIDATION", kind: "fixable" }),
     });
   });
 
@@ -86,7 +87,12 @@ describe("factory form state", () => {
 
   it("uses a form message for domain errors without a field", () => {
     const state = toFormState(new DomainError("NOT_FOUND", "The factory does not exist."), values);
-    expect(state).toEqual({ message: "The factory does not exist.", fieldErrors: {}, values });
+    expect(state).toEqual({
+      message: "The factory does not exist.",
+      fieldErrors: {},
+      values,
+      explanation: expect.objectContaining({ code: "NOT_FOUND", rule: null }),
+    });
   });
 
   it("never shows internal error text", () => {

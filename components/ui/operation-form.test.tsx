@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { OperationState } from "@/lib/plc/operation-state";
+import { DomainError } from "@/lib/domain/errors";
+import { type OperationState, toOperationState } from "@/lib/plc/operation-state";
 import { type OperationButton, OperationForm } from "./operation-form";
 
 const buttons: OperationButton[] = [
@@ -34,6 +35,22 @@ describe("OperationForm", () => {
     setup({ message: "The Docker Engine is not reachable." });
     fireEvent.click(screen.getByRole("button", { name: "Start" }));
     expect(await screen.findByText("The Docker Engine is not reachable.")).toBeInTheDocument();
+    expect(screen.getByRole("status").querySelector("[data-llm-refusal]")).toBeNull();
+  });
+
+  it("explains a refusal under its message: the rule, its kind and what to do", async () => {
+    setup(
+      toOperationState(
+        new DomainError("VALIDATION", "The PLC has no program.", { rule: "program-required", plc: "PLC-01" }),
+      ),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Start" }));
+    expect(await screen.findByText("The PLC has no program.")).toBeInTheDocument();
+    const refusal = screen.getByRole("status").querySelector("[data-llm-refusal]") as HTMLElement;
+    expect(refusal.dataset.llmRefusal).toBe("program-required");
+    expect(refusal).toHaveTextContent("rule program-required");
+    expect(refusal).toHaveTextContent(/^.*Do: /);
+    expect(refusal).toHaveTextContent("plc=PLC-01");
   });
 
   it("keeps every button disabled and says what is happening while an operation runs", async () => {

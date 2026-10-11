@@ -4,6 +4,7 @@ import LlmIndexPage from "@/app/llm-index/page";
 import { GET } from "@/app/llm-index.md/route";
 import { buildLlmIndex } from "@/lib/agent/llm-index";
 import { LLM_INDEX_SECTIONS, renderLlmIndexMarkdown } from "@/lib/agent/llm-index-markdown";
+import { REFUSAL_KINDS, RULE_EXPLANATIONS } from "@/lib/domain/validation-explanations";
 
 /** The LLM Index page and its Markdown twin (TASK-1001). Neither needs a database or an owner. */
 describe("the LLM Index page", () => {
@@ -34,6 +35,22 @@ describe("the LLM Index page", () => {
     }
     // A route without placeholders is a link an agent can follow.
     expect(screen.getByRole("link", { name: "/catalog" })).toHaveAttribute("href", "/catalog");
+  });
+
+  it("explains how a refusal reads: every kind and every engineering rule, on the page and in the Markdown", () => {
+    const { container } = render(<LlmIndexPage />);
+    const section = container.querySelector('section[data-llm-section="validation"]') as HTMLElement;
+    for (const kind of Object.keys(REFUSAL_KINDS))
+      expect(section.querySelector(`[data-llm-refusal-kind="${kind}"]`), kind).not.toBeNull();
+    expect(section.querySelectorAll("tr[data-llm-rule]")).toHaveLength(Object.keys(RULE_EXPLANATIONS).length);
+    expect(within(section).getByText("signal-type")).toBeInTheDocument();
+
+    const markdown = renderLlmIndexMarkdown(index);
+    expect(markdown).toContain("## How a refusal reads");
+    expect(markdown).toContain("- `fixable`: ");
+    expect(markdown).toContain(
+      `| \`signal-type\` | fixable | Designer | ${RULE_EXPLANATIONS["signal-type"]!.expected} | ${RULE_EXPLANATIONS["signal-type"]!.remediation} |`,
+    );
   });
 
   it("names the rules and the workflow", () => {

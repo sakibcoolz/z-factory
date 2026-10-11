@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireActor } from "@/lib/auth/actor";
 import { getDb } from "@/lib/db/client";
 import { DomainError, isDomainError } from "@/lib/domain/errors";
+import { explainDomainError, type ValidationExplanation } from "@/lib/domain/validation-explanations";
 import type { LinkResult } from "@/lib/domain/topology-view";
 import type { PairWiringView } from "@/lib/domain/wiring-view";
 import { routes } from "@/lib/navigation/routes";
@@ -23,7 +24,8 @@ import { connectWire, disconnectWire, getPairWiring, reconnectWire } from "@/lib
  * service, and change configuration only.
  */
 
-export type CanvasResult<T = undefined> = { ok: true; value: T } | { ok: false; message: string };
+export type CanvasResult<T = undefined> =
+  { ok: true; value: T } | { ok: false; message: string; explanation?: ValidationExplanation };
 
 const GENERIC_MESSAGE = "Something went wrong. Nothing was saved; try again.";
 
@@ -42,7 +44,11 @@ async function run<T>(factoryId: string, action: string, work: () => Promise<T>)
       return { ok: false, message: GENERIC_MESSAGE };
     }
     const constraint = (error as DomainError).details.constraint;
-    return { ok: false, message: (typeof constraint === "string" && CONSTRAINT_MESSAGE[constraint]) || error.message };
+    return {
+      ok: false,
+      message: (typeof constraint === "string" && CONSTRAINT_MESSAGE[constraint]) || error.message,
+      explanation: explainDomainError(error as DomainError),
+    };
   }
 }
 
@@ -114,7 +120,7 @@ export async function loadPairWiringAction(
     const value = await getPairWiring(getDb(), await requireActor(), factoryId, firstId, secondId, replacingWireId);
     return { ok: true, value };
   } catch (error) {
-    if (isDomainError(error)) return { ok: false, message: error.message };
+    if (isDomainError(error)) return { ok: false, message: error.message, explanation: explainDomainError(error) };
     console.error(JSON.stringify({ level: "error", action: "designer.wiring", error: String(error) }));
     return { ok: false, message: GENERIC_MESSAGE };
   }

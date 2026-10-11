@@ -77,6 +77,7 @@ describe("operation state", () => {
     expect(state).toEqual({
       message: "The program does not compile.",
       diagnostics: [{ message: "Unexpected `;`", line: 3, column: 10, severity: "error" }],
+      explanation: expect.objectContaining({ rule: "program-compile", kind: "fixable", facts: {} }),
     });
   });
 
@@ -87,7 +88,11 @@ describe("operation state", () => {
         log: ["ERROR /workdir/core/generated/plc.cpp:12"],
       }),
     );
-    expect(state).toEqual({ message: "The OpenPLC runtime could not build the program." });
+    expect(state).toEqual({
+      message: "The OpenPLC runtime could not build the program.",
+      // The explanation names the rule and what to do; the build log stays on the server.
+      explanation: expect.objectContaining({ rule: "runtime-build-failed", kind: "unavailable", facts: {} }),
+    });
   });
 
   it("replaces anything that is not a domain error by a generic message", () => {

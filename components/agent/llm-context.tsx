@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { RefusalExplanation } from "@/components/ui/refusal";
 import { StatePill, type Tone } from "@/components/ui/state-pill";
 import {
   LLM_CONTEXT_SECTIONS,
@@ -107,6 +108,7 @@ function Items({ items }: { items: ReadonlyArray<LlmContextItem | LlmContextDeci
           {item.value ? <span className="mono">{item.value}</span> : null}
           {item.tone && item.tone !== "info" ? <StatePill tone={PILL_TONE[item.tone]}>{item.tone}</StatePill> : null}
           {item.detail ? <span className="zf-sub basis-full">{item.detail}</span> : null}
+          {item.explanation ? <RefusalExplanation explanation={item.explanation} className="basis-full" /> : null}
           {"decision" in item && item.decision ? (
             <span
               className="zf-sub basis-full"

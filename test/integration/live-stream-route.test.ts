@@ -10,6 +10,9 @@ import { createFactory } from "@/lib/services/factory-service";
 import type { LiveDeps } from "@/lib/services/live-service";
 import { describeDb, openTestDb, resetDb } from "./harness";
 
+/** A refused operation: its message and, since TASK-1007, the explanation a domain error carries. */
+const refused = (message: string) => ({ message, explanation: expect.objectContaining({ actual: message }) });
+
 /**
  * The live stream route and the live server actions with their real services and
  * database; only the request plumbing is replaced.
@@ -189,12 +192,12 @@ describeDb("live stream route and live actions", () => {
     const [alarm] = await listAlarms(db, alice, factoryId);
     const act = (alarmId: string) => actions.acknowledgeAlarmAction(factoryId, alarmId, EMPTY_OPERATION_STATE);
 
-    expect(await act("not-a-uuid")).toEqual({ message: "The alarm does not exist." });
+    expect(await act("not-a-uuid")).toEqual(refused("The alarm does not exist."));
     state.actor = { ownerId: "bob" };
-    expect(await act(alarm?.id ?? "")).toEqual({ message: "The alarm does not exist." });
+    expect(await act(alarm?.id ?? "")).toEqual(refused("The alarm does not exist."));
     state.actor = alice;
     expect(await act(alarm?.id ?? "")).toEqual({ notice: "Acknowledged." });
-    expect(await act(alarm?.id ?? "")).toEqual({ message: "The alarm is already acknowledged." });
+    expect(await act(alarm?.id ?? "")).toEqual(refused("The alarm is already acknowledged."));
     expect((await listAlarms(db, alice, factoryId))[0]).toMatchObject({ state: "ACTIVE_ACKNOWLEDGED" });
   });
 
@@ -204,9 +207,9 @@ describeDb("live stream route and live actions", () => {
       data.set("value", value);
       return actions.writeTagAction(factoryId, plcId, "Start_Cmd", EMPTY_OPERATION_STATE, data);
     };
-    expect(await write("")).toEqual({ message: "Enter a number." });
-    expect(await write("fast")).toEqual({ message: "Enter a number." });
-    expect(await write("true", "not-a-uuid")).toEqual({ message: "The PLC does not exist." });
+    expect(await write("")).toEqual(refused("Enter a number."));
+    expect(await write("fast")).toEqual(refused("Enter a number."));
+    expect(await write("true", "not-a-uuid")).toEqual(refused("The PLC does not exist."));
     // A well-formed value for a PLC that does not exist: the runtime is asked, and says so.
     const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
     expect(await write("12,5")).toEqual({ message: "Something went wrong. Try again." });

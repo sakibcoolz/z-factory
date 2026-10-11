@@ -1,4 +1,5 @@
 import { createLlmContext, type LlmContextDocument, type LlmContextItem } from "@/lib/agent/llm-context";
+import { explainRule } from "@/lib/domain/validation-explanations";
 import { routePattern } from "@/lib/agent/llm-index";
 import type { GatewaysView } from "@/lib/domain/gateway-view";
 import type { ModuleDesignerView, ModulesScreenView } from "@/lib/domain/module-designer-view";
@@ -242,6 +243,7 @@ export function buildModulesContext(view: ModulesScreenView): LlmContextDocument
             detail: `${issue.rule} · ${issue.subject}`,
             href: routes.module(f, module.id),
             tone: "warn" as const,
+            explanation: explainRule(issue.rule, issue.message, { object: module.name, destination: issue.subject }),
           })),
         ),
       },
@@ -302,6 +304,7 @@ export function buildModuleEditorContext(view: ModuleDesignerView): LlmContextDo
       label: issue.message,
       detail: `${issue.rule} · ${issue.subject}`,
       tone: "warn" as const,
+      explanation: explainRule(issue.rule, issue.message, { object: module.name, destination: issue.subject }),
     })),
     ...blocking.map((row) => ({
       label: `Required signal ${row.signal.name} is not bound`,
@@ -312,6 +315,7 @@ export function buildModuleEditorContext(view: ModuleDesignerView): LlmContextDo
       label: `${row.signal.name}: ${row.issue!.message}`,
       detail: row.issue!.rule,
       tone: "warn" as const,
+      explanation: explainRule(row.issue!.rule, row.issue!.message, { object: row.signal.name }),
     })),
     ...(runtime.error
       ? [{ label: "The process bridge reports an error", detail: runtime.error, tone: "fault" as const }]

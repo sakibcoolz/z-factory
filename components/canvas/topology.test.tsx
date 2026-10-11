@@ -294,6 +294,7 @@ describe("topology inspector", () => {
         second: { deviceId: "valve", name: "XV-101", endpoints: [] },
         wires: [],
         refusals: {},
+        rules: {},
         replacingWireId: null,
       },
     }));

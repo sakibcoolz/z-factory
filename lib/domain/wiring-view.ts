@@ -54,6 +54,8 @@ export type PairWiringView = {
    * `refusals[firstKey][secondKey]`. A pair that is absent can be wired.
    */
   refusals: Record<string, Record<string, string>>;
+  /** The rule behind each refusal, keyed the same way (TASK-1007). */
+  rules: Record<string, Record<string, string>>;
   /** The wire that is being replaced: it does not count against its endpoints. */
   replacingWireId: string | null;
 };

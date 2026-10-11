@@ -281,10 +281,13 @@ export async function getPairWiring(
   const [first, second] = [loaded.endpoints.get(firstId) ?? [], loaded.endpoints.get(secondId) ?? []];
 
   const refusals: PairWiringView["refusals"] = {};
+  const rules: PairWiringView["rules"] = {};
   for (const a of first) {
     for (const b of second) {
       const refused = refusalOf(a, b, replacingWireId);
-      if (refused) (refusals[endpointKey(a)] ??= {})[endpointKey(b)] = refused.message;
+      if (!refused) continue;
+      (refusals[endpointKey(a)] ??= {})[endpointKey(b)] = refused.message;
+      (rules[endpointKey(a)] ??= {})[endpointKey(b)] = refused.rule;
     }
   }
   const toView = (endpoint: WireEndpoint): WiringEndpointView => ({
@@ -305,6 +308,7 @@ export async function getPairWiring(
     second: { deviceId: secondId, name: loaded.devices.get(secondId)?.name ?? "", endpoints: second.map(toView) },
     wires: loaded.wires.filter(between),
     refusals,
+    rules,
     replacingWireId: replacingWireId ?? null,
   };
 }
