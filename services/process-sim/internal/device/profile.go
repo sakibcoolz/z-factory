@@ -316,7 +316,8 @@ func Describe(key string) (Description, error) {
 	if !ok {
 		return Description{}, fmt.Errorf("unknown profile %q; known: %v", key, Profiles())
 	}
-	return reg.describe(), nil
+	// Every profile carries the generic faults of the standard (TASK-1014).
+	return withGenericFaults(reg.describe()), nil
 }
 
 // Profiles lists the registered profile keys, sorted.
