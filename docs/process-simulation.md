@@ -276,8 +276,10 @@ read one source.
 ### Behaviour profiles
 A profile is the documented generic behaviour of one device category. The runtime ships
 the ten of the server's simulator, ported value for value (`internal/device`), and since
-TASK-1011 the behaviour library (`RELAY`, `HEATER`, `INDICATOR`; `docs/device-simulation.md`
-→ The behaviour library), which the server's simulator does not run: `VFD`,
+TASK-1011 the behaviour library (`RELAY`, `HEATER`, `INDICATOR`, `SOFT_STARTER`,
+`MOTOR_STARTER`, `SERVO_DRIVE`, `SERVO_MOTOR`, `ENCODER`, `PID_CONTROLLER`,
+`SIGNAL_CONDITIONER`, `ACTUATOR`; `docs/device-simulation.md` → The behaviour library),
+which the server's simulator does not run: `VFD`,
 `MOTOR`, `PUMP`, `FAN`, `CONVEYOR`, `MIXER`, `COMPRESSOR`, `VALVE`, `SENSOR`, `SWITCH`,
 every one at version 1, with the signals, parameters, faults, states and approximations
 of `docs/device-simulation.md`. `GET /v1/profiles` (and `/v1/profiles/{key}`) describes
@@ -321,7 +323,9 @@ device validated and every link checked before anything is kept). Refused with
 `device-identity`, `profile`, `profile-version`, `simulation-params` (an unknown or
 invalid parameter, named), `supported-fault`, `link-role`, `link-target`, `drive`,
 `one-motor-per-drive`, `motor`, `one-load-per-motor`, `measured-device`,
-`measured-signal`, `input-signal`. Then, per factory: `start`, `stop`, `reset` (every
+`measured-signal`, `contactor` and `controller` (TASK-1011: a heater's contactor is a relay,
+a heater's or valve's controller a PID controller, a servo motor's drive a servo drive),
+`input-signal`. Then, per factory: `start`, `stop`, `reset` (every
 device rebuilt from its configuration, a `RESET` event), `step?ticks=n` (a RUNNING
 factory; `409 wrong-state`, rule `factory-state`), `GET` (the snapshot with every
 device), `DELETE`, `events?after=seq` (the last 500). Per device, while the factory is
@@ -348,7 +352,8 @@ Events are the server simulator's, numbered per factory and stamped with the tic
 `SENSOR_VALUE_CHANGED` (at the configured deadband), `DEVICE_STATE_CHANGED`,
 `FAULT_INJECTED`, `FAULT_CLEARED`, `DEVICE_RESET`, `SIMULATED_INPUT_FORCED`,
 `SIMULATED_INPUT_RELEASED`, plus the runtime's `DEVICE_RUNTIME_FAULT`,
-`DEVICE_QUARANTINED` and `RESET`.
+`DEVICE_QUARANTINED` and `RESET`, and since TASK-1011 `FAULT_RAISED` (a fault a behaviour
+raised from its own physics; `FAULT_CLEARED` with `by: model` when it releases it).
 
 ### Determinism and isolation
 Within a factory the step order is fixed: drives, motors, loads, valves, then sensors
