@@ -229,6 +229,8 @@ const words = (text: string) => text.toLowerCase().match(/[\p{L}\p{N}]+(?:[-/.][
 const COMMON_WORDS = new Set([
   "generic",
   "simulated",
+  // "Altivar Machine" is a product line; "machine" alone is the English word the prompts use.
+  "machine",
   "cpu",
   "dc",
   "ac",

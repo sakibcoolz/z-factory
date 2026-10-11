@@ -185,7 +185,7 @@ const named = (modelName: string) => {
 
 describe("the prompt an asset is generated from", () => {
   it("describes every catalog model as a generic, unbranded shape within the provider's limit", () => {
-    expect(catalogModels).toHaveLength(32);
+    expect(catalogModels).toHaveLength(34);
     for (const model of catalogModels) {
       const { prompt, texturePrompt } = buildAssetPrompt(model, { vendorModels: catalogModels });
       expect(prompt.length).toBeLessThanOrEqual(MAX_PROMPT_CHARS);
@@ -200,6 +200,8 @@ describe("the prompt an asset is generated from", () => {
     const vendors = catalogModels.filter((model) => model.verificationStatus !== "GENERIC");
     expect(vendors.map((model) => model.manufacturer).sort()).toEqual([
       "Rockwell Automation",
+      "Rockwell Automation",
+      "Schneider Electric",
       "Schneider Electric",
       "Siemens",
       "Siemens",
@@ -220,6 +222,10 @@ describe("the prompt an asset is generated from", () => {
         "modicon",
         "m241",
         "tm241",
+        "powerflex",
+        "525",
+        "altivar",
+        "atv320",
       ]) {
         expect(text).not.toContain(word);
       }
@@ -237,10 +243,12 @@ describe("the prompt an asset is generated from", () => {
     expect(key("CPU 1511-1 PN")).toBe(key("5069-L306ER"));
     expect(key("CPU 1214C DC/DC/DC")).not.toBe(key("CPU 1511-1 PN"));
     expect(key("Generic VFD, hardwired control")).toBe(key("Generic VFD, Modbus TCP"));
+    // A vendor drive contributes only its category, so the two vendor drives share one key of their own.
+    expect(key("PowerFlex 525 25B-D010N104")).toBe(key("ATV320U07N4C"));
     expect(key("Generic pressure transmitter, 4–20 mA")).toBe("sensor:pressure transmitter");
     expect(key("Generic pressure transmitter, 4–20 mA")).toBe(key("Generic pressure transmitter, 0–10 V"));
     expect(key("Generic pressure transmitter, 4–20 mA")).not.toBe(key("Generic level transmitter, 4–20 mA"));
-    expect(new Set(catalogModels.map((model) => buildAssetPrompt(model).shapeKey)).size).toBe(28);
+    expect(new Set(catalogModels.map((model) => buildAssetPrompt(model).shapeKey)).size).toBe(29);
   });
 
   it("describes the kind of device, not only its category", () => {

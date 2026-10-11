@@ -62,7 +62,7 @@ describeDb("device catalog against PostgreSQL", () => {
     const before = await count();
     expect(before).toMatchObject({
       manufacturers: 4,
-      models: 32,
+      models: 34,
       // 14 + 10 + 2 on the CPU 1214C, 14 + 10 on the TM241CE24T, 8 + 4 + 4 on the generic RTU.
       builtInChannels: 66,
       racks: 2,
@@ -77,7 +77,7 @@ describeDb("device catalog against PostgreSQL", () => {
     const channelBefore = await db.builtInIoChannel.findFirstOrThrow({ where: { terminalLabel: "Ia.0" } });
 
     const result = await ingestCatalog(db, catalog);
-    expect(result).toEqual({ categories: before.categories, manufacturers: 4, models: 32, racks: 2, modules: 8 });
+    expect(result).toEqual({ categories: before.categories, manufacturers: 4, models: 34, racks: 2, modules: 8 });
     expect(await count()).toEqual(before);
     expect((await db.deviceModel.findMany({ select: { id: true }, orderBy: { id: "asc" } })).map((m) => m.id)).toEqual(
       idsBefore,
@@ -234,12 +234,12 @@ describeDb("device catalog against PostgreSQL", () => {
   it("lists the catalog as manufacturer, family and model with totals", async () => {
     const overview = await getCatalogOverview(db);
     expect(overview.totals).toEqual({
-      models: 32,
+      models: 34,
       manufacturers: 4,
-      verified: 4,
+      verified: 6,
       generic: 28,
       withAsset: 0,
-      simulated: 19,
+      simulated: 21,
     });
     // Every stored model carries its simulation decision (TASK-1010): the generic hardwired
     // drive runs on its category's profile; a vendor PLC is a program host, not a simulated device.
@@ -258,10 +258,46 @@ describeDb("device catalog against PostgreSQL", () => {
       profile: null,
       reason: expect.stringContaining("OpenPLC"),
     });
+    // A vendor drive (TASK-1012): PARTIAL on the VFD profile, its factory values, and every
+    // model-specific fact stored with the manufacturer document it was read from.
+    const atv = await getCatalogModel(db, await modelId("ATV320U07N4C"));
+    expect(atv.simulation).toMatchObject({
+      coverage: "PARTIAL",
+      profile: { key: "VFD", version: 1 },
+      parameters: { maxFrequencyHz: 50, accelTimeS: 3, decelTimeS: 3 },
+      statement: expect.stringContaining("not vendor firmware"),
+    });
+    expect(atv.simulation.sources["parameter:accelTimeS"]).toMatchObject({
+      reference: expect.stringContaining("[Acceleration] ACC"),
+      note: expect.stringContaining("FrS"),
+      document: { title: "Altivar Machine ATV320 Programming Manual", revision: "NVE41295.06, 04/2025" },
+    });
+    expect(atv.simulation.features.filter((feature) => feature.implemented).map((feature) => feature.key)).toEqual([
+      "LINEAR_RAMP",
+      "REVERSAL",
+      "TRIP_RESET",
+    ]);
+    // Its parameter values are the model-level simulation profile, and its faults carry their source.
+    const atvRow = await db.deviceModel.findUniqueOrThrow({
+      where: { id: atv.id },
+      include: { simulationProfiles: true, faultDefinitions: { orderBy: { code: "asc" } } },
+    });
+    expect(atvRow.simulationProfiles.map((profile) => profile.parametersJson)).toEqual([
+      { maxFrequencyHz: 50, accelTimeS: 3, decelTimeS: 3 },
+    ]);
+    expect(atvRow.faultDefinitions.map((fault) => [fault.code, fault.description])).toEqual([
+      ["OVERCURRENT", "[Overcurrent] OCF, page 413"],
+      ["OVERTEMPERATURE", "[Drive Overheating] OHF, page 413"],
+    ]);
+    // The generic drive's faults have no description: a generic model states no vendor fact.
+    const genericFaults = await db.deviceFaultDefinition.findMany({
+      where: { deviceModel: { modelName: "Generic VFD, hardwired control" } },
+    });
+    expect(genericFaults.every((fault) => fault.description === null)).toBe(true);
     expect(overview.manufacturers.map((manufacturer) => [manufacturer.name, manufacturer.modelCount])).toEqual([
       ["Generic / simulated", 28],
-      ["Rockwell Automation", 1],
-      ["Schneider Electric", 1],
+      ["Rockwell Automation", 2],
+      ["Schneider Electric", 2],
       ["Siemens", 2],
     ]);
     const siemens = overview.manufacturers.find((manufacturer) => manufacturer.name === "Siemens");
@@ -393,7 +429,7 @@ describeDb("device catalog against PostgreSQL", () => {
     const plc = await create(await modelId("TM241CE24T"), "PLC-01");
     expect(plc).toMatchObject({ runtimeType: "OPENPLC", simulatorType: "NONE" });
     expect(await db.plcInstanceProfile.count({ where: { deviceInstanceId: plc.id } })).toBe(1);
-    expect(await db.deviceModel.count()).toBe(32);
+    expect(await db.deviceModel.count()).toBe(34);
   });
 
   it("represents controller, drive and remote-I/O chains, and direct wiring without an intermediate device", async () => {

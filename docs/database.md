@@ -37,7 +37,7 @@ Examples: PLC, VFD, MOTOR, PUMP, FAN, BLOWER, CONVEYOR, MIXER, COMPRESSOR, VALVE
 
 `verificationStatus = UNVERIFIED | VERIFIED | GENERIC`. `GENERIC` marks a simulated profile that makes no vendor claim. Unique: `(familyId, modelName)`.
 
-`simulationCoverage = FULL | PARTIAL | GENERIC | NOT_SIMULATABLE` (TASK-1010, ADR-0026) is the model's simulation decision: how much of its behaviour the simulator implements, a behaviour model never vendor firmware. `simulationProfile` and `simulationProfileVersion` name the behaviour profile of `lib/domain/behavior-contract.ts` it runs on (null when `NOT_SIMULATABLE`); `simulationJson` keeps the declared block as the catalog states it (reason, faults, parameter values, declared features). Written by the catalog import from the model's `simulation` block (`docs/device-catalog.md` → Simulation decision); a model's parameter values also become its model-level `SimulationProfile`.
+`simulationCoverage = FULL | PARTIAL | GENERIC | NOT_SIMULATABLE` (TASK-1010, ADR-0026) is the model's simulation decision: how much of its behaviour the simulator implements, a behaviour model never vendor firmware. `simulationProfile` and `simulationProfileVersion` name the behaviour profile of `lib/domain/behavior-contract.ts` it runs on (null when `NOT_SIMULATABLE`); `simulationJson` keeps the declared block as the catalog states it (reason, faults, parameter values, declared features) and, for a vendor model, `sources`: per model-specific fact the reference, the mapping note and the manufacturer document resolved by the import (`url`, `title`, `revision`, `retrievedAt`; TASK-1012). Written by the catalog import from the model's `simulation` block (`docs/device-catalog.md` → Simulation decision); a model's parameter values also become its model-level `SimulationProfile`. No column was added for the sources: the block is the record.
 
 For PLCs, `architectureType = COMPACT | MODULAR`; it is null for every other category.
 `controlCapability = DIRECT_IO | PARAMETER_CONFIGURED | PROTOCOL_CONTROLLED | PROGRAMMABLE` says how the device is controlled. It is declared per model and never inferred from the category. `metadataJson` holds further documented facts (memory, expansion limits).
@@ -79,6 +79,8 @@ Used for modular PLC rack/slot/module/channel modeling.
 
 ### DeviceFaultDefinition
 `id, deviceModelId, code, name, severity, description, resetBehavior`
+
+Written by the catalog import from the model's supported faults: `name`, `severity` and `resetBehavior` from the behaviour profile's fault; `description` is the vendor model's reference for the fault code (TASK-1012: `[Overcurrent] OCF, page 413`) and null for a generic model.
 
 ### ProtocolRegisterDefinition
 Optional model-level register definition for smart devices.

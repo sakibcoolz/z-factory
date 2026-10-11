@@ -17,6 +17,7 @@ const notSimulated: CatalogModelDetail["simulation"] = {
   faults: [],
   parameters: {},
   features: [],
+  sources: {},
   statement: "configuration and metadata only; the simulator executes no behaviour for it",
 };
 
@@ -217,6 +218,7 @@ describe("catalog model view", () => {
             faults: ["STUCK"],
             parameters: {},
             features: [],
+            sources: {},
             statement:
               "the generic behaviour of its category (behaviour profile VALVE v1): a behaviour model, not vendor firmware",
           },
@@ -250,6 +252,70 @@ describe("catalog model view", () => {
     expect(screen.getByText("STUCK")).toBeInTheDocument();
     expect(screen.getByText("the profile's generic defaults")).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
+  });
+
+  it("names the manufacturer document behind every model-specific value of a vendor drive (TASK-1012)", () => {
+    render(
+      <CatalogModelView
+        model={{
+          ...plc,
+          modelName: "PowerFlex 525 25B-D010N104",
+          sku: "25B-D010N104",
+          architectureType: null,
+          manufacturer: "Rockwell Automation",
+          family: "PowerFlex 525",
+          categoryCode: "VFD",
+          categoryName: "Variable-frequency drive",
+          runtimeSupport: "DEVICE_SIM",
+          controlCapability: "PARAMETER_CONFIGURED",
+          source: {
+            url: "https://literature.rockwellautomation.com/idc/groups/literature/documents/um/520-um001_-en-e.pdf",
+            title: "PowerFlex 520-series User Manual",
+            revision: "520-UM001O-EN-E, September 2025",
+            retrievedAt: "2026-10-12",
+            verifiedAt: "2026-10-12",
+          },
+          simulation: {
+            coverage: "PARTIAL",
+            profile: { key: "VFD", version: 1 },
+            reason: null,
+            faults: ["OVERCURRENT"],
+            parameters: { maxFrequencyHz: 60 },
+            features: [{ key: "S_RAMP", label: "S-ramp", implemented: false }],
+            sources: {
+              "parameter:maxFrequencyHz": {
+                reference: "P044 [Maximum Freq], default 60.00 Hz, page 87",
+                note: null,
+                document: {
+                  url: "https://literature.rockwellautomation.com/idc/groups/literature/documents/um/520-um001_-en-e.pdf",
+                  title: "PowerFlex 520-series User Manual",
+                  revision: "520-UM001O-EN-E, September 2025",
+                  retrievedAt: "2026-10-12",
+                },
+              },
+              "fault:OVERCURRENT": {
+                reference: "F012 HW OverCurrent, page 161",
+                note: "the profile's one overcurrent trip",
+                document: null,
+              },
+              "feature:S_RAMP": { reference: "A439 [S Curve %], page 119", note: null, document: null },
+            },
+            statement:
+              "a declared subset of this model's behaviour is implemented (behaviour profile VFD v1): a behaviour model, not vendor firmware",
+          },
+          electrical: null,
+          ports: [],
+          builtInChannels: [],
+          terminals: [],
+          facts: {},
+        }}
+      />,
+    );
+    expect(screen.getByText("simulation · partial")).toBeInTheDocument();
+    expect(screen.getByText(/P044 \[Maximum Freq\], default 60.00 Hz, page 87/)).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "PowerFlex 520-series User Manual" }).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText(/F012 HW OverCurrent, page 161 — the profile's one overcurrent trip/)).toBeInTheDocument();
+    expect(screen.getByText(/A439 \[S Curve %\], page 119/)).toBeInTheDocument();
   });
 
   it("says a programmable controller is not a simulated device, and why", () => {

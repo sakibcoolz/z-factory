@@ -12,7 +12,9 @@ import {
   type CatalogChannelGroup,
   type CatalogModel,
   type CatalogModule,
+  factKey,
   isSimulated,
+  resolveFactSource,
 } from "@/lib/catalog/schema";
 import { findBehaviorProfile } from "@/lib/domain/behavior-contract";
 import type { Prisma, PrismaClient } from "@/lib/generated/prisma/client";
@@ -41,6 +43,15 @@ function provenance(verification: Verification) {
     sourceRetrievedAt: source ? day(source.retrievedAt) : null,
     verifiedAt: verification.status === "VERIFIED" ? day(verification.verifiedAt) : null,
   };
+}
+
+/** The simulation block as stored: the declared block, its fact sources resolved to their documents. */
+function storedSimulation(model: CatalogModel): Prisma.InputJsonValue {
+  if (!isSimulated(model)) return model.simulation;
+  const sources = Object.fromEntries(
+    Object.entries(model.simulation.sources).map(([fact, source]) => [fact, resolveFactSource(model, source)]),
+  );
+  return { ...model.simulation, sources } as Prisma.InputJsonValue;
 }
 
 /** One row per channel; indexes continue across the groups of the same point type. */
@@ -80,11 +91,13 @@ async function ingestModel(tx: Tx, model: CatalogModel, familyId: string): Promi
     capabilities: model.capabilities,
     lifecycleStatus: model.lifecycleStatus,
     metadataJson: model.facts,
-    // The simulation decision (TASK-1010): coverage, profile, and the declared block as recorded.
+    // The simulation decision (TASK-1010): coverage, profile, and the declared block as
+    // recorded, with every fact source resolved to its document (TASK-1012) so the stored
+    // block says on its own where each model-specific value was read.
     simulationCoverage: model.simulation.coverage,
     simulationProfile: isSimulated(model) ? model.simulation.profile : null,
     simulationProfileVersion: isSimulated(model) ? model.simulation.profileVersion : null,
-    simulationJson: model.simulation as Prisma.InputJsonValue,
+    simulationJson: storedSimulation(model),
     ...provenance(model.verification),
   };
   const { id: deviceModelId } = await tx.deviceModel.upsert({
@@ -159,9 +172,12 @@ async function ingestModel(tx: Tx, model: CatalogModel, familyId: string): Promi
   for (const code of model.simulation.faults) {
     const fault = profile.faults.find((candidate) => candidate.code === code);
     if (!fault) throw new Error(`Catalog model ${model.modelName} lists an unsupported fault ${code}.`);
+    // A vendor model's fault carries where its code was read; a generic model's has no description.
+    const source = model.simulation.sources[factKey("fault", code)];
     const values = {
       name: fault.name,
       severity: fault.severity,
+      description: source ? resolveFactSource(model, source).reference : null,
       resetBehavior: fault.latching ? ("MANUAL" as const) : ("AUTO" as const),
     };
     await tx.deviceFaultDefinition.upsert({

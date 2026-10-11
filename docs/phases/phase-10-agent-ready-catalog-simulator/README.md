@@ -62,7 +62,7 @@ Simulation coverage is explicit per catalog model:
 | TASK-1009 | DONE | Go Catalog Simulation Runtime foundation |
 | TASK-1010 | DONE | Catalog device capability and behavior schema |
 | TASK-1011 | DONE | Full industrial device behavior library |
-| TASK-1012 | PLANNED | Vendor catalog model to simulation-profile mapping |
+| TASK-1012 | DONE | Vendor catalog model to simulation-profile mapping |
 | TASK-1013 | PLANNED | Protocol/register-controlled device simulation |
 | TASK-1014 | PLANNED | Fault, failure and degraded-quality simulation |
 | TASK-1015 | PLANNED | Dynamic catalog-driven simulator instantiation |

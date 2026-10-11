@@ -198,7 +198,7 @@ As built (TASK-205): the bridge reads `PROGRAM_OUTPUT` tags (`%Q`, and `%M` the 
 
 Phase 10 expands device behavior simulation into the Go simulation runtime so the complete catalog has an explicit executable-support decision.
 
-This does **not** mean every vendor product is firmware-emulated. When no legal/usable vendor runtime, emulator or Docker image exists, Z-Factory runs a documented behavior profile. Model-specific values are used only when supported by authoritative catalog sources.
+This does **not** mean every vendor product is firmware-emulated. When no legal/usable vendor runtime, emulator or Docker image exists, Z-Factory runs a documented behavior profile. Model-specific values are used only when supported by authoritative catalog sources: as built in TASK-1012, a vendor model runs the generic profile of its category, its factory values and declared features come from the manufacturer's manual with a source per fact, and the approximation of the mapping is stated with the fact (`docs/device-catalog.md` → Vendor models on behaviour profiles).
 
 Every catalog model must declare one coverage state (as built in TASK-1010: the `simulation` block of every catalog model, checked against the behaviour contract and stored on `DeviceModel`; `docs/device-catalog.md` → Simulation decision):
 - `FULL`: every Z-Factory-declared behavior for the model is implemented.

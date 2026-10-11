@@ -463,6 +463,7 @@ describe("the catalog context", () => {
         faults: [],
         parameters: {},
         features: [],
+        sources: {},
         statement: "configuration and metadata only; the simulator executes no behaviour for it",
       },
       source: {
@@ -544,6 +545,47 @@ describe("the catalog context", () => {
     const none = buildCatalogContext({ overview, model: null });
     expect(none.identity.subject).toBe("all models");
     expect(none.relationships).toEqual([]);
+
+    // A vendor drive mapped onto the generic profile (TASK-1012): every value names its document.
+    const drive = buildCatalogContext({
+      overview,
+      model: {
+        ...model,
+        categoryCode: "VFD",
+        runtimeSupport: "DEVICE_SIM",
+        simulation: {
+          coverage: "PARTIAL",
+          profile: { key: "VFD", version: 1 },
+          reason: null,
+          faults: ["OVERCURRENT"],
+          parameters: { maxFrequencyHz: 60 },
+          features: [{ key: "PID", label: "Built-in PID regulator", implemented: false }],
+          sources: {
+            "parameter:maxFrequencyHz": {
+              reference: "P044 [Maximum Freq], page 87",
+              note: null,
+              document: {
+                url: "https://example.invalid/um",
+                title: "Drive user manual",
+                revision: "O",
+                retrievedAt: "",
+              },
+            },
+            "fault:OVERCURRENT": { reference: "F012, page 161", note: null, document: null },
+            "feature:PID": { reference: "A459, page 123", note: "not modelled", document: null },
+          },
+          statement:
+            "a declared subset of this model's behaviour is implemented: a behaviour model, not vendor firmware",
+        },
+      },
+      peripherals: [],
+    });
+    const simulation = drive.context.find((item) => item.label === "Simulation");
+    expect(simulation?.value).toBe("partial");
+    expect(simulation?.detail).toContain("maxFrequencyHz = 60 (P044 [Maximum Freq], page 87; Drive user manual)");
+    expect(simulation?.detail).toContain("Built-in PID regulator (not implemented (A459, page 123; not modelled))");
+    expect(simulation?.detail).toContain("every model-specific value names the manufacturer document");
+    expect(labels(drive.constraints)).toContain("Vendor fidelity is never overstated");
   });
 });
 

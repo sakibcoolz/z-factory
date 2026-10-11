@@ -9,8 +9,10 @@ import {
   assetSummaryLabel,
   type CatalogAssetSummary,
   type CatalogAssetVersion,
+  type CatalogFactSourceView,
   type CatalogModelDetail,
   type ChannelSummary,
+  factSourceOf,
   type PeripheralCompatibility,
 } from "@/lib/domain/catalog-view";
 import { routes } from "@/lib/navigation/routes";
@@ -55,6 +57,23 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
       <span className="zf-k">{label}</span>
       <span className="mono">{children}</span>
     </div>
+  );
+}
+
+/** Where a model-specific fact was read: the place in the manufacturer document, and the mapping note. */
+function FactSource({ source }: { source: CatalogFactSourceView | null }) {
+  if (!source) return null;
+  return (
+    <span className="zf-sub block text-xs">
+      {source.document ? (
+        <a href={source.document.url} rel="noreferrer" target="_blank" className="underline">
+          {source.document.title}
+        </a>
+      ) : null}
+      {source.document ? ", " : ""}
+      {source.reference}
+      {source.note ? ` — ${source.note}` : ""}
+    </span>
   );
 }
 
@@ -263,14 +282,24 @@ export function CatalogModelView({ model, peripherals }: CatalogModelViewProps) 
         <div className="grid grid-cols-3 gap-3">
           <div className="zf-cell">
             <Fact label="Faults">
-              {model.simulation.faults.length > 0 ? model.simulation.faults.join(", ") : "none declared"}
+              {model.simulation.faults.length > 0
+                ? model.simulation.faults.map((code) => (
+                    <span key={code} className="block">
+                      {code}
+                      <FactSource source={factSourceOf(model.simulation, "fault", code)} />
+                    </span>
+                  ))
+                : "none declared"}
             </Fact>
           </div>
           <div className="zf-cell">
             <Fact label="Parameters">
               {Object.keys(model.simulation.parameters).length > 0
                 ? Object.entries(model.simulation.parameters).map(([key, value]) => (
-                    <span key={key} className="block">{`${key} = ${value}`}</span>
+                    <span key={key} className="block">
+                      {`${key} = ${value}`}
+                      <FactSource source={factSourceOf(model.simulation, "parameter", key)} />
+                    </span>
                   ))
                 : "the profile's generic defaults"}
             </Fact>
@@ -281,6 +310,7 @@ export function CatalogModelView({ model, peripherals }: CatalogModelViewProps) 
                 ? model.simulation.features.map((feature) => (
                     <span key={feature.key} className="block">
                       {`${feature.label} · ${feature.implemented ? "implemented" : "not implemented"}`}
+                      <FactSource source={factSourceOf(model.simulation, "feature", feature.key)} />
                     </span>
                   ))
                 : "none: the generic behaviour of the category"}
