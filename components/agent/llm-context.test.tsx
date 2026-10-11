@@ -1,6 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { createLlmContext, LLM_CONTEXT_SECTIONS } from "@/lib/agent/llm-context";
+import { explainRule } from "@/lib/domain/validation-explanations";
 import { LlmContextPanel } from "./llm-context";
 
 const document = createLlmContext(
@@ -15,7 +16,16 @@ const document = createLlmContext(
   {
     context: [{ label: "Runtime state", value: "Stopped" }],
     actions: [{ label: "Edit factory", href: "/factories/f1/edit", detail: "Name and description." }],
-    validation: { items: [{ label: "No PLC", detail: "A factory without a PLC cannot start.", tone: "warn" }] },
+    validation: {
+      items: [
+        { label: "No PLC", detail: "A factory without a PLC cannot start.", tone: "warn" },
+        {
+          label: "Tank T-01: Level sensor has no device.",
+          tone: "warn",
+          explanation: explainRule("module-role-empty", "Level sensor has no device.", { object: "Tank T-01" }),
+        },
+      ],
+    },
   },
 );
 
@@ -49,6 +59,11 @@ describe("the LLM Context panel", () => {
     const validation = within(screen.getByRole("region", { name: "Validation state" }));
     expect(validation.getByText("issues")).toHaveAttribute("data-tone", "deg");
     expect(validation.getByText("No PLC").closest("li")).toHaveAttribute("data-tone", "warn");
+    // A validation item with a rule behind it carries the rule's explanation (TASK-1007).
+    const refusal = validation.getByText("rule module-role-empty").closest("[data-llm-refusal]") as HTMLElement;
+    expect(refusal.dataset.llmRefusalKind).toBe("fixable");
+    expect(refusal).toHaveTextContent("object Tank T-01");
+    expect(refusal).toHaveTextContent(/Expected: Every required role/);
     expect(screen.getAllByText("None.")).toHaveLength(5);
     // The generated cross-page links say whether the area comes before or after this page.
     const navigation = within(screen.getByRole("region", { name: "Navigation guidance" }));

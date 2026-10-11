@@ -1,4 +1,5 @@
 import { DomainError } from "@/lib/domain/errors";
+import { explainDomainError, type ValidationExplanation } from "@/lib/domain/validation-explanations";
 
 export const FACTORY_FORM_FIELDS = ["name", "slug", "description", "subnetCidr"] as const;
 export type FactoryFormField = (typeof FACTORY_FORM_FIELDS)[number];
@@ -9,10 +10,14 @@ export type FactoryFormState = {
   message?: string;
   fieldErrors: Partial<Record<FactoryFormField, string>>;
   values: FactoryFormValues;
+  /** Why it was refused, for people and agents (TASK-1007). */
+  explanation?: ValidationExplanation;
 };
 
 export type DeleteFactoryState = {
   message?: string;
+  /** Why it was refused, for people and agents (TASK-1007). */
+  explanation?: ValidationExplanation;
 };
 
 export function readFactoryForm(formData: FormData): FactoryFormValues {
@@ -62,5 +67,10 @@ export function toFormState(error: unknown, values: FactoryFormValues): FactoryF
   if (field) fieldErrors[field] ??= error.message;
 
   const hasFieldErrors = Object.keys(fieldErrors).length > 0;
-  return { message: hasFieldErrors ? undefined : error.message, fieldErrors, values };
+  return {
+    message: hasFieldErrors ? undefined : error.message,
+    fieldErrors,
+    values,
+    explanation: explainDomainError(error),
+  };
 }

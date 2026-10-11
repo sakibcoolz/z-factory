@@ -22,6 +22,9 @@ import { getTopology, linkDevices, placeDevice } from "@/lib/services/topology-s
 import { makeBoxGlb } from "../glb";
 import { describeDb, openTestDb, resetDb } from "./harness";
 
+/** A refused operation: its message and, since TASK-1007, the explanation a domain error carries. */
+const refused = (message: string) => ({ message, explanation: expect.objectContaining({ actual: message }) });
+
 /**
  * Catalog 3D assets and the 3D view of a factory against PostgreSQL and a storage
  * directory: registering and serving assets, the scene built from the topology, and
@@ -373,10 +376,10 @@ describeDb("catalog 3D assets and the factory scene", () => {
     expect(await act(ids.pump, "scale-down")).toEqual({ notice: "Turned to 45°, size ×1." });
     expect(await act(ids.pump, "reset")).toEqual({ notice: "Turned to 0°, size ×1." });
 
-    expect(await act(ids.pump, "explode")).toEqual({ message: "Unknown scene operation." });
-    expect(await act("not-a-uuid", "reset")).toEqual({ message: "The device does not exist." });
+    expect(await act(ids.pump, "explode")).toEqual(refused("Unknown scene operation."));
+    expect(await act("not-a-uuid", "reset")).toEqual(refused("The device does not exist."));
     state.actor = bob;
-    expect(await act(ids.pump, "rotate-left")).toEqual({ message: "The device does not exist." });
+    expect(await act(ids.pump, "rotate-left")).toEqual(refused("The device does not exist."));
     expect(await device(ids.pump)).toMatchObject({ rotationDeg: 0, scale: 1 });
   });
 });

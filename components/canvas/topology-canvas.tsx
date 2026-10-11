@@ -1,6 +1,8 @@
 "use client";
 
 import "@xyflow/react/dist/style.css";
+import { RefusalExplanation } from "@/components/ui/refusal";
+import type { ValidationExplanation } from "@/lib/domain/validation-explanations";
 import {
   Background,
   BaseEdge,
@@ -31,7 +33,8 @@ import type { RuntimeState } from "@/lib/domain/runtime-state";
 import type { LinkResult, TopologyEdgeView, TopologyNodeView, TopologyView } from "@/lib/domain/topology-view";
 import { edgeLabel, edgeLine, edgeTone, hasActivity, nodeKind } from "@/lib/topology/flow";
 
-type Result<T = undefined> = { ok: true; value: T } | { ok: false; message: string };
+type Result<T = undefined> =
+  { ok: true; value: T } | { ok: false; message: string; explanation?: ValidationExplanation };
 
 /** Server actions the canvas calls. Absent in the read-only topology view. */
 export type CanvasActions = {
@@ -132,7 +135,7 @@ function Canvas({ view, actions, plcLinks }: TopologyCanvasProps) {
   const readOnly = !actions;
   const [nodes, setNodes, onNodesChange] = useNodesState<DeviceNode>(view.nodes.map(toFlowNode));
   const [selection, setSelection] = useState<InspectorSelection>();
-  const [notice, setNotice] = useState<string>();
+  const [notice, setNotice] = useState<{ message: string; explanation?: ValidationExplanation }>();
   const [choice, setChoice] = useState<{
     fromId: string;
     toId: string;
@@ -158,7 +161,7 @@ function Canvas({ view, actions, plcLinks }: TopologyCanvasProps) {
       startTransition(async () => {
         const result = await work();
         if (!result.ok) {
-          setNotice(result.message);
+          setNotice({ message: result.message, explanation: result.explanation });
           // Put nodes back where the server has them, e.g. after a refused connection.
           router.refresh();
           return;
@@ -228,9 +231,10 @@ function Canvas({ view, actions, plcLinks }: TopologyCanvasProps) {
     <div className="flex min-h-0 flex-1">
       <div className="zf-flow" onDragOver={(event) => event.preventDefault()} onDrop={onDrop}>
         {notice ? (
-          <p className="zf-error zf-flow-notice" role="alert">
-            {notice}
-          </p>
+          <div className="zf-error zf-flow-notice" role="alert">
+            <p>{notice.message}</p>
+            {notice.explanation ? <RefusalExplanation explanation={notice.explanation} className="mt-1" /> : null}
+          </div>
         ) : null}
         {choice ? (
           <div className="zf-cell zf-flow-notice" role="dialog" aria-label="Choose the relationship">

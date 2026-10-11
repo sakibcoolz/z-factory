@@ -19,6 +19,9 @@ import { getSimulationView, type SimulationDeps } from "@/lib/services/simulatio
 import { describeDb, openTestDb, resetDb } from "./harness";
 import { startTestPlc, type TestPlc } from "./modbus-server";
 
+/** A refused operation: its message and, since TASK-1007, the explanation a domain error carries. */
+const refused = (message: string) => ({ message, explanation: expect.objectContaining({ actual: message }) });
+
 /**
  * The program, runtime and simulator server actions with their real services, database
  * and compiler. Only the request plumbing is replaced. No Docker Engine is involved:
@@ -146,15 +149,15 @@ describeDb("program, runtime and simulator server actions", () => {
     expect(view).toMatchObject({ source: starter, sourceVersion: 1 });
     expect(view.versions).toEqual([expect.objectContaining({ version: 1, status: "DRAFT", selected: true })]);
 
-    expect(await program({ intent: "save", sourceText: "   " })).toEqual({ message: "The program source is empty." });
-    expect(await program({ intent: "format", sourceText: starter })).toEqual({ message: "Unknown program action." });
+    expect(await program({ intent: "save", sourceText: "   " })).toEqual(refused("The program source is empty."));
+    expect(await program({ intent: "format", sourceText: starter })).toEqual(refused("Unknown program action."));
     expect(await db.programVersion.count()).toBe(1);
   });
 
   it("does not save anything when deploying is impossible because the runtime was never started", async () => {
-    expect(await program({ intent: "deploy", sourceText: starter })).toEqual({
-      message: "The PLC runtime has not been started.",
-    });
+    expect(await program({ intent: "deploy", sourceText: starter })).toEqual(
+      refused("The PLC runtime has not been started."),
+    );
     expect(await db.programVersion.count()).toBe(0);
   });
 
@@ -173,24 +176,25 @@ describeDb("program, runtime and simulator server actions", () => {
       false,
       true,
     ]);
-    expect(await act(first?.id ?? "", "deploy")).toEqual({ message: "The PLC runtime has not been started." });
-    expect(await act("not-a-uuid", "select")).toEqual({ message: "The program version does not exist." });
-    expect(await act("018f6f2e-0000-7000-8000-000000000000", "select")).toEqual({
-      message: "The program version does not exist.",
-    });
-    expect(await act(first?.id ?? "", "archive")).toEqual({ message: "Unknown version operation." });
+    expect(await act(first?.id ?? "", "deploy")).toEqual(refused("The PLC runtime has not been started."));
+    expect(await act("not-a-uuid", "select")).toEqual(refused("The program version does not exist."));
+    expect(await act("018f6f2e-0000-7000-8000-000000000000", "select")).toEqual(
+      refused("The program version does not exist."),
+    );
+    expect(await act(first?.id ?? "", "archive")).toEqual(refused("Unknown version operation."));
   });
 
   it("answers runtime operations that cannot run with their reason instead of failing", async () => {
     for (const operation of ["stop", "restart", "deploy"]) {
-      expect(await runtime(operation)).toEqual({
-        message:
+      expect(await runtime(operation)).toEqual(
+        refused(
           operation === "deploy"
             ? "The PLC has no program version to deploy."
             : "The PLC runtime has not been started.",
-      });
+        ),
+      );
     }
-    expect(await runtime("explode")).toEqual({ message: "Unknown runtime operation." });
+    expect(await runtime("explode")).toEqual(refused("Unknown runtime operation."));
     // Without a runtime there is nothing to ask: the state is stopped.
     expect(await runtime("refresh")).toEqual({ notice: "The runtime reports: stopped." });
     expect(await runtime("remove")).toEqual({
@@ -201,7 +205,7 @@ describeDb("program, runtime and simulator server actions", () => {
   it("reports an unreachable Docker Engine on start, marks the PLC faulted and leaks no host detail", async () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const result = await runtime("start");
-    expect(result).toEqual({ message: "The Docker Engine is not reachable." });
+    expect(result).toEqual(refused("The Docker Engine is not reachable."));
     expect(JSON.stringify(result)).not.toContain("docker.sock");
     // The failure is visible afterwards too: state and a critical event.
     const device = await db.deviceInstance.findUniqueOrThrow({ where: { id: plcId } });
@@ -228,7 +232,7 @@ describeDb("program, runtime and simulator server actions", () => {
     state.runtimeDeps = () => {
       throw new DomainError("RUNTIME_FAILURE", "RUNTIME_SECRET is not configured for this deployment.");
     };
-    expect(await runtime("start")).toEqual({ message: "RUNTIME_SECRET is not configured for this deployment." });
+    expect(await runtime("start")).toEqual(refused("RUNTIME_SECRET is not configured for this deployment."));
     state.runtimeDeps = () => {
       throw new Error("connect ENOENT /var/run/docker.sock");
     };
@@ -238,29 +242,23 @@ describeDb("program, runtime and simulator server actions", () => {
 
   it("treats the PLC and factory of another owner as not found", async () => {
     state.actor = { ownerId: "bob" };
-    expect(await program({ intent: "save", sourceText: starter })).toEqual({ message: "The PLC does not exist." });
-    expect(await program({ intent: "check", sourceText: starter })).toEqual({ message: "The PLC does not exist." });
-    expect(await runtime("start")).toEqual({ message: "The PLC does not exist." });
-    expect(await simulate("start")).toEqual({ message: "The factory does not exist." });
-    expect(await fault("inject:STUCK")).toEqual({ message: "The device does not exist." });
+    expect(await program({ intent: "save", sourceText: starter })).toEqual(refused("The PLC does not exist."));
+    expect(await program({ intent: "check", sourceText: starter })).toEqual(refused("The PLC does not exist."));
+    expect(await runtime("start")).toEqual(refused("The PLC does not exist."));
+    expect(await simulate("start")).toEqual(refused("The factory does not exist."));
+    expect(await fault("inject:STUCK")).toEqual(refused("The device does not exist."));
     expect(await db.programVersion.count()).toBe(0);
   });
 
   it("starts the simulation only once the PLC has an endpoint, and operates faults while it runs", async () => {
-    expect(await simulate("start")).toEqual({
-      message: "Start PLC-01 first: its Modbus endpoint is not configured yet.",
-    });
-    expect(await fault("inject:STUCK")).toEqual({
-      message: "The device simulation of this factory is not running.",
-    });
+    expect(await simulate("start")).toEqual(refused("Start PLC-01 first: its Modbus endpoint is not configured yet."));
+    expect(await fault("inject:STUCK")).toEqual(refused("The device simulation of this factory is not running."));
 
     await db.runtimePort.create({
       data: { deviceInstanceId: plcId, protocol: "MODBUS_TCP", containerPort: 502, hostPort: plc.port },
     });
     expect(await simulate("start")).toEqual({ notice: "The simulation is running 1 device." });
-    expect(await simulate("start")).toEqual({
-      message: "The device simulation of this factory is already running.",
-    });
+    expect(await simulate("start")).toEqual(refused("The device simulation of this factory is already running."));
 
     const valve = async () =>
       (await getSimulationView(simulation, alice, factoryId)).devices.find((device) => device.deviceId === valveId);
@@ -270,7 +268,7 @@ describeDb("program, runtime and simulator server actions", () => {
     expect(await fault("clear:STUCK")).toEqual({ notice: "Fault STUCK cleared." });
     expect((await valve())?.faults).toEqual([expect.objectContaining({ code: "STUCK", active: false })]);
     expect(await fault("reset")).toEqual({ notice: "Device reset." });
-    expect(await fault("explode")).toEqual({ message: "Unknown device operation." });
+    expect(await fault("explode")).toEqual(refused("Unknown device operation."));
 
     // Every operator action on the simulated equipment is recorded.
     const recorded = await db.runtimeEvent.findMany({ where: { deviceId: valveId }, orderBy: { occurredAt: "asc" } });
@@ -281,7 +279,7 @@ describeDb("program, runtime and simulator server actions", () => {
     expect(await simulate("stop")).toEqual({
       notice: "The simulation is stopped. The last device states were stored.",
     });
-    expect(await simulate("stop")).toEqual({ message: "The device simulation of this factory is not running." });
-    expect(await simulate("pause")).toEqual({ message: "Unknown simulation operation." });
+    expect(await simulate("stop")).toEqual(refused("The device simulation of this factory is not running."));
+    expect(await simulate("pause")).toEqual(refused("Unknown simulation operation."));
   });
 });

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { explainRule, explanationLine } from "@/lib/domain/validation-explanations";
 import type { DeviceTreeNode } from "@/lib/domain/device-tree";
 import type { FactoryDeviceView } from "@/lib/domain/plc-config-view";
 import type { FactoryView } from "@/lib/services/factory-service";
@@ -62,14 +63,20 @@ describe("an LLM Context document", () => {
       createLlmContext(identity, {
         actions: [{ label: "Edit factory", href: "/factories/f1/edit", detail: "Name and description." }],
         decisions: [{ label: "Which PLC?", tone: "warn", decision: { kind: "model", confirm: "required" } }],
+        validation: {
+          items: [{ label: "Level sensor has no device.", explanation: explainRule("module-role-empty", "no device") }],
+        },
       }),
+    );
+    expect(markdown).toContain(
+      `- Level sensor has no device. — ${explanationLine(explainRule("module-role-empty", "no device"))}`,
     );
     expect(markdown.startsWith("# LLM Context — Factory overview: Pump House\n")).toBe(true);
     for (const section of LLM_CONTEXT_SECTIONS) expect(markdown).toContain(`## ${section.title}`);
     expect(markdown).toContain("- [Edit factory](/factories/f1/edit) — Name and description.");
     expect(markdown).toContain("- Which PLC? — model · confirm before acting (warn)");
     expect(markdown).toContain("Status: ok");
-    expect((markdown.match(/^None\.$/gm) ?? []).length).toBe(6);
+    expect((markdown.match(/^None\.$/gm) ?? []).length).toBe(5);
     expect(markdown).toContain("- [Before: Factories](/factories)");
   });
 

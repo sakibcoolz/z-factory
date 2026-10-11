@@ -1,9 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState, useTransition } from "react";
+import { RefusalExplanation } from "@/components/ui/refusal";
+import { explainRule, type ValidationExplanation } from "@/lib/domain/validation-explanations";
 import type { PairWiringView, WireView, WiringEndpointView } from "@/lib/domain/wiring-view";
 
-type Result<T = undefined> = { ok: true; value: T } | { ok: false; message: string };
+type Result<T = undefined> =
+  { ok: true; value: T } | { ok: false; message: string; explanation?: ValidationExplanation };
 type WireInput = {
   from: { deviceId: string; type: string; id: string };
   to: { deviceId: string; type: string; id: string };
@@ -53,7 +56,7 @@ const wireText = (wire: WireView) => `${wire.from.name} → ${wire.to.name}`;
  */
 export function WiringEditor({ firstId, secondId, actions, revision, onChanged }: WiringEditorProps) {
   const [view, setView] = useState<PairWiringView>();
-  const [error, setError] = useState<string>();
+  const [error, setError] = useState<{ message: string; explanation?: ValidationExplanation }>();
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [replacing, setReplacing] = useState<WireView>();
@@ -67,7 +70,7 @@ export function WiringEditor({ firstId, secondId, actions, revision, onChanged }
       if (!current) return;
       if (!result.ok) {
         setView(undefined);
-        setError(result.message);
+        setError({ message: result.message, explanation: result.explanation });
         return;
       }
       setView(result.value);
@@ -93,7 +96,7 @@ export function WiringEditor({ firstId, secondId, actions, revision, onChanged }
       startTransition(async () => {
         const result = await work();
         if (!result.ok) {
-          setError(result.message);
+          setError({ message: result.message, explanation: result.explanation });
           return;
         }
         setError(undefined);
@@ -106,9 +109,10 @@ export function WiringEditor({ firstId, secondId, actions, revision, onChanged }
 
   if (!view) {
     return error ? (
-      <p className="zf-error whitespace-normal" role="alert">
-        {error}
-      </p>
+      <div className="zf-error whitespace-normal" role="alert">
+        <p>{error.message}</p>
+        {error.explanation ? <RefusalExplanation explanation={error.explanation} className="mt-1" /> : null}
+      </div>
     ) : (
       <p className="zf-sub">Loading the endpoints…</p>
     );
@@ -118,6 +122,12 @@ export function WiringEditor({ firstId, secondId, actions, revision, onChanged }
   const endpoint = (side: typeof first, key: string) => side.endpoints.find((candidate) => candidate.key === key);
   const [fromEndpoint, toEndpoint] = [endpoint(first, from), endpoint(second, to)];
   const refusal = view.refusals[from]?.[to];
+  const refusalRule = view.rules[from]?.[to];
+  const explanation = refusal
+    ? refusalRule
+      ? explainRule(refusalRule, refusal, { object: fromEndpoint?.label, destination: toEndpoint?.label })
+      : undefined
+    : error?.explanation;
   const possible = (key: string) => view.refusals[from]?.[key] === undefined;
   const anyPossible = first.endpoints.some((a) =>
     second.endpoints.some((b) => view.refusals[a.key]?.[b.key] === undefined),
@@ -228,9 +238,10 @@ export function WiringEditor({ firstId, secondId, actions, revision, onChanged }
             ))}
           </select>
           {refusal || error ? (
-            <p className="zf-error whitespace-normal" role="alert">
-              {refusal ?? error}
-            </p>
+            <div className="zf-error whitespace-normal" role="alert">
+              <p>{refusal ?? error?.message}</p>
+              {explanation ? <RefusalExplanation explanation={explanation} className="mt-1" /> : null}
+            </div>
           ) : null}
           <button type="submit" className="zf-btn" data-size="sm" disabled={pending || !!refusal}>
             {replacing ? "Move wire" : "Add wire"}

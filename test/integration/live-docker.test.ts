@@ -23,6 +23,9 @@ import { createTag } from "@/lib/services/tag-service";
 import { cidrsOverlap } from "@/lib/validation/network";
 import { openTestDb, resetDb } from "./harness";
 
+/** A refused operation: its message and, since TASK-1007, the explanation a domain error carries. */
+const refused = (message: string) => ({ message, explanation: expect.objectContaining({ actual: message }) });
+
 /**
  * Live values, commands and alarms on a real OpenPLC runtime: what an operator writes
  * reaches the PLC as a command, the program decides the output, and what the program
@@ -223,10 +226,8 @@ describeRuntime("live values, commands and alarms on a real OpenPLC runtime", ()
     expect(await reading("Limit_Alarm")).toMatchObject({ value: true });
 
     // An output of the program cannot be written from outside, and the attempt is kept.
-    expect(await write("XV_101_Y1", "true")).toEqual({ message: "XV_101_Y1 is a STATUS tag and cannot be written." });
-    expect(await write("Limit_Alarm", "false")).toEqual({
-      message: "Limit_Alarm is a ALARM tag and cannot be written.",
-    });
+    expect(await write("XV_101_Y1", "true")).toEqual(refused("XV_101_Y1 is a STATUS tag and cannot be written."));
+    expect(await write("Limit_Alarm", "false")).toEqual(refused("Limit_Alarm is a ALARM tag and cannot be written."));
     expect(await write("Hold_Limit", "999999")).toMatchObject({ message: expect.stringContaining("range") });
     const commands = (await listEvents(db, alice, factoryId, { family: "COMMAND" })).map((event) => event.type);
     expect(commands.filter((type) => type === "COMMAND_ACCEPTED")).toHaveLength(2);

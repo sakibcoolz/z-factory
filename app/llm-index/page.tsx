@@ -8,6 +8,7 @@ import { SectionRule } from "@/components/ui/primitives";
 import { StatePill } from "@/components/ui/state-pill";
 import { areasWithLlmContext, buildLlmIndex, type EngineeringArea } from "@/lib/agent/llm-index";
 import { DECISION_KINDS, DECISION_RULE } from "@/lib/agent/llm-context";
+import { REFUSAL_KINDS, RULE_EXPLANATIONS } from "@/lib/domain/validation-explanations";
 import { LLM_INDEX_SECTIONS, sectionTitle } from "@/lib/agent/llm-index-markdown";
 import { routes } from "@/lib/navigation/routes";
 
@@ -179,6 +180,42 @@ export default function LlmIndexPage() {
                 <tr key={kind} data-llm-decision-kind={kind}>
                   <td className="mono">{kind}</td>
                   <td>{meaning}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Section>
+
+        <Section id="validation">
+          <p className="zf-sub max-w-180">
+            Every refusal names its rule, its kind, the condition the rule requires, what happened and what to do. Pages
+            show it under the message; LLM Contexts carry it on their validation items; forms name the field.
+          </p>
+          <ul className="mt-1.5 flex max-w-180 flex-col gap-0.5">
+            {Object.entries(REFUSAL_KINDS).map(([kind, meaning]) => (
+              <li key={kind} className="zf-sub" data-llm-refusal-kind={kind}>
+                <span className="mono text-fg">{kind}</span>: {meaning}
+              </li>
+            ))}
+          </ul>
+          <table className="zf-tbl mt-2">
+            <thead>
+              <tr>
+                <th>Rule</th>
+                <th>Kind</th>
+                <th>Area</th>
+                <th>Expected</th>
+                <th>Do</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(RULE_EXPLANATIONS).map(([rule, entry]) => (
+                <tr key={rule} data-llm-rule={rule}>
+                  <td className="mono">{rule}</td>
+                  <td>{entry.kind}</td>
+                  <td>{areaLabel(entry.area)}</td>
+                  <td>{entry.expected}</td>
+                  <td>{entry.remediation}</td>
                 </tr>
               ))}
             </tbody>

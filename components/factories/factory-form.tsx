@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import { RefusalExplanation } from "@/components/ui/refusal";
 import type { FactoryFormField, FactoryFormState, FactoryFormValues } from "@/lib/factories/form-state";
 import { Button } from "@/components/ui/button";
 import { SectionRule } from "@/components/ui/primitives";
@@ -48,6 +49,9 @@ export function FactoryForm({ mode, action, initial, cancelHref, networkName }: 
         <p className="zf-error" role="alert">
           {state.message}
         </p>
+      ) : null}
+      {state.explanation && (state.message || Object.keys(state.fieldErrors).length > 0) ? (
+        <RefusalExplanation explanation={state.explanation} />
       ) : null}
 
       <div className="grid max-w-180 grid-cols-2 gap-x-5 gap-y-3">

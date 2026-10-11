@@ -1,4 +1,5 @@
 import { DomainError } from "@/lib/domain/errors";
+import { explainDomainError, type ValidationExplanation } from "@/lib/domain/validation-explanations";
 
 /** A compiler finding, with its position in the program source. */
 export type ProgramDiagnostic = {
@@ -19,6 +20,8 @@ export type OperationState = {
   diagnostics?: ProgramDiagnostic[];
   /** The program version a save or deploy stored the editor's text as. */
   savedVersion?: number;
+  /** Why it was refused, for people and agents (TASK-1007). */
+  explanation?: ValidationExplanation;
 };
 
 export const EMPTY_OPERATION_STATE: OperationState = {};
@@ -43,5 +46,8 @@ function isDiagnostic(value: unknown): value is ProgramDiagnostic {
 export function toOperationState(error: unknown): OperationState {
   if (!(error instanceof DomainError)) return { message: GENERIC_MESSAGE };
   const diagnostics = Array.isArray(error.details.diagnostics) ? error.details.diagnostics.filter(isDiagnostic) : [];
-  return diagnostics.length > 0 ? { message: error.message, diagnostics } : { message: error.message };
+  const explanation = explainDomainError(error);
+  return diagnostics.length > 0
+    ? { message: error.message, diagnostics, explanation }
+    : { message: error.message, explanation };
 }

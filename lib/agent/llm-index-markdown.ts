@@ -1,3 +1,4 @@
+import { REFUSAL_KINDS, RULE_EXPLANATIONS } from "@/lib/domain/validation-explanations";
 import { DECISION_KINDS, DECISION_RULE } from "./llm-context";
 import { areasWithLlmContext, type LlmIndex } from "./llm-index";
 
@@ -9,6 +10,7 @@ export const LLM_INDEX_SECTIONS = [
   { id: "llm-context", title: "Pages with an LLM Context tab" },
   { id: "navigation", title: "Where to go" },
   { id: "decisions", title: "Decisions to ask the user" },
+  { id: "validation", title: "How a refusal reads" },
   { id: "files", title: "Files an agent can fetch" },
   { id: "workflow", title: "Recommended agent workflow" },
   { id: "rules", title: "Rules for agents" },
@@ -122,6 +124,21 @@ export function renderLlmIndexMarkdown(index: LlmIndex): string {
     "| Kind | What it decides |",
     "|---|---|",
     ...Object.entries(DECISION_KINDS).map(([kind, meaning]) => `| \`${kind}\` | ${meaning} |`),
+    "",
+    `## ${sectionTitle("validation")}`,
+    "",
+    "Every refusal names its rule, its kind, the condition the rule requires, what happened and what to do. Pages show it under the message; LLM Contexts carry it on their validation items; forms name the field. Kinds:",
+    "",
+    list(Object.entries(REFUSAL_KINDS).map(([kind, meaning]) => `\`${kind}\`: ${meaning}`)),
+    "",
+    "The engineering rules, with what each requires and what to do:",
+    "",
+    "| Rule | Kind | Area | Expected | Do |",
+    "|---|---|---|---|---|",
+    ...Object.entries(RULE_EXPLANATIONS).map(
+      ([rule, entry]) =>
+        `| \`${rule}\` | ${entry.kind} | ${areaLabel(entry.area)} | ${cell(entry.expected)} | ${cell(entry.remediation)} |`,
+    ),
     "",
     `## ${sectionTitle("files")}`,
     "",
