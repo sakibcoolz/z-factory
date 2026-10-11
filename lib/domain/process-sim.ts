@@ -3,6 +3,7 @@
  * (`services/process-sim`, ADR-0008, docs/process-simulation.md). Pure types and
  * constants; importable anywhere. The service validates everything again.
  */
+import { BEHAVIOR_PROFILES, type BehaviorParameter, wireParameter } from "@/lib/domain/behavior-contract";
 
 /** The version of the configuration contract the service speaks. */
 export const PROCESS_SIM_CONTRACT_VERSION = 1;
@@ -159,7 +160,10 @@ export type DeviceSimProfile = {
   signals: DeviceSimSignal[];
   faults: DeviceSimFault[];
   links?: Array<{ role: string; accepts?: string[]; meaning: string }>;
+  /** The generic defaults, as a parameter body the runtime accepts. */
   parameters: unknown;
+  /** The machine-readable parameter schema (TASK-1010): `wireParameter` of each contract parameter. */
+  parameterSchema: Array<ReturnType<typeof wireParameter>>;
   states: string[];
   forcible: boolean;
   forcedKind?: "BOOL" | "NUMBER";
@@ -249,19 +253,19 @@ export type DeviceSimMetrics = {
 };
 
 /**
- * The behaviour profile of each simulated catalog type (`SimulatorType`): the catalog's
- * simulation metadata selects the behaviour, never a condition in the UI. The keys are
- * the same on both sides, so the mapping is the identity, stated once.
+ * The behaviour profile of each simulated catalog type (`SimulatorType`), derived from the
+ * behaviour contract: the catalog's simulation metadata selects the behaviour, never a
+ * condition in the UI.
  */
-export const DEVICE_PROFILES: Readonly<Record<string, { profile: string; profileVersion: number }>> = {
-  VFD: { profile: "VFD", profileVersion: 1 },
-  MOTOR: { profile: "MOTOR", profileVersion: 1 },
-  PUMP: { profile: "PUMP", profileVersion: 1 },
-  FAN: { profile: "FAN", profileVersion: 1 },
-  CONVEYOR: { profile: "CONVEYOR", profileVersion: 1 },
-  MIXER: { profile: "MIXER", profileVersion: 1 },
-  COMPRESSOR: { profile: "COMPRESSOR", profileVersion: 1 },
-  VALVE: { profile: "VALVE", profileVersion: 1 },
-  SENSOR: { profile: "SENSOR", profileVersion: 1 },
-  SWITCH: { profile: "SWITCH", profileVersion: 1 },
-};
+export const DEVICE_PROFILES: Readonly<Record<string, { profile: string; profileVersion: number }>> =
+  Object.fromEntries(
+    Object.values(BEHAVIOR_PROFILES).map((profile) => [
+      profile.simulatorType,
+      { profile: profile.key, profileVersion: profile.version },
+    ]),
+  );
+
+/** The parameter schema of a profile as the runtime describes it, for the parity check. */
+export function expectedParameterSchema(parameters: readonly BehaviorParameter[]) {
+  return parameters.map(wireParameter);
+}

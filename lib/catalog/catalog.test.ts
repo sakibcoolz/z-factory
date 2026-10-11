@@ -32,6 +32,47 @@ function expectRejected(input: CatalogInput, message: RegExp) {
 }
 
 type Model = CatalogInput["models"][number];
+type Simulation = Model["simulation"];
+const simulated = (
+  profile: string,
+  faults: string[] = [],
+  rest: Partial<Extract<Simulation, { coverage: "GENERIC" }>> = {},
+): Simulation => ({ coverage: "GENERIC", profile, profileVersion: 1, faults, ...rest });
+const vendorDrive = (simulation: Simulation, verified = true): Model => ({
+  manufacturer: "Siemens",
+  category: "VFD",
+  family: "Test drives",
+  modelName: "Test drive",
+  sku: "TEST-1",
+  runtimeSupport: "DEVICE_SIM",
+  controlCapability: "PARAMETER_CONFIGURED",
+  capabilities: ["PARAMETER_CONFIGURABLE"],
+  verification: verified
+    ? {
+        status: "VERIFIED",
+        verifiedAt: "2026-10-05",
+        source: {
+          url: "https://cache.industry.siemens.com/dl/files/test/test-drive-manual.pdf",
+          title: "Test drive operating instructions",
+          revision: "A5E00000000-AA, 01/2026",
+          retrievedAt: "2026-10-05",
+        },
+      }
+    : { status: "UNVERIFIED" },
+  simulation,
+});
+type Feature = { key: string; label: string; implemented: boolean };
+/** A vendor model's declared features at a coverage, on the generic VFD profile. */
+const withFeatures = (coverage: "PARTIAL" | "FULL", features: Feature[]): Simulation => ({
+  coverage,
+  profile: "VFD",
+  profileVersion: 1,
+  features,
+});
+const withDrive = (simulation: Simulation, verified = true): CatalogInput => ({
+  ...siemens,
+  models: [...siemens.models, vendorDrive(simulation, verified)],
+});
 const firstModel = (part: CatalogInput): Model => {
   const model = part.models[0];
   if (!model) throw new Error("no model");
@@ -204,7 +245,7 @@ describe("shipped catalog", () => {
   });
 
   it("marks a model executable in the simulator only when a behaviour model exists for it", () => {
-    const simulated = new Set([
+    const simulatedTypes = new Set([
       "VFD",
       "MOTOR",
       "PUMP",
@@ -218,8 +259,160 @@ describe("shipped catalog", () => {
     ]);
     for (const model of catalog.models.filter((candidate) => candidate.runtimeSupport === "DEVICE_SIM")) {
       const type = GENERIC_CATEGORIES.find((category) => category.code === model.category)?.simulatorType;
-      expect(simulated.has(type ?? ""), model.modelName).toBe(true);
+      expect(simulatedTypes.has(type ?? ""), model.modelName).toBe(true);
     }
+  });
+
+  it("declares a simulation decision for every model: generic behaviour or the reason nothing runs", () => {
+    for (const model of catalog.models) {
+      const type = GENERIC_CATEGORIES.find((category) => category.code === model.category)?.simulatorType;
+      if (model.runtimeSupport === "DEVICE_SIM") {
+        expect(model.simulation, model.modelName).toMatchObject({
+          coverage: "GENERIC",
+          profile: type,
+          profileVersion: 1,
+        });
+      } else {
+        expect(model.simulation.coverage, model.modelName).toBe("NOT_SIMULATABLE");
+        expect("reason" in model.simulation && model.simulation.reason.length, model.modelName).toBeGreaterThan(10);
+      }
+    }
+    // Nothing in the shipped catalog claims more than the generic behaviour of its category.
+    expect(new Set(catalog.models.map((model) => model.simulation.coverage))).toEqual(
+      new Set(["GENERIC", "NOT_SIMULATABLE"]),
+    );
+    // A programmable controller runs its program on the adapter; it is not a simulated device.
+    for (const plc of catalog.models.filter((model) => model.category === "PLC")) {
+      expect(plc.simulation).toMatchObject({ coverage: "NOT_SIMULATABLE", reason: expect.stringContaining("OpenPLC") });
+    }
+  });
+});
+
+describe("simulation decision rules", () => {
+  it("ties the coverage to the runtime: the simulator executes a model with a profile, nothing else", () => {
+    expectRejected(
+      withModel(genericModels, (model) => ({ ...model, runtimeSupport: "NONE" })),
+      /NOT_SIMULATABLE/,
+    );
+    expectRejected(
+      withModel(genericModels, (model) => ({
+        ...model,
+        simulation: { coverage: "NOT_SIMULATABLE", reason: "test: nothing runs it" },
+      })),
+      /NOT_SIMULATABLE/,
+    );
+    // A PLC is a program host, not a simulated device: its coverage cannot name a profile.
+    expectRejected(
+      withModel(siemens, (model) => ({ ...model, simulation: simulated("VFD") })),
+      /NOT_SIMULATABLE/,
+    );
+    expectRejected(
+      withModel(siemens, (model) => ({ ...model, simulation: { coverage: "NOT_SIMULATABLE" } as never })),
+      /not valid/,
+    );
+  });
+
+  it("accepts only a profile of the model's category, at a version that exists", () => {
+    expectRejected(
+      withModel(genericModels, (model) => ({ ...model, simulation: simulated("BOILER") })),
+      /profile that does not exist/,
+    );
+    expectRejected(
+      withModel(genericModels, (model) => ({ ...model, simulation: { ...simulated("VFD"), profileVersion: 2 } })),
+      /version of its behaviour profile/,
+    );
+    expectRejected(
+      withModel(genericModels, (model) => ({ ...model, simulation: simulated("PUMP") })),
+      /profile is the one of its category/,
+    );
+  });
+
+  it("refuses a terminal signal on a model that is not simulated", () => {
+    expectRejected(
+      withModel(genericModels, (model) => ({
+        ...model,
+        runtimeSupport: "NONE",
+        simulation: { coverage: "NOT_SIMULATABLE", reason: "test: nothing runs it" },
+      })),
+      /names a simulator signal, but the model is not simulated/,
+    );
+  });
+
+  it("checks parameter values against the profile's bounds and names", () => {
+    expectRejected(
+      withModel(genericModels, (model) => ({
+        ...model,
+        simulation: simulated("VFD", [], { parameters: { accelTimeS: 0 } }),
+      })),
+      /outside the bounds/,
+    );
+    expectRejected(
+      withModel(genericModels, (model) => ({
+        ...model,
+        simulation: simulated("VFD", [], { parameters: { maxFrequencyHz: 1001 } }),
+      })),
+      /outside the bounds/,
+    );
+    expectRejected(
+      withModel(genericModels, (model) => ({
+        ...model,
+        simulation: simulated("VFD", [], { parameters: { ratedFlow: 10 } }),
+      })),
+      /parameter its behaviour profile does not have/,
+    );
+    // Within the bounds, a generic model may set the generic defaults of its own kind.
+    expect(
+      parseCatalog(
+        withModel(genericModels, (model) => ({
+          ...model,
+          simulation: simulated("VFD", ["OVERCURRENT"], { parameters: { maxFrequencyHz: 60, accelTimeS: 3 } }),
+        })),
+      ).models[0]?.simulation,
+    ).toMatchObject({ parameters: { maxFrequencyHz: 60, accelTimeS: 3 } });
+  });
+
+  it("keeps generic and vendor facts apart", () => {
+    const features = [
+      { key: "S_CURVE_RAMP", label: "S-curve ramp", implemented: true },
+      { key: "DC_BRAKING", label: "DC braking", implemented: false },
+    ];
+    // A generic model has nothing model-specific.
+    expectRejected(
+      withModel(genericModels, (model) => ({
+        ...model,
+        simulation: withFeatures("PARTIAL", features),
+      })),
+      /generic model has no model-specific behaviour/,
+    );
+    // A vendor model may run on the generic behaviour of its category without any claim …
+    expect(parseCatalog(withDrive(simulated("VFD", ["OVERCURRENT"]), false)).models).toHaveLength(3);
+    // … but a model-specific fact needs its verified provenance.
+    expectRejected(
+      withDrive(simulated("VFD", [], { parameters: { maxFrequencyHz: 60 } }), false),
+      /VERIFIED provenance/,
+    );
+    expectRejected(withDrive(withFeatures("PARTIAL", features), false), /VERIFIED provenance/);
+    expect(parseCatalog(withDrive(withFeatures("PARTIAL", features))).models[2]?.simulation).toMatchObject({
+      coverage: "PARTIAL",
+    });
+  });
+
+  it("makes the coverage match the declared features", () => {
+    const done = { key: "S_CURVE_RAMP", label: "S-curve ramp", implemented: true };
+    const open = { key: "DC_BRAKING", label: "DC braking", implemented: false };
+    expectRejected(
+      withDrive(withFeatures("FULL", [done, open])),
+      /FULL coverage means every declared feature is implemented/,
+    );
+    expectRejected(
+      withDrive(withFeatures("PARTIAL", [done, { ...open, implemented: true }])),
+      /PARTIAL coverage means some/,
+    );
+    expectRejected(withDrive(withFeatures("PARTIAL", [open, { ...open, label: "again" }])), /declared twice/);
+    expectRejected(withDrive(withFeatures("FULL", [])), /not valid/);
+    expect(parseCatalog(withDrive(withFeatures("FULL", [done]))).models[2]?.simulation).toMatchObject({
+      coverage: "FULL",
+    });
   });
 });
 
@@ -293,7 +486,7 @@ describe("catalog definition rules", () => {
       /simulator signal/,
     );
     expectRejected(
-      withModel(genericModels, (model) => ({ ...model, faults: ["DRY_RUN"] })),
+      withModel(genericModels, (model) => ({ ...model, simulation: simulated("VFD", ["DRY_RUN"]) })),
       /fault/,
     );
     expectRejected(

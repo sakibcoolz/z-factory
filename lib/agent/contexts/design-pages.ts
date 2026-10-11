@@ -1,5 +1,6 @@
 import { createLlmContext, type LlmContextDocument, type LlmContextItem } from "@/lib/agent/llm-context";
 import { routePattern } from "@/lib/agent/llm-index";
+import { SIMULATION_COVERAGE_LABELS } from "@/lib/domain/behavior-contract";
 import type { CatalogModelDetail, CatalogOverview, PeripheralCompatibility } from "@/lib/domain/catalog-view";
 import type { DeviceSection } from "@/lib/domain/device-capabilities";
 import type { DeviceDetailView } from "@/lib/domain/device-detail-view";
@@ -675,7 +676,7 @@ export function buildCatalogContext({ overview, model, peripherals, type }: Cata
       context: [
         {
           label: "Models",
-          value: `${overview.totals.models} · ${overview.totals.manufacturers} manufacturers · ${overview.totals.verified} verified · ${overview.totals.generic} generic · ${overview.totals.withAsset} with a 3D asset`,
+          value: `${overview.totals.models} · ${overview.totals.manufacturers} manufacturers · ${overview.totals.verified} verified · ${overview.totals.generic} generic · ${overview.totals.simulated} simulated · ${overview.totals.withAsset} with a 3D asset`,
         },
         {
           label: "Category filter",
@@ -701,6 +702,25 @@ export function buildCatalogContext({ overview, model, peripherals, type }: Cata
                 label: "Control",
                 value: model.controlCapability.toLowerCase().replace(/_/g, " "),
                 detail: `runtime support ${model.runtimeSupport.toLowerCase()} · ${model.lifecycleStatus.toLowerCase()}`,
+              },
+              {
+                label: "Simulation",
+                value: SIMULATION_COVERAGE_LABELS[model.simulation.coverage],
+                detail: [
+                  model.simulation.statement,
+                  model.simulation.reason,
+                  model.simulation.faults.length > 0 ? `faults ${model.simulation.faults.join(", ")}` : null,
+                  model.simulation.features.length > 0
+                    ? `features ${model.simulation.features
+                        .map(
+                          (feature) => `${feature.label} (${feature.implemented ? "implemented" : "not implemented"})`,
+                        )
+                        .join(", ")}`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · "),
+                tone: "info" as const,
               },
               {
                 label: "3D asset",

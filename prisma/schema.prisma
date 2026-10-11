@@ -71,6 +71,19 @@ enum ControlCapability {
   PROGRAMMABLE
 }
 
+/// How much of a catalog model's behaviour the simulator implements (Phase 10, TASK-1010).
+/// A behaviour model, never vendor firmware, whatever the value.
+enum SimulationCoverage {
+  /// Every behaviour Z-Factory declares for the model is implemented.
+  FULL
+  /// A declared subset is implemented.
+  PARTIAL
+  /// The generic behaviour of the category; nothing model-specific.
+  GENERIC
+  /// Configuration and metadata only; no executable behaviour.
+  NOT_SIMULATABLE
+}
+
 /// GENERIC marks a simulated profile that makes no vendor claim.
 enum VerificationStatus {
   UNVERIFIED
@@ -377,29 +390,35 @@ model DeviceFamily {
 }
 
 model DeviceModel {
-  id                 String             @id @default(uuid(7)) @db.Uuid
-  familyId           String             @db.Uuid
-  modelName          String
-  sku                String?
+  id                       String             @id @default(uuid(7)) @db.Uuid
+  familyId                 String             @db.Uuid
+  modelName                String
+  sku                      String?
   /// Required for PLC models, null for every other category.
-  architectureType   PlcArchitecture?
-  runtimeSupport     RuntimeType        @default(NONE)
-  controlCapability  ControlCapability  @default(DIRECT_IO)
+  architectureType         PlcArchitecture?
+  runtimeSupport           RuntimeType        @default(NONE)
+  controlCapability        ControlCapability  @default(DIRECT_IO)
   /// What Z-Factory can do with the model (TASK-308). Screens and adapters follow these.
-  capabilities       DeviceCapability[]
-  lifecycleStatus    LifecycleStatus    @default(UNKNOWN)
+  capabilities             DeviceCapability[]
+  lifecycleStatus          LifecycleStatus    @default(UNKNOWN)
   // Provenance (docs/references/plc-source-policy.md). Never fabricate vendor facts.
-  verificationStatus VerificationStatus @default(UNVERIFIED)
-  sourceUrl          String?
-  sourceTitle        String?
-  sourceRevision     String?
-  sourceRetrievedAt  DateTime?
-  verifiedAt         DateTime?
-  metadataJson       Json               @default("{}")
+  verificationStatus       VerificationStatus @default(UNVERIFIED)
+  sourceUrl                String?
+  sourceTitle              String?
+  sourceRevision           String?
+  sourceRetrievedAt        DateTime?
+  verifiedAt               DateTime?
+  metadataJson             Json               @default("{}")
+  /// The model's simulation decision (TASK-1010): coverage, the behaviour profile it runs
+  /// on (null when NOT_SIMULATABLE) and the declared block (reason, faults, parameters, features).
+  simulationCoverage       SimulationCoverage @default(NOT_SIMULATABLE)
+  simulationProfile        String?
+  simulationProfileVersion Int?
+  simulationJson           Json               @default("{}")
   /// The 3D asset version every instance of this model renders; null means the category placeholder.
-  active3dAssetId    String?            @unique @db.Uuid
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
+  active3dAssetId          String?            @unique @db.Uuid
+  createdAt                DateTime           @default(now())
+  updatedAt                DateTime           @updatedAt
 
   family              DeviceFamily                 @relation(fields: [familyId], references: [id], onDelete: Restrict)
   active3dAsset       Catalog3dAsset?              @relation("Active3dAsset", fields: [active3dAssetId], references: [id], onDelete: SetNull)

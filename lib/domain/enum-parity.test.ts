@@ -17,6 +17,7 @@ import {
   TERMINAL_KINDS,
 } from "./device";
 import { PROGRAM_VERSION_STATUSES } from "./plc-runtime-view";
+import { SIMULATION_COVERAGES } from "./behavior-contract";
 import { DEVICE_CAPABILITIES } from "./device-capabilities";
 import { MODULE_SIGNAL_DIRECTIONS } from "./process-module";
 import { RUNTIME_STATES } from "./runtime-state";
@@ -37,6 +38,7 @@ describe("domain enums match the database schema", () => {
     ["EndpointType", ENDPOINT_TYPES, prismaEnums.EndpointType],
     ["TerminalKind", TERMINAL_KINDS, prismaEnums.TerminalKind],
     ["DeviceCapability", DEVICE_CAPABILITIES, prismaEnums.DeviceCapability],
+    ["SimulationCoverage", SIMULATION_COVERAGES, prismaEnums.SimulationCoverage],
     ["RuntimeState", RUNTIME_STATES, prismaEnums.RuntimeState],
     ["ProgramVersionStatus", PROGRAM_VERSION_STATUSES, prismaEnums.ProgramVersionStatus],
     ["TagRole", TAG_ROLES, prismaEnums.TagRole],

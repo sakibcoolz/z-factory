@@ -2,9 +2,11 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createServer } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { BEHAVIOR_PROFILES } from "@/lib/domain/behavior-contract";
 import {
   DEVICE_SIM_CONTRACT_VERSION,
   type DeviceSimConfig,
+  expectedParameterSchema,
   PROCESS_SIM_CONTRACT_VERSION,
   PROCESS_SIM_MODELS,
   type ProcessSimConfig,
@@ -273,6 +275,49 @@ describeSim("the catalog device runtime (TASK-1009)", () => {
     ]);
     expect(vfd.faults.map((fault) => fault.code)).toEqual(["OVERCURRENT", "OVERTEMPERATURE"]);
     await expect(client.devices.profile("BOILER")).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("describes every profile exactly as the behaviour contract does (TASK-1010)", async () => {
+    for (const contract of Object.values(BEHAVIOR_PROFILES)) {
+      const described = await client.devices.profile(contract.key);
+      const where = contract.key;
+      expect(described.version, where).toBe(contract.version);
+      expect(described.summary, where).toBe(contract.summary);
+      expect(described.states, where).toEqual([...contract.states]);
+      expect(described.forcible, where).toBe(contract.forcible);
+      expect(described.forcedKind, where).toEqual(contract.forcedKind);
+      // Signals: key, direction, kind, label, unit (the contract's ranges stay on the server).
+      const signal = (item: { key: string; direction: string; kind: string; label: string; unit?: string }) => [
+        item.key,
+        item.direction,
+        item.kind,
+        item.label,
+        item.unit ?? null,
+      ];
+      expect(described.signals.map(signal), where).toEqual(contract.signals.map(signal));
+      // Faults: the runtime knows code, name, severity, latching and silence; reset and effect follow from latching.
+      const fault = (item: { code: string; name: string; severity: string; latching: boolean; silent?: boolean }) => [
+        item.code,
+        item.name,
+        item.severity,
+        item.latching,
+        item.silent ?? false,
+      ];
+      expect(described.faults.map(fault), where).toEqual(contract.faults.map(fault));
+      // Links by role, what they accept and what they mean.
+      expect(
+        (described.links ?? []).map((link) => [link.role, link.accepts ?? null, link.meaning]),
+        where,
+      ).toEqual(contract.links.map((link) => [link.role, link.accepts ? [...link.accepts] : null, link.meaning]));
+      // The parameter schema, field by field, and the defaults body it implies.
+      expect(described.parameterSchema, where).toEqual(expectedParameterSchema(contract.parameters));
+      const defaults = Object.fromEntries(
+        contract.parameters
+          .filter((parameter) => !(parameter.kind === "NUMBER" && parameter.default === null))
+          .map((parameter) => [parameter.key, parameter.default]),
+      );
+      expect(described.parameters, where).toEqual(defaults);
+    }
   });
 
   it("gives the same values as the server's own simulator for the same configuration and inputs", async () => {

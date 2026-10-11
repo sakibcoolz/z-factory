@@ -33,14 +33,16 @@ func init() {
 			Summary: "A contact held at a constant state, operated by hand, or switching on a measured signal with hysteresis; stuck, it keeps its state.",
 			Signals: []Signal{{Key: "state", Direction: Out, Kind: Bool, Label: "Switch state"}},
 			Faults:  []Fault{stuck},
-			Links:   []Link{{Role: "measures", Meaning: "the device whose numeric output signal a MEASURED source switches on"}},
+			Links:   []Link{{Role: "measures", Meaning: "the device whose numeric output signal a MEASURED source switches on; required when the source is MEASURED"}},
 			Parameters: mustJSON(map[string]any{
 				"source": map[string]any{"kind": "CONSTANT", "state": false},
-				"sourceKinds": map[string]any{
-					"CONSTANT": []string{"state"},
-					"MEASURED": []string{"signal", "onAbove", "offBelow"},
-				},
 			}),
+			ParameterSchema: []ParameterSpec{
+				{Key: "source", Label: "Signal source", Kind: "STRUCTURED", Role: "SOURCE", Default: map[string]any{"kind": "CONSTANT", "state": false}, Kinds: map[string][]string{
+					"CONSTANT": {"state"},
+					"MEASURED": {"signal", "onAbove", "offBelow"},
+				}, Description: "A constant state, or a MEASURED source that closes at or above onAbove and opens at or below offBelow."},
+			},
 			States:     []string{"OFF", "ON"},
 			Forcible:   true,
 			ForcedKind: Bool,

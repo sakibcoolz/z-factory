@@ -50,10 +50,18 @@ func init() {
 			},
 			Faults: []Fault{{Code: "OVERLOAD", Name: "Overload trip", Severity: Critical, Latching: true}},
 			Links: []Link{
-				{Role: "drive", Accepts: []string{"VFD"}, Meaning: "the drive that supplies the motor; one drive supplies one motor"},
+				{Role: "drive", Accepts: []string{"VFD"}, Meaning: "the drive that supplies the motor; one drive supplies one motor; without one, the run command is a contactor"},
 			},
 			Parameters: mustJSON(defaultMotorParams()),
-			States:     []string{"STOPPED", "RUNNING", "COASTING", "FAULTED"},
+			ParameterSchema: []ParameterSpec{
+				ratingParam("ratedSpeedRpm", "Rated speed", 1450, "rpm", ""),
+				ratingParam("ratedFrequencyHz", "Rated frequency", 50, "Hz", ""),
+				ratingParam("ratedCurrentA", "Rated current", 10, "A", ""),
+				{Key: "noLoadCurrentRatio", Label: "No-load current ratio", Kind: "NUMBER", Role: "RATING", Default: 0.35, Min: f64(0), Max: f64(1), MinInclusive: true, MaxInclusive: true, Description: "Share of the rated current drawn with no load on the shaft."},
+				secondsParam("timeConstantS", "Speed time constant", 0.5, "First-order response of the speed to a change of supply."),
+				secondsParam("coastTimeConstantS", "Coast-down time constant", 2, "First-order coast-down once the supply is gone."),
+			},
+			States: []string{"STOPPED", "RUNNING", "COASTING", "FAULTED"},
 		}
 	})
 }

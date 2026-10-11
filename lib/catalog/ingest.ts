@@ -7,8 +7,14 @@
  * Used by `prisma/seed.ts` (plain Node), so this module must not import `server-only`.
  */
 import { GENERIC_CATEGORIES } from "@/lib/catalog/generic-categories";
-import type { Catalog, CatalogChannelGroup, CatalogModel, CatalogModule } from "@/lib/catalog/schema";
-import { DEVICE_FAULTS, isSimulatedType } from "@/lib/domain/simulation";
+import {
+  type Catalog,
+  type CatalogChannelGroup,
+  type CatalogModel,
+  type CatalogModule,
+  isSimulated,
+} from "@/lib/catalog/schema";
+import { findBehaviorProfile } from "@/lib/domain/behavior-contract";
 import type { Prisma, PrismaClient } from "@/lib/generated/prisma/client";
 
 type Tx = Prisma.TransactionClient;
@@ -74,6 +80,11 @@ async function ingestModel(tx: Tx, model: CatalogModel, familyId: string): Promi
     capabilities: model.capabilities,
     lifecycleStatus: model.lifecycleStatus,
     metadataJson: model.facts,
+    // The simulation decision (TASK-1010): coverage, profile, and the declared block as recorded.
+    simulationCoverage: model.simulation.coverage,
+    simulationProfile: isSimulated(model) ? model.simulation.profile : null,
+    simulationProfileVersion: isSimulated(model) ? model.simulation.profileVersion : null,
+    simulationJson: model.simulation as Prisma.InputJsonValue,
     ...provenance(model.verification),
   };
   const { id: deviceModelId } = await tx.deviceModel.upsert({
@@ -139,11 +150,14 @@ async function ingestModel(tx: Tx, model: CatalogModel, familyId: string): Promi
     else
       await tx.deviceIoDefinition.create({ data: { deviceModelId, terminalLabel: terminal.terminalLabel, ...values } });
   }
-  // Faults are those of the generic behaviour model of the device's category.
-  const simulatorType = GENERIC_CATEGORIES.find((category) => category.code === model.category)?.simulatorType;
-  const supported = simulatorType && isSimulatedType(simulatorType) ? DEVICE_FAULTS[simulatorType] : [];
-  for (const code of model.faults) {
-    const fault = supported.find((candidate) => candidate.code === code);
+  if (!isSimulated(model)) return deviceModelId;
+  // Faults and parameter values are those of the model's behaviour profile; the catalog
+  // rules have already checked they exist there.
+  const profile = findBehaviorProfile(model.simulation.profile);
+  if (!profile)
+    throw new Error(`Catalog model ${model.modelName} names an unknown profile ${model.simulation.profile}.`);
+  for (const code of model.simulation.faults) {
+    const fault = profile.faults.find((candidate) => candidate.code === code);
     if (!fault) throw new Error(`Catalog model ${model.modelName} lists an unsupported fault ${code}.`);
     const values = {
       name: fault.name,
@@ -155,6 +169,14 @@ async function ingestModel(tx: Tx, model: CatalogModel, familyId: string): Promi
       create: { deviceModelId, code, ...values },
       update: values,
     });
+  }
+  // Parameter values become the model-level simulation profile the simulator reads for
+  // every instance without one of its own (docs/device-simulation.md → Parameters).
+  if (Object.keys(model.simulation.parameters).length > 0) {
+    const parametersJson = model.simulation.parameters as Prisma.InputJsonValue;
+    const existing = await tx.simulationProfile.findFirst({ where: { deviceModelId } });
+    if (existing) await tx.simulationProfile.update({ where: { id: existing.id }, data: { parametersJson } });
+    else await tx.simulationProfile.create({ data: { deviceModelId, kind: "STATE_MACHINE", parametersJson } });
   }
   return deviceModelId;
 }

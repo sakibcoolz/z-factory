@@ -50,7 +50,12 @@ func init() {
 				{Code: "OVERTEMPERATURE", Name: "Overtemperature trip", Severity: Critical, Latching: true},
 			},
 			Parameters: mustJSON(defaultVfdParams()),
-			States:     []string{"STOPPED", "ACCELERATING", "RUNNING", "DECELERATING", "FAULTED"},
+			ParameterSchema: []ParameterSpec{
+				{Key: "maxFrequencyHz", Label: "Maximum output frequency", Kind: "NUMBER", Role: "RATING", Unit: "Hz", Default: 50.0, Min: f64(0), Max: f64(1000), MaxInclusive: true},
+				secondsParam("accelTimeS", "Acceleration time", 5, "Time to ramp from zero to the maximum frequency."),
+				secondsParam("decelTimeS", "Deceleration time", 5, "Time to ramp from the maximum frequency to zero."),
+			},
+			States: []string{"STOPPED", "ACCELERATING", "RUNNING", "DECELERATING", "FAULTED"},
 		}
 	})
 }
