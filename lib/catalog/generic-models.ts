@@ -18,7 +18,8 @@ const simulated = (profile: string, faults: string[] = []): Simulation => ({
   coverage: "GENERIC",
   profile,
   profileVersion: 1,
-  faults,
+  // Every device can be unavailable: OFFLINE, the generic fault of the standard (TASK-1014).
+  faults: [...faults, "OFFLINE"],
 });
 
 /** A model nothing executes: it can be placed and wired, and the reason says why that is all. */

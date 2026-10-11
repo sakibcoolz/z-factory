@@ -227,7 +227,7 @@ describe("shipped catalog", () => {
       expect(simulation).toMatchObject({
         profile: "VFD",
         profileVersion: 1,
-        faults: ["OVERCURRENT", "OVERTEMPERATURE"],
+        faults: ["OVERCURRENT", "OVERTEMPERATURE", "OFFLINE"],
       });
       // The profile implements the ramps, the reversal and the trips; the rest is declared absent.
       expect(simulation.features.filter((f) => f.implemented).map((f) => f.key)).toEqual([
@@ -237,9 +237,10 @@ describe("shipped catalog", () => {
       ]);
       expect(simulation.features.filter((f) => !f.implemented).length).toBeGreaterThanOrEqual(5);
       // Every model-specific fact names its page; every source resolves to a manufacturer document.
+      // OFFLINE is Z-Factory's generic fault, not a vendor fact, so it needs no source.
       const facts = [
         ...Object.keys(simulation.parameters).map((key) => `parameter:${key}`),
-        ...simulation.faults.map((code) => `fault:${code}`),
+        ...simulation.faults.filter((code) => code !== "OFFLINE").map((code) => `fault:${code}`),
         ...simulation.features.map((feature) => `feature:${feature.key}`),
       ];
       expect(Object.keys(simulation.sources).sort(), drive.modelName).toEqual(facts.sort());
@@ -683,6 +684,36 @@ describe("simulation decision rules", () => {
       runtimeOnly({ profile: "VFD", profileVersion: 1, protocol: { ...modbus, registerMap: "X" } }),
       /never guessed/,
     );
+  });
+
+  it("lets every model be unavailable and a served model lose its communication (TASK-1014)", () => {
+    // Every generic model the simulator runs lists OFFLINE; a vendor model may list it without a source.
+    for (const model of catalog.models) {
+      if (model.simulation.coverage === "NOT_SIMULATABLE") continue;
+      expect(model.simulation.faults.at(-1), model.modelName).toBe("OFFLINE");
+    }
+    expect(parseCatalog(withDrive(simulated("VFD", ["OFFLINE"]))).models[2]?.simulation).toMatchObject({
+      faults: ["OFFLINE"],
+    });
+    // COMM_LOSS is the protocol's fault: only a served model has it.
+    expectRejected(withDrive(simulated("VFD", ["COMM_LOSS"])), /fault its behaviour model does not support/);
+    const port = { name: "Ethernet", physicalType: "Ethernet", protocols: ["MODBUS_TCP" as const] };
+    const served: CatalogInput = {
+      ...siemens,
+      models: [
+        ...siemens.models,
+        {
+          ...vendorDrive(
+            simulated("VFD", ["COMM_LOSS", "OFFLINE"], {
+              protocol: { kind: "MODBUS_TCP", registerMap: "VFD_MODBUS_TCP", registerMapVersion: 1 },
+            }),
+          ),
+          ports: [port],
+          capabilities: ["PARAMETER_CONFIGURABLE", "MODBUS_SERVER"],
+        },
+      ],
+    };
+    expect(parseCatalog(served).models[2]?.simulation).toMatchObject({ faults: ["COMM_LOSS", "OFFLINE"] });
   });
 
   it("makes the coverage match the declared features", () => {

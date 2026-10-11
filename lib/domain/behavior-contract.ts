@@ -15,10 +15,12 @@
  * Pure data; importable anywhere.
  */
 import {
+  COMM_LOSS,
   DEVICE_FAULTS,
   DEVICE_SIGNALS,
   type FaultDefinition,
   LOAD_TYPES,
+  OFFLINE,
   type SignalDefinition,
   type SimulatedType,
 } from "@/lib/domain/simulation";
@@ -207,10 +209,38 @@ function signalsOf(type: SimulatedType, ranges: Record<string, BehaviorSignal["r
   });
 }
 
+/**
+ * The generic faults of the fault standard (TASK-1014), with their effect and quality:
+ * OFFLINE on every profile, COMM_LOSS on every device served over a protocol.
+ */
+const GENERIC_FAULT_EFFECTS: Record<string, { effect: string; quality: "BAD" }> = {
+  OFFLINE: {
+    effect:
+      "not stepped; every output reads de-energized (false / 0) and quality is BAD; its physics is wiped at once, so a motor it feeds coasts and a device it switches opens; it restarts from its initial state, untripped, when the fault ends",
+    quality: "BAD",
+  },
+  COMM_LOSS: {
+    effect: "the runtime answers nothing for its unit id (exception 0B); the behaviour goes on; quality is BAD",
+    quality: "BAD",
+  },
+};
+
+const generic = (definition: FaultDefinition): BehaviorFault => ({
+  ...definition,
+  reset: "AUTO",
+  effect: GENERIC_FAULT_EFFECTS[definition.code]!.effect,
+  quality: GENERIC_FAULT_EFFECTS[definition.code]!.quality,
+});
+
+/** The fault every profile has: the device unavailable. */
+export const OFFLINE_FAULT: BehaviorFault = generic(OFFLINE);
+/** The fault every served device has: its communication lost. */
+export const COMM_LOSS_FAULT: BehaviorFault = generic(COMM_LOSS);
+
 /** The faults of a simulated type, with their reset rule, effect and quality. */
 function faultsOf(type: SimulatedType, effects: Record<string, { effect: string; quality?: "BAD" }>): BehaviorFault[] {
   return DEVICE_FAULTS[type].map((fault) => {
-    const detail = effects[fault.code];
+    const detail = effects[fault.code] ?? GENERIC_FAULT_EFFECTS[fault.code];
     if (!detail) throw new Error(`behaviour contract: ${type} does not describe the effect of ${fault.code}`);
     return {
       ...fault,
@@ -431,7 +461,10 @@ const VALVE: BehaviorProfile = {
     }),
   ],
   states: ["CLOSED", "OPENING", "OPEN", "CLOSING", "STOPPED", "FAULTED"],
-  faults: faultsOf("VALVE", { STUCK: { effect: "does not move; not reported on faulted" } }),
+  faults: faultsOf("VALVE", {
+    STUCK: { effect: "does not move; not reported on faulted" },
+    LIMIT_SWITCH_FAULT: { effect: "both limit switches read closed whatever the position; not reported on faulted" },
+  }),
   badQualityOnFaults: [],
   links: [
     CONTROLLER_LINK(
@@ -1238,6 +1271,10 @@ const ACTUATOR: BehaviorProfile = {
       silent: true,
       effect: "a double-acting cylinder stops where it is, a single-acting one springs back; not reported",
     }),
+    fault("END_SENSOR_FAULT", "End sensor disagreement", "WARNING", {
+      silent: true,
+      effect: "both end sensors read at once, whatever the rod does; not reported",
+    }),
   ],
   badQualityOnFaults: [],
   links: [],
@@ -1253,29 +1290,45 @@ const ACTUATOR: BehaviorProfile = {
  * Every behaviour profile, by key. The keys are catalog simulator types: the ten the
  * server's simulator runs (`SIMULATED_TYPES`) and the runtime-only profiles of TASK-1011.
  */
-export const BEHAVIOR_PROFILES: Readonly<Record<string, BehaviorProfile>> = {
-  VFD,
-  MOTOR,
-  PUMP,
-  FAN: load("FAN", "QUADRATIC"),
-  CONVEYOR: load("CONVEYOR", "CONSTANT"),
-  MIXER: load("MIXER", "CONSTANT"),
-  COMPRESSOR: load("COMPRESSOR", "CONSTANT"),
-  VALVE,
-  SENSOR,
-  SWITCH,
-  RELAY,
-  HEATER,
-  INDICATOR,
-  SOFT_STARTER,
-  MOTOR_STARTER,
-  SERVO_DRIVE,
-  SERVO_MOTOR,
-  ENCODER,
-  PID_CONTROLLER,
-  SIGNAL_CONDITIONER,
-  ACTUATOR,
-};
+/**
+ * Every profile carries the generic faults of the fault standard (TASK-1014): OFFLINE
+ * last in its list, and among the faults that make its feedback BAD.
+ */
+function withGenericFaults(profile: BehaviorProfile): BehaviorProfile {
+  const faults = profile.faults.some((fault) => fault.code === OFFLINE.code)
+    ? profile.faults
+    : [...profile.faults, OFFLINE_FAULT];
+  const badQualityOnFaults = profile.badQualityOnFaults.includes(OFFLINE.code)
+    ? profile.badQualityOnFaults
+    : [...profile.badQualityOnFaults, OFFLINE.code];
+  return { ...profile, faults, badQualityOnFaults };
+}
+
+export const BEHAVIOR_PROFILES: Readonly<Record<string, BehaviorProfile>> = Object.fromEntries(
+  [
+    VFD,
+    MOTOR,
+    PUMP,
+    load("FAN", "QUADRATIC"),
+    load("CONVEYOR", "CONSTANT"),
+    load("MIXER", "CONSTANT"),
+    load("COMPRESSOR", "CONSTANT"),
+    VALVE,
+    SENSOR,
+    SWITCH,
+    RELAY,
+    HEATER,
+    INDICATOR,
+    SOFT_STARTER,
+    MOTOR_STARTER,
+    SERVO_DRIVE,
+    SERVO_MOTOR,
+    ENCODER,
+    PID_CONTROLLER,
+    SIGNAL_CONDITIONER,
+    ACTUATOR,
+  ].map((profile) => [profile.key, withGenericFaults(profile)]),
+);
 
 export function findBehaviorProfile(key: string): BehaviorProfile | undefined {
   return Object.hasOwn(BEHAVIOR_PROFILES, key) ? BEHAVIOR_PROFILES[key] : undefined;

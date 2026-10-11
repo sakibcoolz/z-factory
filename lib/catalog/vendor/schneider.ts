@@ -165,7 +165,8 @@ const atv320: Model = {
     coverage: "PARTIAL",
     profile: "VFD",
     profileVersion: 1,
-    faults: ["OVERCURRENT", "OVERTEMPERATURE"],
+    // OFFLINE is the generic fault every device has (TASK-1014), not a vendor fact.
+    faults: ["OVERCURRENT", "OVERTEMPERATURE", "OFFLINE"],
     // Factory settings (programming manual, page 16): ACC and DEC 3.0 s, HSP 50.0 Hz.
     parameters: { maxFrequencyHz: 50, accelTimeS: 3, decelTimeS: 3 },
     features: driveFeatures([

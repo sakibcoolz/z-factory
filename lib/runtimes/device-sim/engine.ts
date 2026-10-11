@@ -2,6 +2,7 @@ import "server-only";
 import { DomainError } from "@/lib/domain/errors";
 import {
   DEVICE_FAULTS,
+  DEVICE_SIGNALS,
   type FaultDefinition,
   findSignal,
   isLoadType,
@@ -89,6 +90,11 @@ type Common = {
   tripped: boolean;
   resetInput: boolean;
   state: string;
+  /** Whether the device was unavailable at the last step; it restarts when that changes (TASK-1014). */
+  offline: boolean;
+  lastQuality: "GOOD" | "BAD";
+  /** The configuration it was created from, for the restart after a power cycle. */
+  config: DeviceConfig;
 };
 type Vfd = Common & { type: "VFD"; params: VfdParams; frequency: number; motor?: Motor };
 type Motor = Common & {
@@ -339,13 +345,16 @@ function outputsOf(device: Device): Signals {
         pressure: dry ? 0 : device.params.ratedPressure * n * n,
       };
     }
-    case "VALVE":
+    case "VALVE": {
+      // A limit-switch disagreement: both end switches read at once, whatever the position.
+      const disagree = device.activeFaults.has("LIMIT_SWITCH_FAULT");
       return {
         position: device.position,
-        opened: device.position >= 99.5,
-        closed: device.position <= 0.5,
+        opened: disagree || device.position >= 99.5,
+        closed: disagree || device.position <= 0.5,
         faulted,
       };
+    }
     case "SENSOR":
       return { value: device.value, faulted };
     case "SWITCH":
@@ -357,6 +366,15 @@ function outputsOf(device: Device): Signals {
         output: device.params.ratedOutput * device.speedFraction,
       };
   }
+}
+
+/** What an unavailable device's feedback reads: every output false or zero, as powered-down wiring reads. */
+function deEnergized(device: Device): Signals {
+  return Object.fromEntries(
+    DEVICE_SIGNALS[device.type]
+      .filter((signal) => signal.direction === "OUT")
+      .map((signal) => [signal.key, signal.kind === "BOOL" ? false : 0]),
+  );
 }
 
 function faultDefinitions(config: DeviceConfig): Map<string, FaultDefinition> {
@@ -387,6 +405,9 @@ function createDevice(config: DeviceConfig): Device {
     tripped: false,
     resetInput: false,
     state: "STOPPED",
+    offline: false,
+    lastQuality: "GOOD",
+    config,
   };
   const { type, name } = config;
   switch (type) {
@@ -544,10 +565,58 @@ export class FactorySimulation {
   }
 
   /** Whether the device's signal can be trusted: BAD for a sensor that lost its signal. Undefined for an unknown device. */
+  /**
+   * Rebuilds a device's physics from its configuration when its supply goes or returns:
+   * the links, inputs and faults stay; the state restarts, and a trip does not survive.
+   */
+  private powerCycle(device: Device): void {
+    const fresh = createDevice(device.config);
+    switch (device.type) {
+      case "VFD":
+        device.frequency = (fresh as Vfd).frequency;
+        break;
+      case "MOTOR": {
+        const motor = fresh as Motor;
+        device.speed = motor.speed;
+        device.current = motor.current;
+        device.energized = motor.energized;
+        break;
+      }
+      case "VALVE":
+        device.position = (fresh as Valve).position;
+        break;
+      case "SENSOR": {
+        const sensor = fresh as Sensor;
+        device.value = sensor.value;
+        device.quality = sensor.quality;
+        device.sample = sensor.sample;
+        device.nextSampleAt = sensor.nextSampleAt;
+        device.lastEmitted = sensor.lastEmitted;
+        device.random = sensor.random;
+        break;
+      }
+      case "SWITCH":
+        device.on = (fresh as Switch).on;
+        break;
+      default:
+        device.speedFraction = (fresh as Load).speedFraction;
+    }
+    device.tripped = false;
+    device.resetInput = false;
+  }
+
+  /**
+   * Quality of a device's feedback (TASK-1014): BAD while it is unavailable, while a
+   * sensor has lost its signal, and while the device it measures is BAD.
+   */
   quality(deviceId: string): "GOOD" | "BAD" | undefined {
     const device = this.devices.get(deviceId);
     if (!device) return undefined;
-    return device.type === "SENSOR" ? device.quality : "GOOD";
+    if (device.activeFaults.has("OFFLINE")) return "BAD";
+    if (device.type === "SENSOR" && device.quality === "BAD") return "BAD";
+    const measured = device.type === "SENSOR" || device.type === "SWITCH" ? device.measured : undefined;
+    if (measured && measured !== device && this.quality(measured.id) === "BAD") return "BAD";
+    return "GOOD";
   }
 
   /** Advances every device by `dtS` seconds and returns the meaningful changes. */
@@ -564,19 +633,43 @@ export class FactorySimulation {
     const before = devices.map((device) => device.state);
 
     for (const device of devices) updateTrip(device);
-    for (const vfd of this.vfds) stepVfd(vfd, dt);
-    for (const motor of this.motors) stepMotor(motor, dt);
-    for (const load of this.loads) stepLoad(load);
-    for (const valve of this.valves) stepValve(valve, dt);
+    // An unavailable device is not stepped and reads de-energized. Losing the supply wipes
+    // its physics at once, so peers read it as gone; it comes back from the same initial
+    // state, and a trip does not survive the power cycle (TASK-1014).
+    for (const device of devices) {
+      const offline = device.activeFaults.has("OFFLINE");
+      if (offline !== device.offline) this.powerCycle(device);
+      device.offline = offline;
+    }
+    const live = <T extends Device>(list: readonly T[]) => list.filter((device) => !device.offline);
+    for (const vfd of live(this.vfds)) stepVfd(vfd, dt);
+    for (const motor of live(this.motors)) stepMotor(motor, dt);
+    for (const load of live(this.loads)) stepLoad(load);
+    for (const valve of live(this.valves)) stepValve(valve, dt);
     for (const device of [...this.vfds, ...this.motors, ...this.loads, ...this.valves]) {
-      device.outputs = outputsOf(device);
+      device.outputs = device.offline ? deEnergized(device) : outputsOf(device);
+      if (device.offline) device.state = "OFFLINE";
     }
     // Sensors and switches observe what the other devices produced in this step.
-    for (const sensor of this.sensors) stepSensor(sensor, dt, this.elapsedS);
-    for (const device of this.switches) stepSwitch(device);
-    for (const device of [...this.sensors, ...this.switches]) device.outputs = outputsOf(device);
+    for (const sensor of live(this.sensors)) stepSensor(sensor, dt, this.elapsedS);
+    for (const device of live(this.switches)) stepSwitch(device);
+    for (const device of [...this.sensors, ...this.switches]) {
+      device.outputs = device.offline ? deEnergized(device) : outputsOf(device);
+      if (device.offline) device.state = "OFFLINE";
+    }
 
     const events: SimEvent[] = [];
+    for (const device of devices) {
+      const quality = this.quality(device.id) ?? "GOOD";
+      if (quality === device.lastQuality) continue;
+      events.push({
+        type: "QUALITY_CHANGED",
+        deviceId: device.id,
+        severity: quality === "BAD" ? "WARNING" : "INFO",
+        payload: { from: device.lastQuality, to: quality, activeFaults: [...device.activeFaults] },
+      });
+      device.lastQuality = quality;
+    }
     devices.forEach((device, index) => {
       const from = before[index];
       const deadband = device.type === "SENSOR" ? device.params.eventDeadband : undefined;
@@ -587,7 +680,7 @@ export class FactorySimulation {
       events.push({
         type: STATE_EVENT[device.type] ?? "DEVICE_STATE_CHANGED",
         deviceId: device.id,
-        severity: device.state === "FAULTED" ? "CRITICAL" : "INFO",
+        severity: device.state === "FAULTED" || device.state === "OFFLINE" ? "CRITICAL" : "INFO",
         payload: { from, to: device.state, outputs: { ...device.outputs }, activeFaults: [...device.activeFaults] },
       });
     });

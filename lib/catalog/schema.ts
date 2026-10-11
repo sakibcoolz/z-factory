@@ -19,6 +19,7 @@ import {
 import { DomainError } from "@/lib/domain/errors";
 import { type BehaviorProfile, checkParameterValue, findBehaviorProfile } from "@/lib/domain/behavior-contract";
 import { findRegisterMap, REGISTER_PROTOCOLS } from "@/lib/domain/register-maps";
+import { GENERIC_FAULT_CODES } from "@/lib/domain/simulation";
 
 const text = z.string().trim().min(1).max(200);
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "use YYYY-MM-DD");
@@ -427,8 +428,10 @@ function checkSimulation(model: CatalogModel, generic: boolean, where: Record<st
   if (generic && Object.keys(model.simulation.sources).length > 0) {
     throw fail("A generic model states no vendor fact, so it names no source for one.", where);
   }
+  // The generic faults of the standard (OFFLINE, COMM_LOSS) are Z-Factory's, not a vendor's claim.
+  const vendorFaults = model.simulation.faults.filter((code) => !GENERIC_FAULT_CODES.has(code));
   const modelSpecific =
-    model.simulation.coverage !== "GENERIC" || Object.keys(parameters).length > 0 || model.simulation.faults.length > 0;
+    model.simulation.coverage !== "GENERIC" || Object.keys(parameters).length > 0 || vendorFaults.length > 0;
   if (!generic && modelSpecific && model.verification.status !== "VERIFIED") {
     throw fail(
       "Model-specific behaviour of a vendor model (PARTIAL or FULL coverage, parameter values, supported faults) needs its VERIFIED provenance.",
@@ -506,7 +509,7 @@ function checkFactSources(model: SimulatedCatalogModel, where: Record<string, un
   const { sources, parameters, faults } = model.simulation;
   const declared = new Set<string>([
     ...Object.keys(parameters).map((key) => factKey("parameter", key)),
-    ...faults.map((code) => factKey("fault", code)),
+    ...faults.filter((code) => !GENERIC_FAULT_CODES.has(code)).map((code) => factKey("fault", code)),
     ...("features" in model.simulation ? model.simulation.features.map((f) => factKey("feature", f.key)) : []),
   ]);
   for (const fact of declared) {
@@ -560,8 +563,13 @@ function checkProfileUse(model: SimulatedCatalogModel, profile: BehaviorProfile,
       });
     }
   }
+  // A served model also has the faults of its protocol (COMM_LOSS); nothing else is allowed.
+  const map = model.simulation.protocol ? findRegisterMap(model.simulation.protocol.registerMap) : undefined;
   for (const code of model.simulation.faults) {
-    if (!profile.faults.some((fault) => fault.code === code)) {
+    const known =
+      profile.faults.some((fault) => fault.code === code) ||
+      (map?.faults.some((fault) => fault.code === code) ?? false);
+    if (!known) {
       throw fail("A model lists a fault its behaviour model does not support.", { ...where, fault: code });
     }
   }
