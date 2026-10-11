@@ -263,11 +263,111 @@ A step takes at most 300 s. A scenario takes at most 900 s, counting every WAIT 
 
 **Clear all.** `clearAllOverrides(deps, actor, factoryId)` releases every forced sensor or switch and every overridden process value of the factory, and records each release. `listActiveOverrides` lists what is out of AUTO. The Scenarios screen shows both, with a *Clear all overrides* button. The module editor's per-value controls are unchanged (TASK-802).
 
+## Catalog device runtime (TASK-1009, ADR-0025)
+Since TASK-1009 the same service hosts the **catalog device runtime**: the device
+simulation of many factories, each a set of coupled behaviour profiles ticked
+deterministically, beside the process-module instances above. It is additive: the
+instance contract and its routes do not change. The runtime is the Phase 10 home of
+device behaviour; the server's own device simulator (`lib/runtimes/device-sim`,
+ADR-0010) keeps running factories until TASK-1015 switches them over, and
+`lib/runtimes/process-sim/devices.ts` turns its configuration into the runtime's so both
+read one source.
+
+### Behaviour profiles
+A profile is the documented generic behaviour of one device category. The runtime ships
+the ten of the server's simulator, ported value for value (`internal/device`): `VFD`,
+`MOTOR`, `PUMP`, `FAN`, `CONVEYOR`, `MIXER`, `COMPRESSOR`, `VALVE`, `SENSOR`, `SWITCH`,
+every one at version 1, with the signals, parameters, faults, states and approximations
+of `docs/device-simulation.md`. `GET /v1/profiles` (and `/v1/profiles/{key}`) describes
+each: key and version; signals with direction (`IN` the PLC drives, `OUT` the device
+produces), kind (`BOOL` travels as 0 or 1, `NUMBER`), label and unit; faults with
+severity, latching and whether the device reports them itself; links by role (`drive`
+of a motor: a VFD; `motor` of a load: a motor; `measures` of a sensor or switch: the
+device whose output a MEASURED source follows); the parameters with their generic
+defaults; the states; whether a tester may force the value (sensors: a number;
+switches: 0 or 1). Z-Factory names a device's profile from the catalog's simulation
+metadata (`DEVICE_PROFILES` in `lib/domain/process-sim.ts`, by the category's
+`simulatorType`), never from a condition in the UI; TASK-1010 formalises the catalog
+side, TASK-1011 adds the remaining categories.
+
+### Factory contract (device contract version 1)
+```json
+{
+  "contractVersion": 1,
+  "factoryId": "<factory id>",
+  "configVersion": 3,
+  "tickMs": 100,
+  "clock": "wall",
+  "devices": [
+    { "deviceId": "<device id>", "name": "VFD-01", "profile": "VFD", "profileVersion": 1,
+      "parameters": { "accelTimeS": 4 }, "inputs": { "run": 0 } },
+    { "deviceId": "<device id>", "name": "M-01", "profile": "MOTOR", "profileVersion": 1,
+      "links": { "drive": "<vfd id>" }, "faults": { "OVERLOAD": { "latching": true } } }
+  ]
+}
+```
+`PUT /v1/factories/{factoryId}` loads or replaces a factory (`LOADED`, tick 0; every
+device validated and every link checked before anything is kept). Refused with
+`422 invalid-configuration` and the rule it breaks in `rule`: `contract-version`,
+`factory-identity`, `tick` (10–10000 ms), `clock`, `config-version`, `device-limit`
+(256 per factory, `PROCESS_SIM_MAX_DEVICES` over all), `unique-device`,
+`device-identity`, `profile`, `profile-version`, `simulation-params` (an unknown or
+invalid parameter, named), `supported-fault`, `link-role`, `link-target`, `drive`,
+`one-motor-per-drive`, `motor`, `one-load-per-motor`, `measured-device`,
+`measured-signal`, `input-signal`. Then, per factory: `start`, `stop`, `reset` (every
+device rebuilt from its configuration, a `RESET` event), `step?ticks=n` (a RUNNING
+factory; `409 wrong-state`, rule `factory-state`), `GET` (the snapshot with every
+device), `DELETE`, `events?after=seq` (the last 500). Per device, while the factory is
+loaded, running or stopped: `PUT …/devices/{deviceId}` adds or replaces one device
+(fresh state; the others keep theirs; a configuration that breaks an invariant leaves
+everything as it was), `DELETE` removes one (`409`, rule `linked-device`, while another
+device links to it), `GET` its snapshot, `PUT …/inputs` replaces its PLC-driven inputs
+(an absent input counts as not wired; a key that is not an input of the profile is
+refused), `POST`/`DELETE …/faults/{code}` injects or clears a fault (`fault-active`,
+`fault-not-active`, `supported-fault`), `POST …/reset` is the operator's reset (refused
+while a latching fault is present), `PUT …/force` `{ "value": n }` and `DELETE …/force`
+force and release a sensor or switch (`forcible-device`).
+
+A device snapshot carries its profile and version, its runtime `status` (`OK`,
+`FAULTED`, `QUARANTINED`), the behaviour's `state` (`STOPPED`, `ACCELERATING`, `OPEN`,
+`DRY_RUN`, `GOOD` …), `faulted`, `tripped`, `activeFaults`, `quality` (`BAD` for a
+sensor that lost its signal and for a device the runtime set aside), `inputs`,
+`outputs`, `forced`, the behaviour's `internal` numbers and an `error`. The factory's
+summary counts devices by status and says whether a wall-clock factory `stalled` (no
+tick for five ticks while RUNNING).
+
+Events are the server simulator's, numbered per factory and stamped with the tick:
+`VFD_STATE_CHANGED`, `MOTOR_STATE_CHANGED`, `PUMP_STATE_CHANGED`, `VALVE_STATE_CHANGED`,
+`SENSOR_VALUE_CHANGED` (at the configured deadband), `DEVICE_STATE_CHANGED`,
+`FAULT_INJECTED`, `FAULT_CLEARED`, `DEVICE_RESET`, `SIMULATED_INPUT_FORCED`,
+`SIMULATED_INPUT_RELEASED`, plus the runtime's `DEVICE_RUNTIME_FAULT`,
+`DEVICE_QUARANTINED` and `RESET`.
+
+### Determinism and isolation
+Within a factory the step order is fixed: drives, motors, loads, valves, then sensors
+and switches, which observe what the actors produced in the same step; links are
+pointers, so a motor reads its drive's signed frequency and its load's torque, a load
+its motor's speed. A RANDOM source uses the same seeded generator as the server
+(mulberry32), so the two simulators agree sample for sample;
+`test/integration/process-sim.test.ts` steps the same seven-device chain in both and
+compares every output. Each factory ticks on its own goroutine: one cannot stall
+another. Within a factory a behaviour that panics is `FAULTED` and one that overruns
+its step budget (50 ms) three times in a row is `QUARANTINED`; both are skipped with
+frozen outputs and BAD quality while the others go on, each with a critical event, and
+configuring the device again brings it back. Quarantine depends on the host's speed and
+is reported, never silent; the outputs of healthy devices stay deterministic.
+
+The PLC stays the control authority (ADR-0015): the runtime takes the inputs the PLC
+drives and gives feedback; it never sets a PLC output, and forcing is confined to
+sensors and switches.
+
 ## Observability
 Structured JSON logs (`log/slog`) for every request, instance lifecycle change and event.
-`GET /healthz` (no token): status, version, contract version, uptime, instance count,
-model types. `GET /metrics` (token): instances by status, ticks total, duration of the last
-tick, model types.
+`GET /healthz` (no token): status, version, contract version, device contract version,
+uptime, instance count, model types, factory and device counts, profiles. `GET /metrics`
+(token): instances by status, ticks total, duration of the last tick, model types, and
+under `devices` the runtime's counters: factories and devices by status, the device
+limit, factory ticks total, the last tick's duration, stalled factories, profiles.
 
 ## Running it
 - Development: `services/process-sim/README.md`. Go 1.26; the module has no dependencies
@@ -280,5 +380,7 @@ tick, model types.
   bridge. The client is `createProcessSimClient` in `lib/runtimes/process-sim/client.ts`.
 - Tests: `go test -race ./...` in the service; `test/integration/process-sim.test.ts`
   starts the built binary when `PROCESS_SIM_BIN` names it, drives it through the client and
-  restarts it; `test/integration/process-bridge-runtime.test.ts` runs the bridge between the
-  binary and a real OpenPLC runtime (`TEST_DOCKER=1`). CI builds the binary and runs all.
+  restarts it, and (TASK-1009) loads a factory of devices into the catalog device runtime,
+  compares its outputs with the server's simulator, and exercises the device routes;
+  `test/integration/process-bridge-runtime.test.ts` runs the bridge between the binary
+  and a real OpenPLC runtime (`TEST_DOCKER=1`). CI builds the binary and runs all.

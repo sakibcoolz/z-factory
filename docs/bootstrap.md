@@ -80,6 +80,8 @@ All variables are read through `lib/env.ts`, which validates them with Zod and f
 | `MESHY_API_KEY` | no | `scripts/catalog-assets.ts` | Key of the Meshy account that generates catalog 3D assets (`npm run assets -- generate`, `resume`). Spends credits. The application itself never reads or sends it; it must never be prefixed `NEXT_PUBLIC_` |
 | `PROCESS_SIM_URL` | no | — | address of the process simulation service (ADR-0008, `docs/process-simulation.md`); without it there is no process simulation |
 | `PROCESS_SIM_TOKEN` | no | — | the service's bearer token (at least 16 characters); sent by the server only, never by a browser |
+| `PROCESS_SIM_MAX_INSTANCES` | no | `services/process-sim` (container) | Process-module instances the service holds at most (default `256`) |
+| `PROCESS_SIM_MAX_DEVICES` | no | `services/process-sim` (container) | Devices of the catalog device runtime the service holds at most, over all factories (default `2048`; TASK-1009) |
 | `PROCESS_SIM_TICK_MS` | no | `100` | simulated time per process-model tick (10–10000) |
 | `PROCESS_BRIDGE_CYCLE_MS` | no | `200` | real time between two exchanges of the process bridge with the PLCs (50–5000); each advances the models by the same simulated time |
 | `TAG_POLL_MS` | no | `lib/services/runtime-deps.ts` | How often the tags of a running PLC are read for live values, 100–60000 ms (default `500`) |

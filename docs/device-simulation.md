@@ -222,3 +222,17 @@ Target categories include drives/starters, motors, pumps/fans/conveyors/mixers/c
 The simulator remains subordinate to PLC program authority: it consumes program-generated commands and returns simulated feedback. It never decides local PLC physical outputs on behalf of the program.
 
 Execution tasks: TASK-1009 through TASK-1016 in `docs/phases/phase-10-agent-ready-catalog-simulator/tasks/`.
+
+### As built (TASK-1009, ADR-0025)
+The catalog device runtime is part of `services/process-sim`: behaviour profiles in
+`internal/device` (the ten behaviours above, ported value for value, each described over
+`GET /v1/profiles`), the factory simulation that couples them (`simulation.go`: links by
+role, the fixed step order, faults, trips, forcing, events), and the host of many
+factories in `internal/runtime` (one goroutine per factory, a faulting or slow behaviour
+set aside without stalling the others, bounded devices and events, stall detection). The
+contract, routes, rules and limits are in `docs/process-simulation.md` → Catalog device
+runtime. Z-Factory reaches it through `client.devices` in
+`lib/runtimes/process-sim/client.ts`, and `lib/runtimes/process-sim/devices.ts` turns the
+server simulator's configuration into the runtime's (profile from `DEVICE_PROFILES`,
+links from the relationships). Factories still run on the server's simulator until
+TASK-1015.
