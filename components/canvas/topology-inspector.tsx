@@ -26,6 +26,11 @@ type TopologyInspectorProps = {
   onRename: (deviceId: string, input: { name: string; role: string }) => void;
   onRemoveDevice: (deviceId: string) => void;
   onRemoveEdge: (edge: TopologyEdgeView) => void;
+  /**
+   * Connects the selected device to another, as drawing between their handles does
+   * (TASK-1008): for keyboard users and browser agents, which cannot drag.
+   */
+  onConnect?: (fromId: string, toId: string) => void;
   /** Pin-to-pin wiring; absent in the read-only view. */
   wiring?: WiringActions;
   /** Called after a wire was added, moved or removed. */
@@ -186,6 +191,7 @@ export function TopologyInspector(props: TopologyInspectorProps) {
   }
   const connections = edgesOf(node.id, edges);
   const plcHref = props.plcLinks[node.id];
+  const others = nodes.filter((candidate) => candidate.id !== node.id);
 
   return (
     <div className="flex flex-col gap-2 p-2.5">
@@ -249,6 +255,38 @@ export function TopologyInspector(props: TopologyInspectorProps) {
       ) : (
         <p className="zf-sub">Not connected.</p>
       )}
+      {!readOnly && props.onConnect && others.length > 0 ? (
+        <form
+          key={`connect:${node.id}`}
+          className="flex flex-col gap-1.5"
+          aria-label={`Connect ${node.name} to another device`}
+          onSubmit={(event) => {
+            event.preventDefault();
+            const to = String(new FormData(event.currentTarget).get("to") ?? "");
+            if (to) props.onConnect?.(node.id, to);
+          }}
+        >
+          <label htmlFor="inspector-connect" className="zf-k">
+            Connect to
+          </label>
+          <span className="flex gap-1.5">
+            <select id="inspector-connect" name="to" className="zf-input mono min-w-0 flex-1" disabled={busy}>
+              {others.map((other) => (
+                <option key={other.id} value={other.id}>
+                  {`${other.name} · ${nodeKind(other)}`}
+                </option>
+              ))}
+            </select>
+            <button type="submit" className="zf-btn" data-size="sm" disabled={busy}>
+              Connect
+            </button>
+          </span>
+          <p className="zf-sub">
+            The same as drawing from this device&apos;s handle to the other: the canvas offers the relationships the two
+            allow, or opens pin-to-pin wiring.
+          </p>
+        </form>
+      ) : null}
       {readOnly ? null : confirmingDelete ? (
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="zf-error whitespace-normal" role="alert">{`Delete ${node.name} and its connections?`}</span>

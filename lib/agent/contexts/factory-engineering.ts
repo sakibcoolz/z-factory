@@ -293,9 +293,9 @@ export function buildModulesContext(view: ModulesScreenView): LlmContextDocument
 export function buildModuleEditorContext(view: ModuleDesignerView): LlmContextDocument {
   const f = view.factory.id;
   const { module, type, registry, runtime } = view;
-  const emptyRequired = type.roles.filter(
-    (role) => role.required && !module.roles.find((filled) => filled.key === role.key)?.devices.length,
-  );
+  // The roles of the module's own profile, as the page offers them (TASK-1008): a required
+  // role of another profile is not a decision here.
+  const emptyRequired = module.roles.filter((role) => role.required && role.devices.length === 0);
   const blocking = registry.rows.filter((row) => row.blocking);
   const invalid = registry.rows.filter((row) => row.issue);
 
@@ -418,8 +418,8 @@ export function buildModuleEditorContext(view: ModuleDesignerView): LlmContextDo
         })),
       ],
       capacity: [
-        ...type.roles.map((role) => {
-          const filled = module.roles.find((candidate) => candidate.key === role.key)?.devices.length ?? 0;
+        ...module.roles.map((role) => {
+          const filled = role.devices.length;
           return {
             label: `Role ${role.name}`,
             value: `${filled}/${role.maxDevices}${role.required ? " (required)" : ""}`,

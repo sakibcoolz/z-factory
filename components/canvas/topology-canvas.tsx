@@ -315,6 +315,7 @@ function Canvas({ view, actions, plcLinks }: TopologyCanvasProps) {
             )
           }
           onRemoveEdge={removeEdge}
+          onConnect={actions ? (fromId, toId) => link(fromId, toId) : undefined}
           wiring={actions?.wiring}
           onWiringChanged={() => router.refresh()}
         />
