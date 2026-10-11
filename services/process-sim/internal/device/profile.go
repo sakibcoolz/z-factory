@@ -214,6 +214,42 @@ type Context struct {
 	Forced *float64
 	peers  map[string]*Device
 	faults map[string]Fault
+	// Faults the behaviour raised or released in this step (a thermal overload that
+	// trips, a lost input): applied by the simulation after the step like an injected
+	// fault, so latching, reporting and quality follow the profile's fault definition.
+	raised   map[string]bool
+	released map[string]bool
+}
+
+// Raise makes a fault of the profile present from the model's own physics. It takes
+// effect after the step; a latching fault trips the device from the next step on.
+func (c *Context) Raise(code string) {
+	if c.raised == nil {
+		c.raised = map[string]bool{}
+	}
+	c.raised[code] = true
+}
+
+// Release ends a fault the model raised when its cause is gone. Injected faults are
+// not released by the model.
+func (c *Context) Release(code string) {
+	if c.released == nil {
+		c.released = map[string]bool{}
+	}
+	c.released[code] = true
+}
+
+// Qualified behaviours report the quality of their value: GOOD, or BAD while it is
+// not to be trusted (a transmitter that lost its signal, an encoder without pulses).
+type Qualified interface {
+	Quality() string
+}
+
+// Observer behaviours read other devices' outputs of the same step and are stepped
+// after everything that acts (encoders, signal conditioners; sensors and switches are
+// observers by being forcible).
+type Observer interface {
+	Observes()
 }
 
 // reportsFault is what the device reports on its own fault output: a trip, or an active

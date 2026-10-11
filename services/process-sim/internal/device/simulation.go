@@ -116,6 +116,7 @@ type Device struct {
 	state      string
 	forced     *float64
 	peers      map[string]*Device
+	modelRaise map[string]bool
 	status     Status
 	err        string
 	overruns   int
@@ -217,19 +218,20 @@ func (s *Simulation) build(config Config) (*Device, error) {
 		inputs[key] = value
 	}
 	return &Device{
-		ID:       config.DeviceID,
-		Name:     config.Name,
-		Profile:  config.Profile,
-		Version:  behavior.Version(),
-		behavior: behavior,
-		faults:   faults,
-		active:   map[string]bool{},
-		inputs:   inputs,
-		outputs:  Values{},
-		state:    behavior.State(),
-		status:   StatusOK,
-		stage:    stageOf(behavior),
-		sim:      s,
+		ID:         config.DeviceID,
+		Name:       config.Name,
+		Profile:    config.Profile,
+		Version:    behavior.Version(),
+		behavior:   behavior,
+		faults:     faults,
+		active:     map[string]bool{},
+		modelRaise: map[string]bool{},
+		inputs:     inputs,
+		outputs:    Values{},
+		state:      behavior.State(),
+		status:     StatusOK,
+		stage:      stageOf(behavior),
+		sim:        s,
 	}, nil
 }
 
@@ -263,18 +265,20 @@ func checkInputs(description Description, inputs Values) error {
 // everything that acts, so it reads what the actors produced in this step.
 const observerStage = 5
 
-// stageOf fixes the order of a step: what supplies a motor (drives, relays, starters),
-// then motors, then loads, then controllers, then valves, heaters, indicators and
-// everything else that acts, then what observes.
+// stageOf fixes the order of a step: what supplies a motor (drives, relays, starters)
+// and servo drives, then motors, then loads, then controllers, then valves, heaters,
+// indicators, cylinders and everything else that acts, then what observes.
 func stageOf(behavior Behavior) int {
 	switch behavior.(type) {
-	case Supply:
+	case Supply, *ServoDrive:
 		return 0
-	case *Motor:
+	case *Motor, *ServoMotor:
 		return 1
 	case Load:
 		return 2
-	case Forcible:
+	case *Controller:
+		return 3
+	case Forcible, Observer:
 		return observerStage
 	default:
 		return 4
@@ -300,13 +304,21 @@ func (s *Simulation) relink() error {
 			}
 			switch role {
 			case "drive":
-				if _, ok := target.behavior.(Supply); !ok {
+				if _, servo := device.behavior.(*ServoMotor); servo {
+					if _, ok := target.behavior.(*ServoDrive); !ok {
+						return &ConfigError{Rule: "drive", Reason: fmt.Sprintf("%s is a servo motor and needs a servo drive", device.Name)}
+					}
+				} else if _, ok := target.behavior.(Supply); !ok {
 					return &ConfigError{Rule: "drive", Reason: fmt.Sprintf("%s is driven by a device that is not a drive, relay, contactor or starter", device.Name)}
 				}
 				if other := target.peers["motor"]; other != nil {
 					return &ConfigError{Rule: "one-motor-per-drive", Reason: fmt.Sprintf("%s already drives %s: one supply drives one motor", target.Name, other.Name)}
 				}
 				target.peers["motor"] = device
+			case "controller":
+				if _, ok := target.behavior.(*Controller); !ok {
+					return &ConfigError{Rule: "controller", Reason: fmt.Sprintf("%s is controlled by a device that is not a controller", device.Name)}
+				}
 			case "contactor":
 				if _, ok := target.behavior.(*Relay); !ok {
 					return &ConfigError{Rule: "contactor", Reason: fmt.Sprintf("%s is switched by a device that is not a relay or contactor", device.Name)}
@@ -320,7 +332,11 @@ func (s *Simulation) relink() error {
 				}
 				target.peers["load"] = device
 			case "measures":
-				if _, observes := target.behavior.(Forcible); observes {
+				// A sensor or switch measures a device that acts, never another observer; a
+				// controller or a signal conditioner may read a transmitter.
+				_, targetObserves := target.behavior.(Forcible)
+				_, selfObserves := device.behavior.(Forcible)
+				if targetObserves && selfObserves {
 					return &ConfigError{Rule: "measured-device", Reason: fmt.Sprintf("%s measures a device that produces no process value", device.Name)}
 				}
 			}
@@ -349,6 +365,22 @@ func checkMeasuredSource(device *Device) error {
 			return nil
 		}
 		signal, numeric = behavior.params.Source.Signal, true
+	case *Controller:
+		signal, numeric = behavior.params.Source.Signal, true
+	case *SignalConditioner:
+		signal, numeric = behavior.params.Source.Signal, true
+	case *Encoder:
+		// An encoder measures a shaft: a motor's speed or a servo motor's position.
+		measured := device.peers["measures"]
+		if measured == nil {
+			return &ConfigError{Rule: "measured-device", Reason: fmt.Sprintf("%s measures no shaft", device.Name)}
+		}
+		switch measured.behavior.(type) {
+		case *Motor, *ServoMotor:
+			return nil
+		default:
+			return &ConfigError{Rule: "measured-signal", Reason: fmt.Sprintf("%s is not a motor or servo motor; an encoder measures a shaft", measured.Name)}
+		}
 	default:
 		return nil
 	}
@@ -610,8 +642,43 @@ func (s *Simulation) stepDevice(device *Device, dt float64) (events []Event) {
 			device.overruns = 0
 		}
 	}()
-	device.behavior.Step(dt, device.context())
-	return nil
+	ctx := device.context()
+	device.behavior.Step(dt, ctx)
+	return s.applyModelFaults(device, ctx)
+}
+
+// applyModelFaults makes the faults a behaviour raised in its step present, and ends the
+// ones it released, as injecting and clearing would; each change is an event.
+func (s *Simulation) applyModelFaults(device *Device, ctx *Context) []Event {
+	var events []Event
+	for _, code := range sortedKeys(ctx.raised) {
+		fault, ok := device.faults[code]
+		if !ok || device.active[code] {
+			continue
+		}
+		device.active[code] = true
+		device.modelRaise[code] = true
+		events = append(events, Event{Type: "FAULT_RAISED", DeviceID: device.ID, Severity: fault.Severity, Payload: map[string]any{"code": code, "name": fault.Name, "latching": fault.Latching}})
+	}
+	for _, code := range sortedKeys(ctx.released) {
+		fault, ok := device.faults[code]
+		if !ok || !device.active[code] || !device.modelRaise[code] {
+			continue
+		}
+		delete(device.active, code)
+		delete(device.modelRaise, code)
+		events = append(events, Event{Type: "FAULT_CLEARED", DeviceID: device.ID, Severity: Info, Payload: map[string]any{"code": code, "name": fault.Name, "by": "model", "stillTripped": fault.Latching && device.tripped}})
+	}
+	return events
+}
+
+func sortedKeys(set map[string]bool) []string {
+	keys := make([]string, 0, len(set))
+	for key := range set {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func (d *Device) activeFaults() []string {
@@ -629,8 +696,8 @@ func (d *Device) quality() string {
 	if d.status != StatusOK {
 		return "BAD"
 	}
-	if sensor, ok := d.behavior.(*Sensor); ok {
-		return sensor.Quality()
+	if qualified, ok := d.behavior.(Qualified); ok {
+		return qualified.Quality()
 	}
 	return "GOOD"
 }
@@ -714,6 +781,7 @@ func (s *Simulation) ClearFault(deviceID, code string) (Event, error) {
 		return Event{}, &StateError{Rule: "fault-not-active", Reason: fmt.Sprintf("%s is not active on %s", fault.Name, device.Name)}
 	}
 	delete(device.active, code)
+	delete(device.modelRaise, code)
 	return Event{Type: "FAULT_CLEARED", DeviceID: deviceID, Severity: Info, Payload: map[string]any{"code": code, "name": fault.Name, "stillTripped": fault.Latching && device.tripped}}, nil
 }
 

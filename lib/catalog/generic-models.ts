@@ -24,7 +24,6 @@ const simulated = (profile: string, faults: string[] = []): Simulation => ({
 /** A model nothing executes: it can be placed and wired, and the reason says why that is all. */
 const notSimulated = (reason: string): Simulation => ({ coverage: "NOT_SIMULATABLE", reason });
 
-const NO_PROFILE_YET = "No behaviour profile exists for this category yet (TASK-1011).";
 /** The runtime has the profile (TASK-1011); the server's simulator runs factories until TASK-1015. */
 const runtimeOnly = (profile: string) =>
   `The runtime's behaviour profile ${profile} models it; the server's device simulator does not run it until TASK-1015 moves factories to the runtime.`;
@@ -227,7 +226,7 @@ export const genericModels: CatalogInput = {
       "TEMPERATURE_CONTROLLER",
       "Generic controllers",
       "Generic temperature controller",
-      notSimulated(NO_PROFILE_YET),
+      notSimulated(runtimeOnly("PID_CONTROLLER")),
       {
         controlCapability: "PARAMETER_CONFIGURED",
         capabilities: ["PARAMETER_CONFIGURABLE", "LOCAL_CONTROL"],
