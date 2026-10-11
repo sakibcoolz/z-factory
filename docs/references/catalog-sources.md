@@ -2,7 +2,7 @@
 
 Manufacturer documents the vendor catalog records were read from (`lib/catalog/vendor/`). Per `plc-source-policy.md` the documents themselves are not stored in the repository; only normalized facts and these references are.
 
-All retrieved and checked on 2026-10-05.
+The PLC records were retrieved and checked on 2026-10-05; the two drive records (TASK-1012) on 2026-10-12. A drive record names, beside the document, the parameter or table and the page of every model-specific simulation fact (`simulation.sources` in the record).
 
 | Record | Document | Revision | URL |
 |---|---|---|---|
@@ -15,8 +15,13 @@ All retrieved and checked on 2026-10-05.
 | Rockwell 5069-L306ER | CompactLogix 5380, Compact GuardLogix 5380, and CompactLogix 5480 Controllers Specifications | 5069-TD002O-EN-P, November 2023 | https://literature.rockwellautomation.com/idc/groups/literature/documents/td/5069-td002_-en-p.pdf |
 | Rockwell 5069-IB16, 5069-OB16, 5069-IF8, 5069-OF4 | Compact 5000 I/O and Specialty Modules Specifications | 5069-TD001P-EN-P, March 2026 | https://literature.rockwellautomation.com/idc/groups/literature/documents/td/5069-td001_-en-p.pdf |
 | Schneider TM241CE24T | Modicon M241 Logic Controller Hardware Guide | EIO0000003083.08, 04/2026 | https://download.schneider-electric.com/files?p_Doc_Ref=EIO0000003083 |
+| Rockwell PowerFlex 525 25B-D010N104 (TASK-1012, retrieved 2026-10-12) | PowerFlex 520-series Adjustable Frequency AC Drive User Manual | 520-UM001O-EN-E, September 2025 | https://literature.rockwellautomation.com/idc/groups/literature/documents/um/520-um001_-en-e.pdf |
+| Schneider ATV320U07N4C (TASK-1012, retrieved 2026-10-12) | Altivar Machine ATV320 Installation Manual (electrical data, terminals) | NVE41289.09, 04/2025 | https://download.schneider-electric.com/files?p_Doc_Ref=NVE41289 |
+| Schneider ATV320U07N4C (TASK-1012, retrieved 2026-10-12) | Altivar Machine ATV320 Programming Manual (parameters, factory assignments, functions, error codes) | NVE41295.06, 04/2025 | https://download.schneider-electric.com/files?p_Doc_Ref=NVE41295 |
 
 ## Notes
 - Siemens product data sheets (SiePortal) and Schneider product pages refused automated retrieval; the manuals above were used instead.
 - The S7-1200 source is the 01/2015 edition of the Easy Book, which lists the 6ES7214-1AG40-0XB0. A newer system manual was not reachable.
 - The Rockwell controller publication lists EtherNet/IP and socket interfaces but does not state Modbus TCP, so the record claims no Modbus TCP port.
+- The PowerFlex 525 record claims no Modbus TCP either (embedded EtherNet/IP and an RS-485 DSI port); the ATV320's integrated RJ45 port is a Modbus serial line / CANopen port, and Modbus TCP needs an optional module that is not recorded.
+- The drive records keep the factory configuration of each manual (start, direction and reference terminals, output assignments). A programmable terminal with no factory assignment, or whose factory function is the inverse of a profile signal (a ready/no-fault relay), carries no simulator signal; the record says so in the terminal's notes.

@@ -128,7 +128,9 @@ The import matches every row by its natural key and updates it in place, so it c
 - Every model declares its simulation decision; the rules are under "Simulation decision" below.
 - Unknown fields, categories and manufacturers are rejected.
 
-### Vendor records (all verified on 2026-10-05)
+### Vendor records
+PLCs (verified on 2026-10-05):
+
 | Model | Order no. | Architecture | I/O | Modbus TCP |
 |---|---|---|---|---|
 | Siemens SIMATIC S7-1200 CPU 1214C DC/DC/DC | 6ES7214-1AG40-0XB0 | compact | 14 DI, 10 DO (24 V DC), 2 AI (0–10 V) | stated |
@@ -138,11 +140,19 @@ The import matches every row by its natural key and updates it in place, so it c
 
 "M241" names a family; the record is the TM241CE24T (24 I/O, transistor source outputs, Ethernet).
 
+Drives (TASK-1012, verified on 2026-10-12; the mapping onto the behaviour profile is under "Vendor models on behaviour profiles" below):
+
+| Model | Order no. | Supply | Rating | Control terminals recorded | Modbus TCP |
+|---|---|---|---|---|---|
+| Rockwell PowerFlex 525 | 25B-D010N104 | 380…480 V AC 3-phase (−15 %/+10 %) | 5 HP / 4.0 kW normal duty, 10.5 A output, frame B | the control I/O block (01…08, 11, 13…19, relays) with its factory functions; U/T1, V/T2, W/T3; PE | not stated (embedded EtherNet/IP, RS-485 DSI), not claimed |
+| Schneider Altivar Machine ATV320 | ATV320U07N4C | 380 (−15 %)…500 (+10 %) V AC 3-phase | 0.75 kW / 1 HP, 2.3 A nominal output, frame 1C | DI1…DI6, STO, AI1…AI3, AQ1, R1, R2, DQ, +24, P24, COM; U/T1, V/T2, W/T3; PE | only with an optional module, not recorded |
+
 Recorded per model: supply voltage and range, communication ports, channel counts and signal types, and further facts such as memory and expansion limits. Terminal labels and address hints are recorded only where the source prints them.
 
 ### Not recorded
 - Lifecycle status (`UNKNOWN` for every model).
-- Register maps, fault codes and pinouts of vendor devices.
+- Register maps and pinouts of vendor devices; of the drives, only the control and motor terminals the manuals label, and only the two fault codes the behaviour profile has an equivalent for.
+- The drives' potentiometer supply terminals (+10 V), their option modules, and every parameter the behaviour profile has no equivalent for.
 - Slot rules of modules, and power-supply modules.
 - S7-1200 signal modules and M241 TM3 expansion modules: expansion of a compact PLC is not modelled yet.
 - The S7-1200 facts come from the 01/2015 Easy Book; later hardware revisions with the same order number were not compared.
@@ -160,7 +170,7 @@ A device terminal fits a PLC channel when the point class matches (a device outp
 Occupancy of a specific PLC instance is checked when a device is wired (TASK-302).
 
 ### Control capability and runtime
-`controlCapability` (direct I/O, parameter-configured, protocol-controlled, programmable) and `runtimeSupport` are set per model. Two models of one category can differ: the generic VFD exists hardwired and as a Modbus TCP device. Models without a behaviour profile (contactor, heater, stack light, temperature controller, remote I/O, gateway, Modbus TCP VFD) are `NONE`: they can be placed and wired but are not executed, and their simulation decision says why.
+`controlCapability` (direct I/O, parameter-configured, protocol-controlled, programmable) and `runtimeSupport` are set per model. Two models of one category can differ: the generic VFD exists hardwired and as a Modbus TCP device. Models without a behaviour profile (contactor, heater, stack light, temperature controller, remote I/O, gateway, Modbus TCP VFD) are `NONE`: they can be placed and wired but are not executed, and their simulation decision says why. A vendor drive is `DEVICE_SIM` on the generic VFD profile (TASK-1012); it is never `FIRMWARE_DEPLOYABLE`, because nothing of Z-Factory runs or ships vendor firmware, and the catalog refuses the combination.
 
 ### Simulation decision (TASK-1010, ADR-0026)
 Every model carries a `simulation` block: the one coverage state Phase 10 requires, and what it rests on. Whatever the state, it is a statement about a Z-Factory behaviour model, never about vendor firmware; the catalog screen and its LLM Context say so beside it.
@@ -176,12 +186,32 @@ Rules checked by `parseCatalog`, each refused with `rule: catalog-definition` an
 - A model the device simulator executes (`runtimeSupport: DEVICE_SIM`) declares a profile, and only such a model does: `NONE`, `OPENPLC` and the other runtimes are `NOT_SIMULATABLE`. Until TASK-1015 the profile must be one the server's simulator runs (`runsOn.server` in the contract); a model on a runtime-only profile of the behaviour library (TASK-1011) is `NOT_SIMULATABLE` with that reason.
 - The profile exists, at that version, and is the profile of the model's category (`simulatorType`): a pump cannot claim the drive's behaviour.
 - `faults` are fault codes of the profile; `parameters` name parameters of the profile and lie within its bounds (a value outside is refused with the bound it breaks); a terminal's `simulatorSignal` is a signal of the profile in that direction, and a model that is not simulated names none.
-- Generic and vendor facts stay apart: a generic model is `GENERIC` or `NOT_SIMULATABLE` and never declares features. A vendor model may be `GENERIC` with no claim; `PARTIAL` or `FULL` coverage, and any parameter value, are model-specific facts that need the model's `VERIFIED` provenance (TASK-1012 adds the source per fact). A programmable controller is `NOT_SIMULATABLE` as a device.
+- Generic and vendor facts stay apart: a generic model is `GENERIC` or `NOT_SIMULATABLE` and never declares features, sources or documents. A vendor model may be `GENERIC` with no claim; `PARTIAL` or `FULL` coverage, any parameter value and any supported fault are model-specific facts that need the model's `VERIFIED` provenance and, since TASK-1012, a source each (`sources`, below). A programmable controller is `NOT_SIMULATABLE` as a device.
+- Every model-specific fact of a vendor model names where it was read (TASK-1012): `sources` has an entry per parameter value (`parameter:<key>`), declared feature (`feature:<KEY>`) and supported fault (`fault:<CODE>`), each with the place in the document (`reference`: parameter, table, page) and, when the vendor's meaning is not the profile's exactly, a `note` with the approximation. An entry names a document of the model's `documents` by key, or, without one, the model's verification source; an entry for a fact the model does not declare, or naming a document it does not list, is refused.
 - `FULL` means every declared feature is implemented; `PARTIAL` means some are and some are not; a feature is declared once.
 
-Shipped: every generic model the simulator runs is `GENERIC` on the profile of its category with the faults it supports; the four vendor PLCs and the generic RTU are `NOT_SIMULATABLE` as program hosts; the contactor, heater, stack light and temperature controller have their profiles in the runtime (TASK-1011) and wait for TASK-1015 to bring them to factories; the Modbus drive, remote I/O station and gateway wait for the Modbus device side (TASK-1013); the power supply has nothing to simulate. Nothing claims `PARTIAL` or `FULL` yet.
+Shipped: every generic model the simulator runs is `GENERIC` on the profile of its category with the faults it supports; the two vendor drives are `PARTIAL` on the VFD profile with their sourced factory values (below); the four vendor PLCs and the generic RTU are `NOT_SIMULATABLE` as program hosts; the contactor, heater, stack light and temperature controller have their profiles in the runtime (TASK-1011) and wait for TASK-1015 to bring them to factories; the Modbus drive, remote I/O station and gateway wait for the Modbus device side (TASK-1013); the power supply has nothing to simulate. Nothing claims `FULL`.
 
-Stored on `DeviceModel` as `simulationCoverage`, `simulationProfile`, `simulationProfileVersion` and the block itself in `simulationJson`; parameter values become the model-level `SimulationProfile` the simulator reads (`docs/device-simulation.md` → Parameters). The catalog screen shows the coverage, the profile, the faults, the parameter values and the declared features of the selected model; the overview counts simulated models.
+Stored on `DeviceModel` as `simulationCoverage`, `simulationProfile`, `simulationProfileVersion` and the block itself in `simulationJson`, with every fact source resolved to its document (URL, title, revision, retrieval date) so the stored block stands on its own; parameter values become the model-level `SimulationProfile` the simulator reads (`docs/device-simulation.md` → Parameters); a vendor model's `DeviceFaultDefinition.description` is the fault's reference. The catalog screen shows the coverage, the profile, the faults, the parameter values and the declared features of the selected model, each with its source and note for a vendor model; the LLM Context carries the same; the overview counts simulated models.
+
+### Vendor models on behaviour profiles (TASK-1012)
+How a vendor model gets its runtime and simulation decision, when no approved vendor runtime or emulator exists (none does; the OpenPLC adapter runs Z-Factory's own programs, not vendor firmware):
+
+1. **A programmable controller** (PLC, RTU) is `OPENPLC` and `NOT_SIMULATABLE` as a device: its program runs on the adapter.
+2. **A device of a category with a behaviour profile the server's simulator runs** is `DEVICE_SIM` on that profile. Its coverage is `GENERIC` when the record claims nothing beyond the category's behaviour. It is `PARTIAL` when the record declares the model's documented behaviours against the profile (what the profile implements and what it leaves out), and `FULL` only if every declared behaviour is implemented. Parameter values are the manual's factory settings, not tuned values; what the profile has no parameter for is not recorded.
+3. **A device of a category whose profile only the runtime has** (TASK-1011) is `NONE` and `NOT_SIMULATABLE` with that reason until TASK-1015, like its generic counterpart.
+4. **A protocol-controlled device** waits for TASK-1013 and says so.
+5. **Terminals carry the factory configuration.** A terminal names a profile signal only when the manual's factory assignment gives it that function (the start, direction and reference inputs, an output assigned to "motor running"); a programmable terminal with no factory assignment carries no signal, and so does one whose factory function is the inverse of a profile signal (a "ready / no fault" relay), with the reason in its notes. Z-Factory does not model reprogramming the vendor drive.
+6. **Every model-specific fact is sourced**, as in the rules above, and the approximation of the mapping is written in the fact's `note`.
+
+The two shipped drives are `PARTIAL` on `VFD` v1. Both declare the same nine Z-Factory features (`DRIVE_FEATURES` in `lib/catalog/capabilities.ts`): linear ramps, reversal through zero and the two trips with reset are implemented by the profile; S-ramps, DC injection braking, current limitation, automatic restart, flying start and the built-in PID regulator are declared and not implemented. Each feature cites the manual's parameter and page.
+
+| Record | `maxFrequencyHz` | `accelTimeS`, `decelTimeS` | Faults | Approximation noted |
+|---|---|---|---|---|
+| PowerFlex 525 25B-D010N104 | 60 (P044 Maximum Freq) | 10, 10 (P041, P042: 0 Hz to P044 and back, as the profile ramps) | `OVERCURRENT` F012, `OVERTEMPERATURE` F008 | the profile has one overcurrent trip; the drive also has F063 |
+| ATV320U07N4C | 50 (HSP High Speed, the frequency at maximum reference) | 3, 3 (ACC, DEC) | `OVERCURRENT` OCF, `OVERTEMPERATURE` OHF | ACC and DEC ramp to the nominal motor frequency FrS, equal to HSP at the factory settings (50 Hz IEC); the drive's own upper limit tFr (60 Hz) is not modelled |
+
+Documents: the PowerFlex 520-series user manual; for the ATV320 the installation manual (electrical data, terminals) as the verification source and the programming manual as the named `programming` document (parameters, factory assignments, functions, error codes). `docs/references/catalog-sources.md` lists them.
 
 ### Relationships
 `DRIVES` accepts a VFD, servo drive or soft starter as source and a motor or servo motor as target; a servo motor needs a servo drive. One drive drives one motor. `CONTROLS`, `COMMUNICATES_WITH`, `MEASURES` and `FEEDS_BACK_TO` are unrestricted, so controller, remote-I/O and gateway chains and direct sensor-to-PLC wiring are all representable.
@@ -206,7 +236,7 @@ Assets are made on the server with `npm run assets` (`scripts/catalog-assets.ts`
 
 **Prompt.** Built from the model's category and, for a generic model, its name without the electrical detail (`Generic pressure transmitter, 4–20 mA` → a pressure transmitter). A vendor record contributes only its category and, for a PLC, whether it is compact or modular: a compact PLC is a rail-mounted controller module with terminal rows under covers, a small display, a serial port and a terminal block, as such devices are generally built; a modular PLC is a two-door control cabinet. Each form describes how a kind of device is really built (the heat sink and keypad of a drive, the diaphragm actuator and positioner of a control valve) without the features of any one product. Manufacturer, family, model name and order number are never part of a prompt, and words an author adds with `--hint` are refused when they name a manufacturer or a product of the catalog. Every prompt asks for an unbranded object without logo, text, label or nameplate.
 
-**Shapes.** Models that would get the same prompt have the same shape key and share one generated file (the two generic VFDs, the two pressure transmitters, the compact PLCs, the modular PLCs): 30 models need 26 generations. Each model still has its own asset version and file.
+**Shapes.** Models that would get the same prompt have the same shape key and share one generated file (the two generic VFDs, the two vendor drives, the two pressure transmitters, the compact PLCs, the modular PLCs): 34 models need 29 generations. Each model still has its own asset version and file.
 
 **Normalization.** Every file is made to stand the same way before it is stored: Y up, front to +Z, metres, scaled without distortion into the space of its category, origin under the middle of its footprint. A file lying along the wrong horizontal axis is turned a quarter when it then comes out at least a quarter larger; a model about as wide as it is deep keeps the front it came with. Front and back cannot be told apart, so `--yaw 180` is for the author. `--up Z` is for a file exported without the glTF axis conversion. A model with more than 200,000 triangles is refused.
 
