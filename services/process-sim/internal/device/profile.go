@@ -179,6 +179,25 @@ type Load interface {
 	Torque(ctx *Context, speedFraction float64) float64
 }
 
+// Supply is a device that feeds a motor (the motor's "drive" link): a drive gives a
+// frequency, a relay, contactor or starter the line frequency, a starter may also limit
+// the speed while it ramps.
+type Supply interface {
+	Supply(ctx *Context) SupplyState
+}
+
+// SupplyState is what a motor draws from its supply in a step.
+type SupplyState struct {
+	// Whether the motor is energized at all.
+	Energized bool
+	// Supply frequency, signed (negative is reverse); ignored when Line is set.
+	FrequencyHz float64
+	// The line frequency (the motor's rated frequency) instead of FrequencyHz.
+	Line bool
+	// A share of rated speed the supply allows while it ramps; 0 means no limit.
+	SpeedLimit float64
+}
+
 // Forcible behaviours (transmitters, switches) can have their value forced by a tester.
 type Forcible interface {
 	ForcedKind() Kind

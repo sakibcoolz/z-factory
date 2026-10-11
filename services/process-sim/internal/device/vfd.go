@@ -140,6 +140,11 @@ func (v *VFD) Outputs(ctx *Context) Values {
 
 func (v *VFD) State() string { return v.state }
 
+// Supply of the motor the drive feeds: its output frequency.
+func (v *VFD) Supply(_ *Context) SupplyState {
+	return SupplyState{Energized: v.frequency != 0, FrequencyHz: v.frequency}
+}
+
 func (v *VFD) Internal() map[string]float64 { return map[string]float64{"frequency": v.frequency} }
 
 func abs(value float64) float64 {

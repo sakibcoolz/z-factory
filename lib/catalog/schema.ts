@@ -320,6 +320,12 @@ function checkSimulation(model: CatalogModel, generic: boolean, where: Record<st
       known: profile.version,
     });
   }
+  if (!profile.runsOn.server) {
+    throw fail(
+      "The server's device simulator does not run this behaviour profile yet; the model is NOT_SIMULATABLE until TASK-1015 moves factories to the runtime.",
+      { ...where, profile: key },
+    );
+  }
   const categoryType = GENERIC_CATEGORIES.find((category) => category.code === model.category)?.simulatorType;
   if (categoryType !== profile.simulatorType) {
     throw fail("A model's behaviour profile is the one of its category.", {

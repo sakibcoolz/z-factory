@@ -5,8 +5,8 @@ import { SIMULATED_TYPES } from "@/lib/domain/simulation";
 import { toDeviceSimDevice, toDeviceSimDevices } from "./devices";
 
 describe("the device configuration for the catalog device runtime", () => {
-  it("names a behaviour profile for every simulated type, and nothing else", () => {
-    expect(Object.keys(DEVICE_PROFILES).sort()).toEqual([...SIMULATED_TYPES].sort());
+  it("names a behaviour profile for every simulated type", () => {
+    expect(Object.keys(DEVICE_PROFILES)).toEqual(expect.arrayContaining([...SIMULATED_TYPES]));
     for (const type of SIMULATED_TYPES) expect(DEVICE_PROFILES[type]).toEqual({ profile: type, profileVersion: 1 });
   });
 
@@ -49,6 +49,6 @@ describe("the device configuration for the catalog device runtime", () => {
   });
 
   it("refuses a type without a profile", () => {
-    expect(() => toDeviceSimDevice({ id: "x", name: "X", type: "RELAY" as never })).toThrow(/no behaviour profile/);
+    expect(() => toDeviceSimDevice({ id: "x", name: "X", type: "GENERIC" as never })).toThrow(/no behaviour profile/);
   });
 });

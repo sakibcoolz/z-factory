@@ -249,18 +249,7 @@ describeSim("the catalog device runtime (TASK-1009)", () => {
   it("describes its profiles: the server's simulated types, with their signals and faults", async () => {
     const health = await client.health();
     expect(health).toMatchObject({ deviceContractVersion: DEVICE_SIM_CONTRACT_VERSION, factories: 0, devices: 0 });
-    expect(health.profiles).toEqual([
-      "COMPRESSOR",
-      "CONVEYOR",
-      "FAN",
-      "MIXER",
-      "MOTOR",
-      "PUMP",
-      "SENSOR",
-      "SWITCH",
-      "VALVE",
-      "VFD",
-    ]);
+    expect(health.profiles).toEqual(Object.keys(BEHAVIOR_PROFILES).sort());
     const vfd = await client.devices.profile("VFD");
     expect(vfd.signals.map((signal) => signal.key)).toEqual([
       "run",
@@ -363,7 +352,7 @@ describeSim("the catalog device runtime (TASK-1009)", () => {
     });
     await expect(
       client.devices.load(
-        factoryConfig("bad", { devices: [{ deviceId: "x", name: "X", profile: "RELAY", profileVersion: 1 }] }),
+        factoryConfig("bad", { devices: [{ deviceId: "x", name: "X", profile: "BOILER", profileVersion: 1 }] }),
       ),
     ).rejects.toMatchObject({ code: "VALIDATION", details: { rule: "profile" } });
 

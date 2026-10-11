@@ -1,0 +1,11 @@
+-- AlterEnum: the behaviour library of TASK-1011 (runtime profiles).
+ALTER TYPE "SimulatorType" ADD VALUE 'HEATER';
+ALTER TYPE "SimulatorType" ADD VALUE 'INDICATOR';
+ALTER TYPE "SimulatorType" ADD VALUE 'SOFT_STARTER';
+ALTER TYPE "SimulatorType" ADD VALUE 'MOTOR_STARTER';
+ALTER TYPE "SimulatorType" ADD VALUE 'SERVO_DRIVE';
+ALTER TYPE "SimulatorType" ADD VALUE 'SERVO_MOTOR';
+ALTER TYPE "SimulatorType" ADD VALUE 'ENCODER';
+ALTER TYPE "SimulatorType" ADD VALUE 'PID_CONTROLLER';
+ALTER TYPE "SimulatorType" ADD VALUE 'SIGNAL_CONDITIONER';
+ALTER TYPE "SimulatorType" ADD VALUE 'ACTUATOR';

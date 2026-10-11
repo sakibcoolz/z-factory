@@ -275,7 +275,9 @@ read one source.
 
 ### Behaviour profiles
 A profile is the documented generic behaviour of one device category. The runtime ships
-the ten of the server's simulator, ported value for value (`internal/device`): `VFD`,
+the ten of the server's simulator, ported value for value (`internal/device`), and since
+TASK-1011 the behaviour library (`RELAY`, `HEATER`, `INDICATOR`; `docs/device-simulation.md`
+→ The behaviour library), which the server's simulator does not run: `VFD`,
 `MOTOR`, `PUMP`, `FAN`, `CONVEYOR`, `MIXER`, `COMPRESSOR`, `VALVE`, `SENSOR`, `SWITCH`,
 every one at version 1, with the signals, parameters, faults, states and approximations
 of `docs/device-simulation.md`. `GET /v1/profiles` (and `/v1/profiles/{key}`) describes

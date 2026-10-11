@@ -50,7 +50,7 @@ func init() {
 			},
 			Faults: []Fault{{Code: "OVERLOAD", Name: "Overload trip", Severity: Critical, Latching: true}},
 			Links: []Link{
-				{Role: "drive", Accepts: []string{"VFD"}, Meaning: "the drive that supplies the motor; one drive supplies one motor; without one, the run command is a contactor"},
+				{Role: "drive", Accepts: []string{"VFD", "RELAY"}, Meaning: "the drive, relay or contactor that supplies the motor; one supplies one motor; without one, the run command is a contactor"},
 			},
 			Parameters: mustJSON(defaultMotorParams()),
 			ParameterSchema: []ParameterSpec{
@@ -95,16 +95,26 @@ func (m *Motor) Configure(raw json.RawMessage) error {
 
 func (m *Motor) Step(dt float64, ctx *Context) {
 	p := m.params
-	supplyHz := 0.0
+	supplyHz, limit := 0.0, 0.0
 	if !ctx.Tripped {
-		if drive, ok := peerBehavior[*VFD](ctx, "drive"); ok {
-			supplyHz = drive.frequency
+		if supply, ok := peerSupply(ctx, "drive"); ok {
+			state := supply.Supply(ctx)
+			if state.Energized {
+				supplyHz, limit = state.FrequencyHz, state.SpeedLimit
+				if state.Line {
+					supplyHz = p.RatedFrequencyHz
+				}
+			}
 		} else if ctx.Inputs.On("run") {
 			supplyHz = p.RatedFrequencyHz
 		}
 	}
-	// Speed follows the supply frequency with a first-order lag.
+	// Speed follows the supply frequency with a first-order lag; a starter that ramps
+	// limits it to a share of rated speed meanwhile.
 	target := p.RatedSpeedRpm * supplyHz / p.RatedFrequencyHz
+	if limit > 0 && abs(target) > p.RatedSpeedRpm*limit {
+		target = math.Copysign(p.RatedSpeedRpm*limit, target)
+	}
 	timeConstant := p.CoastTimeConstantS
 	if supplyHz != 0 {
 		timeConstant = p.TimeConstantS
@@ -158,3 +168,13 @@ func (m *Motor) Internal() map[string]float64 {
 
 // speedFraction is the shaft speed as a share of rated speed, for the load on it.
 func (m *Motor) speedFraction() float64 { return abs(m.speed) / m.params.RatedSpeedRpm }
+
+// peerSupply returns the supply linked under the role, when the device there is one.
+func peerSupply(ctx *Context, role string) (Supply, bool) {
+	peer := ctx.Peer(role)
+	if peer == nil {
+		return nil, false
+	}
+	supply, ok := peer.behavior.(Supply)
+	return supply, ok
+}

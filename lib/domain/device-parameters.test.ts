@@ -19,8 +19,10 @@ describe("device parameters", () => {
     expect(parameterFieldsFor("MOTOR")).toHaveLength(6);
   });
 
-  it("has no parameters for sensors, switches and unsimulated types", () => {
-    for (const type of ["SENSOR", "SWITCH", "NONE", "RELAY"]) expect(parameterFieldsFor(type)).toEqual([]);
+  it("has no parameters for sensors, switches and types without a profile", () => {
+    for (const type of ["SENSOR", "SWITCH", "NONE", "GENERIC"]) expect(parameterFieldsFor(type)).toEqual([]);
+    // A library profile (TASK-1011) describes its numbers too.
+    expect(parameterFieldsFor("RELAY").map((field) => field.key)).toEqual(["pickupTimeS", "dropoutTimeS"]);
   });
 
   it("shows stored values and falls back to the default for what is missing or not a number", () => {
