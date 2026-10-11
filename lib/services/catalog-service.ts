@@ -2,6 +2,7 @@ import "server-only";
 import { catalogRepository, type CatalogModelRecord } from "@/lib/db/repositories/catalog-repository";
 import {
   type CatalogModelDetail,
+  type CatalogRegister,
   type CatalogTerminal,
   type CatalogOverview,
   type ChannelSummary,
@@ -156,6 +157,17 @@ export async function getCatalogModel(db: PrismaClient, modelId: string): Promis
     controlCapability: model.controlCapability,
     lifecycleStatus: model.lifecycleStatus,
     simulation: summarizeSimulation(model),
+    registers: model.registerDefinitions.map((register): CatalogRegister => ({
+      protocol: register.protocol,
+      area: register.area,
+      address: register.address,
+      dataType: register.dataType,
+      wordCount: register.wordCount,
+      access: register.access,
+      scale: register.scale,
+      unit: register.unit,
+      semanticRole: register.semanticRole,
+    })),
     source: {
       url: model.sourceUrl,
       title: model.sourceTitle,

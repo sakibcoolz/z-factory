@@ -743,11 +743,34 @@ export function buildCatalogContext({ overview, model, peripherals, type }: Cata
                   Object.keys(model.simulation.sources).length > 0
                     ? "every model-specific value names the manufacturer document it was read from"
                     : null,
+                  model.simulation.runtimeOnly
+                    ? `the runtime runs profile ${model.simulation.runtimeOnly.profile.key} v${model.simulation.runtimeOnly.profile.version} for it`
+                    : null,
+                  model.simulation.protocol
+                    ? `served over ${model.simulation.protocol.kind} with the declared register map ${model.simulation.protocol.registerMap.key} v${model.simulation.protocol.registerMap.version}`
+                    : null,
                 ]
                   .filter(Boolean)
                   .join(" · "),
                 tone: "info" as const,
               },
+              ...(model.registers.length > 0
+                ? [
+                    {
+                      label: "Register map",
+                      value: `${model.registers.length} registers`,
+                      detail: `${model.registers
+                        .map(
+                          (register) =>
+                            `${register.area.toLowerCase().replace(/_/g, " ")} ${register.address} ${register.access === "READ_WRITE" ? "rw" : "ro"} ${register.dataType}${register.scale !== 1 ? ` ×${register.scale}` : ""}${register.unit ? ` ${register.unit}` : ""}${register.semanticRole ? ` (${register.semanticRole.toLowerCase().replace(/_/g, " ")})` : ""}`,
+                        )
+                        .join(
+                          ", ",
+                        )}. Zero-based addresses, big-endian, high word first. Declared by Z-Factory for the generic model; no vendor map is guessed.`,
+                      tone: "info" as const,
+                    },
+                  ]
+                : []),
               {
                 label: "3D asset",
                 value: model.asset.state.toLowerCase(),

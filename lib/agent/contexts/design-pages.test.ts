@@ -464,8 +464,11 @@ describe("the catalog context", () => {
         parameters: {},
         features: [],
         sources: {},
+        protocol: null,
+        runtimeOnly: null,
         statement: "configuration and metadata only; the simulator executes no behaviour for it",
       },
+      registers: [],
       source: {
         url: "https://example.invalid/1214c",
         title: "S7-1200 manual",
@@ -574,6 +577,8 @@ describe("the catalog context", () => {
             "fault:OVERCURRENT": { reference: "F012, page 161", note: null, document: null },
             "feature:PID": { reference: "A459, page 123", note: "not modelled", document: null },
           },
+          protocol: null,
+          runtimeOnly: null,
           statement:
             "a declared subset of this model's behaviour is implemented: a behaviour model, not vendor firmware",
         },
@@ -586,6 +591,52 @@ describe("the catalog context", () => {
     expect(simulation?.detail).toContain("Built-in PID regulator (not implemented (A459, page 123; not modelled))");
     expect(simulation?.detail).toContain("every model-specific value names the manufacturer document");
     expect(labels(drive.constraints)).toContain("Vendor fidelity is never overstated");
+
+    // A protocol-controlled model (TASK-1013): the runtime's profile, the map and its registers.
+    const served = buildCatalogContext({
+      overview,
+      model: {
+        ...model,
+        runtimeSupport: "NONE",
+        simulation: {
+          ...model.simulation,
+          protocol: { kind: "MODBUS_TCP", registerMap: { key: "VFD_MODBUS_TCP", version: 1 } },
+          runtimeOnly: { profile: { key: "VFD", version: 1 } },
+        },
+        registers: [
+          {
+            protocol: "MODBUS_TCP",
+            area: "COIL",
+            address: 0,
+            dataType: "BOOL",
+            wordCount: 1,
+            access: "READ_WRITE",
+            scale: 1,
+            unit: null,
+            semanticRole: "COMMAND",
+          },
+          {
+            protocol: "MODBUS_TCP",
+            area: "HOLDING_REGISTER",
+            address: 0,
+            dataType: "UINT16",
+            wordCount: 1,
+            access: "READ_WRITE",
+            scale: 0.1,
+            unit: "Hz",
+            semanticRole: "SETPOINT",
+          },
+        ],
+      },
+      peripherals: [],
+    });
+    expect(served.context.find((item) => item.label === "Simulation")?.detail).toContain(
+      "the runtime runs profile VFD v1 for it · served over MODBUS_TCP with the declared register map VFD_MODBUS_TCP v1",
+    );
+    expect(served.context.find((item) => item.label === "Register map")).toMatchObject({
+      value: "2 registers",
+      detail: expect.stringContaining("holding register 0 rw UINT16 ×0.1 Hz (setpoint)"),
+    });
   });
 });
 

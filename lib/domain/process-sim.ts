@@ -108,6 +108,8 @@ export type ProcessSimHealth = {
   factories: number;
   devices: number;
   profiles: string[];
+  /** The declared register maps the runtime serves (TASK-1013). */
+  registerMaps?: string[];
 };
 
 export type ProcessSimMetrics = {
@@ -169,6 +171,29 @@ export type DeviceSimProfile = {
   forcedKind?: "BOOL" | "NUMBER";
 };
 
+/**
+ * How a protocol-controlled device is served to the PLC (TASK-1013): the protocol, the
+ * unit id the PLC addresses it by, and the declared register map it exposes.
+ */
+export type DeviceSimProtocolConfig = {
+  kind: "MODBUS_TCP";
+  unitId: number;
+  registerMap: string;
+  registerMapVersion: number;
+};
+
+/** A declared register map as the runtime describes it (`wireRegisterMap` of the contract). */
+export type DeviceSimRegisterMap = {
+  key: string;
+  version: number;
+  protocol: string;
+  profile: string;
+  profileVersion: number;
+  summary: string;
+  conventions: { addressing: string; byteOrder: string; wordOrder: string };
+  registers: Array<Record<string, unknown>>;
+};
+
 /** One device as the runtime takes it. Values are numbers; a BOOL travels as 0 or 1. */
 export type DeviceSimDeviceConfig = {
   deviceId: string;
@@ -183,6 +208,8 @@ export type DeviceSimDeviceConfig = {
   /** Links to other devices of the factory by role: `drive`, `motor`, `measures`. */
   links?: Record<string, string>;
   inputs?: Record<string, number>;
+  /** Served over a protocol at a unit id with a declared register map (TASK-1013). */
+  protocol?: DeviceSimProtocolConfig;
 };
 
 export type DeviceSimConfig = {
@@ -192,6 +219,8 @@ export type DeviceSimConfig = {
   tickMs: number;
   clock: ProcessSimClock;
   devices: DeviceSimDeviceConfig[];
+  /** A Modbus TCP listener for the factory's protocol devices; port 0 takes any free port of the runtime's range. */
+  modbusTcp?: { port: number };
 };
 
 export type DeviceSimDeviceSnapshot = {
@@ -210,6 +239,7 @@ export type DeviceSimDeviceSnapshot = {
   forced?: number;
   internal: Record<string, number>;
   error?: string;
+  protocol?: DeviceSimProtocolConfig;
 };
 
 export type DeviceSimSummary = {
@@ -226,6 +256,8 @@ export type DeviceSimSummary = {
   loadedAt: string;
   /** A wall-clock factory that is RUNNING but has not ticked for five ticks. */
   stalled: boolean;
+  /** Where the factory's protocol devices are served; absent without a listener (TASK-1013). */
+  modbusTcp?: { address: string; port: number; devices: number };
 };
 
 export type DeviceSimSnapshot = DeviceSimSummary & { devices: DeviceSimDeviceSnapshot[] };

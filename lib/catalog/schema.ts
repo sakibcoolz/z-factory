@@ -18,6 +18,7 @@ import {
 } from "@/lib/domain/device";
 import { DomainError } from "@/lib/domain/errors";
 import { type BehaviorProfile, checkParameterValue, findBehaviorProfile } from "@/lib/domain/behavior-contract";
+import { findRegisterMap, REGISTER_PROTOCOLS } from "@/lib/domain/register-maps";
 
 const text = z.string().trim().min(1).max(200);
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "use YYYY-MM-DD");
@@ -140,6 +141,17 @@ const factSourceSchema = z.strictObject({
   note: z.string().trim().min(1).max(400).optional(),
 });
 
+/**
+ * How a protocol-controlled model is served (TASK-1013): the protocol and the declared
+ * register map of `lib/domain/register-maps.ts` it exposes. A vendor's own map would be
+ * catalog data with its provenance; none is declared, and none is guessed.
+ */
+const protocolSchema = z.strictObject({
+  kind: z.enum(REGISTER_PROTOCOLS),
+  registerMap: text,
+  registerMapVersion: z.number().int().min(1),
+});
+
 /** The kinds of model-specific fact a source may be given for, and how they are keyed. */
 export const FACT_KINDS = ["parameter", "feature", "fault"] as const;
 export type FactKind = (typeof FACT_KINDS)[number];
@@ -159,7 +171,20 @@ const simulatedSchema = {
    * supported fault; a generic model has none.
    */
   sources: z.record(z.string(), factSourceSchema).default({}),
+  /** Served over a protocol with a declared register map (TASK-1013). */
+  protocol: protocolSchema.optional(),
 };
+
+/**
+ * What the runtime runs for a model the server's simulator does not execute (a profile
+ * of the behaviour library, a protocol device): named so TASK-1015 can switch the model
+ * over by data. The model stays NOT_SIMULATABLE with its reason until then.
+ */
+const runtimeOnlySchema = z.strictObject({
+  profile: text,
+  profileVersion: z.number().int().min(1),
+  protocol: protocolSchema.optional(),
+});
 
 /**
  * The simulation decision of a model (Phase 10, TASK-1010): exactly one coverage state.
@@ -167,7 +192,7 @@ const simulatedSchema = {
  */
 const simulationSchema = z.discriminatedUnion("coverage", [
   /** Configuration and metadata only. The reason says why nothing executes it. */
-  z.strictObject({ coverage: z.literal("NOT_SIMULATABLE"), reason: text }),
+  z.strictObject({ coverage: z.literal("NOT_SIMULATABLE"), reason: text, runtimeOnly: runtimeOnlySchema.optional() }),
   /** The generic behaviour of the category, nothing model-specific. */
   z.strictObject({ coverage: z.literal("GENERIC"), ...simulatedSchema }),
   /** A declared subset of the model's behaviour is implemented. */
@@ -249,6 +274,13 @@ export type CatalogModule = Catalog["modules"][number];
 export type CatalogSimulation = CatalogModel["simulation"];
 export type CatalogSource = CatalogModel["documents"][string];
 export type CatalogFactSource = z.infer<typeof factSourceSchema>;
+export type CatalogProtocol = z.infer<typeof protocolSchema>;
+
+/** The protocol a model is served over, whether the server's simulator runs it or only the runtime does. */
+export function protocolOf(model: CatalogModel): CatalogProtocol | null {
+  if (model.simulation.coverage === "NOT_SIMULATABLE") return model.simulation.runtimeOnly?.protocol ?? null;
+  return model.simulation.protocol ?? null;
+}
 export type SimulatedCatalogModel = CatalogModel & {
   simulation: Exclude<CatalogSimulation, { coverage: "NOT_SIMULATABLE" }>;
 };
@@ -343,6 +375,23 @@ function checkSimulation(model: CatalogModel, generic: boolean, where: Record<st
         terminal: named.terminalLabel,
       });
     }
+    const decision = model.simulation;
+    if (decision.coverage === "NOT_SIMULATABLE" && decision.runtimeOnly) {
+      const { profile: key, profileVersion, protocol } = decision.runtimeOnly;
+      const profile = findBehaviorProfile(key);
+      if (!profile || profile.version !== profileVersion) {
+        throw fail("A model names a runtime profile, or a version of it, that does not exist.", {
+          ...where,
+          profile: key,
+          profileVersion,
+        });
+      }
+      const categoryType = GENERIC_CATEGORIES.find((category) => category.code === model.category)?.simulatorType;
+      if (categoryType !== profile.simulatorType) {
+        throw fail("A model's runtime profile is the one of its category.", { ...where, profile: key });
+      }
+      checkProtocolUse(model, profile, protocol, where);
+    }
     return;
   }
   const { profile: key, profileVersion, parameters } = model.simulation;
@@ -404,7 +453,48 @@ function checkSimulation(model: CatalogModel, generic: boolean, where: Record<st
     }
   }
   checkProfileUse(model, profile, where);
+  checkProtocolUse(model, profile, model.simulation.protocol, where);
   if (!generic) checkFactSources(model, where);
+}
+
+/**
+ * A protocol-controlled model names a declared register map of its profile and has a
+ * port for the protocol (TASK-1013). A map that is not declared is never guessed.
+ */
+function checkProtocolUse(
+  model: CatalogModel,
+  profile: BehaviorProfile,
+  protocol: z.infer<typeof protocolSchema> | undefined,
+  where: Record<string, unknown>,
+): void {
+  if (!protocol) return;
+  const map = findRegisterMap(protocol.registerMap);
+  if (!map || map.version !== protocol.registerMapVersion) {
+    throw fail(
+      "A model names a register map, or a version of it, that is not declared; vendor maps are never guessed.",
+      {
+        ...where,
+        registerMap: protocol.registerMap,
+        registerMapVersion: protocol.registerMapVersion,
+      },
+    );
+  }
+  if (map.protocol !== protocol.kind) {
+    throw fail("A model's register map is a map of the protocol it speaks.", { ...where, registerMap: map.key });
+  }
+  if (map.profile !== profile.key || map.profileVersion !== profile.version) {
+    throw fail("A model's register map is a map of its behaviour profile.", {
+      ...where,
+      registerMap: map.key,
+      profile: profile.key,
+    });
+  }
+  if (!model.ports.some((port) => port.protocols.includes(protocol.kind))) {
+    throw fail("A model served over a protocol has a communication port for it.", {
+      ...where,
+      protocol: protocol.kind,
+    });
+  }
 }
 
 /**

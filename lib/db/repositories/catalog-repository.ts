@@ -8,6 +8,7 @@ const modelInclude = {
   communicationPorts: { orderBy: { name: "asc" } },
   builtInIoChannels: { orderBy: [{ ioType: "asc" }, { channelIndex: "asc" }] },
   ioDefinitions: { orderBy: { terminalLabel: "asc" } },
+  registerDefinitions: { orderBy: [{ area: "asc" }, { address: "asc" }] },
   moduleCompatibility: {
     include: { moduleModel: { include: { channels: { orderBy: [{ ioType: "asc" }, { channelIndex: "asc" }] } } } },
   },

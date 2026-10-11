@@ -94,8 +94,25 @@ export type CatalogSimulation = {
    * generic model: it states no vendor fact.
    */
   sources: Record<string, CatalogFactSourceView>;
+  /** The protocol the model is served over and its declared register map (TASK-1013); null when hardwired. */
+  protocol: { kind: string; registerMap: { key: string; version: number } } | null;
+  /** For a NOT_SIMULATABLE model, the profile the runtime runs for it (TASK-1015 switches it over). */
+  runtimeOnly: { profile: { key: string; version: number } } | null;
   /** The sentence to show for the coverage. */
   statement: string;
+};
+
+/** One register of a protocol-controlled model, as stored from its declared map. */
+export type CatalogRegister = {
+  protocol: string;
+  area: string;
+  address: number;
+  dataType: string;
+  wordCount: number;
+  access: string;
+  scale: number;
+  unit: string | null;
+  semanticRole: string | null;
 };
 
 /** One fact's source as the catalog shows it: the place in a named manufacturer document. */
@@ -176,6 +193,12 @@ export function summarizeSimulation(row: StoredSimulation): CatalogSimulation {
         implemented: feature.implemented === true,
       }))
     : [];
+  const runtimeOnly = isRecord(block.runtimeOnly) ? block.runtimeOnly : null;
+  const declaredProtocol = isRecord(block.protocol)
+    ? block.protocol
+    : isRecord(runtimeOnly?.protocol)
+      ? runtimeOnly.protocol
+      : null;
   return {
     coverage: row.simulationCoverage,
     profile,
@@ -184,6 +207,26 @@ export function summarizeSimulation(row: StoredSimulation): CatalogSimulation {
     parameters,
     features,
     sources: factSources(block.sources),
+    protocol:
+      declaredProtocol && typeof declaredProtocol.kind === "string" && typeof declaredProtocol.registerMap === "string"
+        ? {
+            kind: declaredProtocol.kind,
+            registerMap: {
+              key: declaredProtocol.registerMap,
+              version:
+                typeof declaredProtocol.registerMapVersion === "number" ? declaredProtocol.registerMapVersion : 1,
+            },
+          }
+        : null,
+    runtimeOnly:
+      runtimeOnly && typeof runtimeOnly.profile === "string"
+        ? {
+            profile: {
+              key: runtimeOnly.profile,
+              version: typeof runtimeOnly.profileVersion === "number" ? runtimeOnly.profileVersion : 1,
+            },
+          }
+        : null,
     statement: coverageStatement(row.simulationCoverage, profile),
   };
 }
@@ -260,6 +303,8 @@ export type CatalogModelDetail = Omit<CatalogModelSummary, "coverage"> & {
   ports: Array<{ name: string; physicalType: string; protocols: string[]; portCount: number; notes: string | null }>;
   builtInChannels: ChannelSummary[];
   terminals: CatalogTerminal[];
+  /** The declared register map of a protocol-controlled model, as stored (TASK-1013). */
+  registers: CatalogRegister[];
   /** Further documented facts, as recorded. */
   facts: Record<string, unknown>;
   /** Every stored version of the model's 3D asset, newest first. */
