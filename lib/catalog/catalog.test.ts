@@ -327,6 +327,19 @@ describe("simulation decision rules", () => {
     );
   });
 
+  it("executes a model only on a profile the server's simulator runs, until TASK-1015", () => {
+    const heater = genericModels.models.find((model) => model.modelName === "Generic heater, contactor-switched");
+    if (!heater) throw new Error("no generic heater");
+    expect(heater.simulation).toMatchObject({ coverage: "NOT_SIMULATABLE", reason: expect.stringContaining("HEATER") });
+    expectRejected(
+      {
+        ...genericModels,
+        models: [{ ...heater, runtimeSupport: "DEVICE_SIM", simulation: simulated("HEATER") }],
+      },
+      /does not run this behaviour profile yet/,
+    );
+  });
+
   it("refuses a terminal signal on a model that is not simulated", () => {
     expectRejected(
       withModel(genericModels, (model) => ({

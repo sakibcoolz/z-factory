@@ -20,7 +20,6 @@ import {
   type FaultDefinition,
   LOAD_TYPES,
   type SignalDefinition,
-  SIMULATED_TYPES,
   type SimulatedType,
 } from "@/lib/domain/simulation";
 
@@ -129,7 +128,7 @@ export type BehaviorLink = {
   required: boolean;
   /** Profiles the linked device may have; null accepts any device that produces the needed signal. */
   accepts: readonly string[] | null;
-  relationship: "DRIVES" | "MECHANICALLY_DRIVES" | "MEASURES";
+  relationship: "DRIVES" | "MECHANICALLY_DRIVES" | "MEASURES" | "CONTROLS";
   /** Whether the linked device is the source or the target of that relationship. */
   peerIs: "SOURCE" | "TARGET";
   meaning: string;
@@ -141,8 +140,14 @@ export type BehaviorProtocol = "NONE" | "MODBUS_TCP";
 export type BehaviorProfile = {
   key: string;
   version: number;
-  /** The simulated type of `lib/domain/simulation.ts` the profile implements. */
-  simulatorType: SimulatedType;
+  /** The catalog simulator type (`SimulatorType`) the profile implements. */
+  simulatorType: string;
+  /**
+   * Where the profile runs today: the Go runtime (every profile) and, for the ten ported
+   * from it, the server's own simulator. A catalog model is executed only on a profile
+   * the server runs until TASK-1015 moves factories to the runtime.
+   */
+  runsOn: { server: boolean; runtime: true };
   /** What the profile models, in one sentence, and what it does not. */
   summary: string;
   signals: readonly BehaviorSignal[];
@@ -216,6 +221,10 @@ function faultsOf(type: SimulatedType, effects: Record<string, { effect: string;
   });
 }
 
+/** The ten profiles ported from the server's simulator run in both engines; the rest in the runtime only. */
+const BOTH = { server: true, runtime: true } as const;
+const RUNTIME_ONLY = { server: false, runtime: true } as const;
+
 const NON_NEGATIVE = { min: 0 } as const;
 const PERCENT = { min: 0, max: 100 } as const;
 
@@ -251,6 +260,7 @@ const VFD: BehaviorProfile = {
   key: "VFD",
   version: 1,
   simulatorType: "VFD",
+  runsOn: BOTH,
   summary:
     "A drive with hardwired control: ramps its output frequency to the setpoint while the run command is on, through zero on a reversal; a trip removes the output at once.",
   signals: signalsOf("VFD", {
@@ -292,6 +302,7 @@ const MOTOR: BehaviorProfile = {
   key: "MOTOR",
   version: 1,
   simulatorType: "MOTOR",
+  runsOn: BOTH,
   summary:
     "An induction motor whose speed follows its supply frequency with a first-order lag and whose current follows the load torque; direct-on-line from a contactor command when it has no drive.",
   signals: signalsOf("MOTOR", { actualSpeed: NON_NEGATIVE, current: NON_NEGATIVE }),
@@ -316,11 +327,11 @@ const MOTOR: BehaviorProfile = {
     {
       role: "drive",
       required: false,
-      accepts: ["VFD"],
+      accepts: ["VFD", "RELAY"],
       relationship: "DRIVES",
       peerIs: "SOURCE",
       meaning:
-        "the drive that supplies the motor; one drive supplies one motor; without one, the run command is a contactor",
+        "the drive, relay or contactor that supplies the motor; one supplies one motor; without one, the run command is a contactor",
     },
   ],
   protocol: "NONE",
@@ -338,6 +349,7 @@ const PUMP: BehaviorProfile = {
   key: "PUMP",
   version: 1,
   simulatorType: "PUMP",
+  runsOn: BOTH,
   summary:
     "A centrifugal pump on a motor: flow proportional to speed, pressure to speed squared; dry running removes both and unloads the motor.",
   signals: signalsOf("PUMP", { flow: NON_NEGATIVE, pressure: NON_NEGATIVE }),
@@ -361,6 +373,7 @@ const load = (type: (typeof LOAD_TYPES)[number], shape: "QUADRATIC" | "CONSTANT"
   key: type,
   version: 1,
   simulatorType: type,
+  runsOn: BOTH,
   summary: `Motor-driven equipment whose output follows the speed of its motor; shaft torque ${
     shape === "QUADRATIC" ? "grows with the square of the speed" : "is constant once it moves"
   } unless the parameters say otherwise.`,
@@ -393,6 +406,7 @@ const VALVE: BehaviorProfile = {
   key: "VALVE",
   version: 1,
   simulatorType: "VALVE",
+  runsOn: BOTH,
   summary:
     "A valve that travels at its stroke time to the commanded position (open/close commands, or an analog setpoint) and reports its position and limit switches; stuck, it stays where it is.",
   signals: signalsOf("VALVE", { positionSetpoint: PERCENT, position: PERCENT }),
@@ -425,6 +439,7 @@ const SENSOR: BehaviorProfile = {
   key: "SENSOR",
   version: 1,
   simulatorType: "SENSOR",
+  runsOn: BOTH,
   summary:
     "A transmitter that reports a value from a constant, ramp, sine, seeded-random or measured source through a first-order lag within its range; signal loss reads bottom of range with bad quality.",
   signals: signalsOf("SENSOR", { value: { minParameter: "rangeMin", maxParameter: "rangeMax" } }),
@@ -478,6 +493,7 @@ const SWITCH: BehaviorProfile = {
   key: "SWITCH",
   version: 1,
   simulatorType: "SWITCH",
+  runsOn: BOTH,
   summary:
     "A contact held at a constant state, operated by hand, or switching on a measured signal with hysteresis; stuck, it keeps its state.",
   signals: signalsOf("SWITCH"),
@@ -506,8 +522,229 @@ const SWITCH: BehaviorProfile = {
   },
 };
 
-/** Every behaviour profile, by key. The keys are the simulated types of `lib/domain/simulation.ts`. */
-export const BEHAVIOR_PROFILES: Readonly<Record<SimulatedType, BehaviorProfile>> = {
+// ----- The behaviour library (TASK-1011): runtime-only profiles -------------------------
+
+const signal = (
+  key: string,
+  direction: "IN" | "OUT",
+  kind: "BOOL" | "NUMBER",
+  label: string,
+  unit?: string,
+  range?: BehaviorSignal["range"],
+): BehaviorSignal => ({ key, direction, kind, label, ...(unit ? { unit } : {}), ...(range ? { range } : {}) });
+
+const FAULT_RESET = signal("faultReset", "IN", "BOOL", "Fault reset (rising edge)");
+const FAULTED = signal("faulted", "OUT", "BOOL", "Fault active");
+
+const fault = (
+  code: string,
+  name: string,
+  severity: BehaviorFault["severity"],
+  options: { latching?: boolean; silent?: boolean; quality?: "BAD"; effect: string },
+): BehaviorFault => ({
+  code,
+  name,
+  severity,
+  latching: options.latching ?? false,
+  ...(options.silent ? { silent: true } : {}),
+  reset: options.latching ? "RESET_SIGNAL_OR_OPERATOR" : "AUTO",
+  effect: options.effect,
+  quality: options.quality ?? "GOOD",
+});
+
+const RELAY: BehaviorProfile = {
+  key: "RELAY",
+  version: 1,
+  simulatorType: "RELAY",
+  runsOn: RUNTIME_ONLY,
+  summary:
+    "A relay, contactor or solid-state relay: its contacts close a pickup time after the coil is energized and open a dropout time after it is released; auxiliary contacts follow; welded contacts stay closed and an open coil never closes them.",
+  signals: [
+    signal("coil", "IN", "BOOL", "Coil (control input)"),
+    signal("closed", "OUT", "BOOL", "Main contacts closed"),
+    signal("auxNo", "OUT", "BOOL", "Auxiliary contact, normally open"),
+    signal("auxNc", "OUT", "BOOL", "Auxiliary contact, normally closed"),
+  ],
+  parameters: [
+    {
+      kind: "CHOICE",
+      key: "kind",
+      label: "Kind",
+      role: "SHAPE",
+      default: "ELECTROMECHANICAL",
+      choices: ["ELECTROMECHANICAL", "SOLID_STATE"],
+      description: "A solid-state relay switches without pickup or dropout delay.",
+    },
+    number("pickupTimeS", "Pickup time", "TIMING", 0.02, {
+      unit: "s",
+      min: 0,
+      max: 10,
+      minInclusive: true,
+      maxInclusive: true,
+      description: "Time from coil on to contacts closed.",
+    }),
+    number("dropoutTimeS", "Dropout time", "TIMING", 0.02, {
+      unit: "s",
+      min: 0,
+      max: 10,
+      minInclusive: true,
+      maxInclusive: true,
+      description: "Time from coil off to contacts open.",
+    }),
+  ],
+  states: ["OPEN", "PICKING_UP", "CLOSED", "DROPPING_OUT"],
+  faults: [
+    fault("WELDED_CONTACTS", "Welded contacts", "CRITICAL", {
+      silent: true,
+      effect: "contacts stay closed whatever the coil does; not reported",
+    }),
+    fault("COIL_OPEN", "Coil open circuit", "WARNING", { silent: true, effect: "contacts never close; not reported" }),
+  ],
+  badQualityOnFaults: [],
+  links: [],
+  protocol: "NONE",
+  forcible: false,
+  fidelity: {
+    approximations: ["one pickup and one dropout delay", "auxiliary contacts follow the main contacts exactly"],
+    notModelled: ["contact bounce", "arcing and wear", "coil inrush", "contact resistance"],
+  },
+};
+
+const HEATER: BehaviorProfile = {
+  key: "HEATER",
+  version: 1,
+  simulatorType: "HEATER",
+  runsOn: RUNTIME_ONLY,
+  summary:
+    "A heating element with a thermal mass: energized through its contactor or the on command, at the commanded power share, it warms with a first-order lag towards ambient plus its rise at that power, cools the same way when off, and cuts out above its maximum temperature.",
+  signals: [
+    signal("on", "IN", "BOOL", "On command (heaters without a contactor)"),
+    signal("power", "IN", "NUMBER", "Power share", "%", PERCENT),
+    FAULT_RESET,
+    signal("heating", "OUT", "BOOL", "Heating"),
+    signal("temperature", "OUT", "NUMBER", "Element temperature", "°C"),
+    signal("powerOutput", "OUT", "NUMBER", "Power delivered", "kW", { min: 0, maxParameter: "ratedPowerKw" }),
+    signal("cutout", "OUT", "BOOL", "Thermostat cutout"),
+    FAULTED,
+  ],
+  parameters: [
+    rating("ratedPowerKw", "Rated power", 5, "kW"),
+    number("ambientC", "Ambient temperature", "RATING", 20, {
+      unit: "°C",
+      min: -100,
+      max: 500,
+      minInclusive: true,
+      maxInclusive: true,
+      description: "Temperature the element rests at when off.",
+    }),
+    number("riseAtFullPowerC", "Rise at full power", "RATING", 100, {
+      unit: "K",
+      min: 0,
+      max: 2000,
+      maxInclusive: true,
+      description: "Steady-state rise above ambient at full power.",
+    }),
+    seconds("timeConstantS", "Thermal time constant", 300, "First-order time constant of heating and cooling."),
+    number("maxTemperatureC", "Cutout temperature", "LIMIT", 250, {
+      unit: "°C",
+      min: -100,
+      max: 2000,
+      minInclusive: true,
+      maxInclusive: true,
+      description: "The thermostat removes power above it.",
+    }),
+    number("cutoutHysteresisC", "Cutout hysteresis", "LIMIT", 10, {
+      unit: "K",
+      min: 0,
+      max: 100,
+      maxInclusive: true,
+      description: "Power returns once the element has cooled by this much.",
+    }),
+    number("initialTemperatureC", "Initial temperature", "INITIAL", null, {
+      unit: "°C",
+      description: "Ambient when absent.",
+    }),
+  ],
+  states: ["OFF", "HEATING", "CUTOUT", "FAULTED"],
+  faults: [
+    fault("OVERTEMPERATURE", "Overtemperature trip", "CRITICAL", {
+      latching: true,
+      effect: "power removed at once; the element cools",
+    }),
+    fault("ELEMENT_FAILURE", "Element failure", "WARNING", {
+      silent: true,
+      effect: "no power delivered while energized; not reported",
+    }),
+  ],
+  badQualityOnFaults: [],
+  links: [
+    {
+      role: "contactor",
+      required: false,
+      accepts: ["RELAY"],
+      relationship: "CONTROLS",
+      peerIs: "SOURCE",
+      meaning: "the relay or contactor that switches the element; without one, the on command energizes it",
+    },
+  ],
+  protocol: "NONE",
+  forcible: false,
+  fidelity: {
+    approximations: [
+      "one lumped thermal mass with one time constant",
+      "steady-state rise proportional to the power share",
+      "a thermostat cutout with hysteresis",
+    ],
+    notModelled: ["element resistance and supply voltage", "radiation and air flow", "the process being heated"],
+  },
+};
+
+const INDICATOR: BehaviorProfile = {
+  key: "INDICATOR",
+  version: 1,
+  simulatorType: "INDICATOR",
+  runsOn: RUNTIME_ONLY,
+  summary:
+    "A stack light, lamp or buzzer: each lamp and the buzzer follow their command, the commanded lamps flash at the flash rate while the flash command is on, and a failed lamp set lights nothing.",
+  signals: [
+    signal("red", "IN", "BOOL", "Red lamp command"),
+    signal("amber", "IN", "BOOL", "Amber lamp command"),
+    signal("green", "IN", "BOOL", "Green lamp command"),
+    signal("blue", "IN", "BOOL", "Blue lamp command"),
+    signal("buzzer", "IN", "BOOL", "Buzzer command"),
+    signal("flash", "IN", "BOOL", "Flash the commanded lamps"),
+    signal("redLit", "OUT", "BOOL", "Red lamp lit"),
+    signal("amberLit", "OUT", "BOOL", "Amber lamp lit"),
+    signal("greenLit", "OUT", "BOOL", "Green lamp lit"),
+    signal("blueLit", "OUT", "BOOL", "Blue lamp lit"),
+    signal("buzzerOn", "OUT", "BOOL", "Buzzer sounding"),
+  ],
+  parameters: [
+    number("flashRateHz", "Flash rate", "TIMING", 1, {
+      unit: "Hz",
+      min: 0,
+      max: 10,
+      maxInclusive: true,
+      description: "Flashes per second while the flash command is on.",
+    }),
+  ],
+  states: ["OFF", "ON", "FLASHING"],
+  faults: [fault("LAMP_FAILURE", "Lamp failure", "WARNING", { silent: true, effect: "no lamp lights; not reported" })],
+  badQualityOnFaults: [],
+  links: [],
+  protocol: "NONE",
+  forcible: false,
+  fidelity: {
+    approximations: ["lamps are on or off, lit for the first half of every flash period", "one buzzer tone"],
+    notModelled: ["brightness", "lamp test input", "sound level"],
+  },
+};
+
+/**
+ * Every behaviour profile, by key. The keys are catalog simulator types: the ten the
+ * server's simulator runs (`SIMULATED_TYPES`) and the runtime-only profiles of TASK-1011.
+ */
+export const BEHAVIOR_PROFILES: Readonly<Record<string, BehaviorProfile>> = {
   VFD,
   MOTOR,
   PUMP,
@@ -518,10 +755,13 @@ export const BEHAVIOR_PROFILES: Readonly<Record<SimulatedType, BehaviorProfile>>
   VALVE,
   SENSOR,
   SWITCH,
+  RELAY,
+  HEATER,
+  INDICATOR,
 };
 
 export function findBehaviorProfile(key: string): BehaviorProfile | undefined {
-  return (SIMULATED_TYPES as readonly string[]).includes(key) ? BEHAVIOR_PROFILES[key as SimulatedType] : undefined;
+  return Object.hasOwn(BEHAVIOR_PROFILES, key) ? BEHAVIOR_PROFILES[key] : undefined;
 }
 
 /** The commands and setpoints of a profile: what PLC logic drives. */

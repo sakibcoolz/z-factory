@@ -25,6 +25,9 @@ const simulated = (profile: string, faults: string[] = []): Simulation => ({
 const notSimulated = (reason: string): Simulation => ({ coverage: "NOT_SIMULATABLE", reason });
 
 const NO_PROFILE_YET = "No behaviour profile exists for this category yet (TASK-1011).";
+/** The runtime has the profile (TASK-1011); the server's simulator runs factories until TASK-1015. */
+const runtimeOnly = (profile: string) =>
+  `The runtime's behaviour profile ${profile} models it; the server's device simulator does not run it until TASK-1015 moves factories to the runtime.`;
 
 const generic = (
   category: string,
@@ -210,14 +213,14 @@ export const genericModels: CatalogInput = {
         electrical: DC_24V,
       },
     ),
-    // Not simulated yet: there is no behaviour profile for these categories.
-    generic("CONTACTOR", "Generic contactors", "Generic contactor, 24 V DC coil", notSimulated(NO_PROFILE_YET), {
+    // Modelled by the runtime (TASK-1011) but not run by the server's simulator until TASK-1015.
+    generic("CONTACTOR", "Generic contactors", "Generic contactor, 24 V DC coil", notSimulated(runtimeOnly("RELAY")), {
       terminals: [digital("A1", "INPUT"), digital("AUX", "OUTPUT")],
     }),
-    generic("HEATER", "Generic heaters", "Generic heater, contactor-switched", notSimulated(NO_PROFILE_YET), {
+    generic("HEATER", "Generic heaters", "Generic heater, contactor-switched", notSimulated(runtimeOnly("HEATER")), {
       terminals: [digital("ON", "INPUT")],
     }),
-    generic("INDICATOR", "Generic indicators", "Generic stack light, 24 V DC", notSimulated(NO_PROFILE_YET), {
+    generic("INDICATOR", "Generic indicators", "Generic stack light, 24 V DC", notSimulated(runtimeOnly("INDICATOR")), {
       terminals: [digital("RED", "INPUT"), digital("YELLOW", "INPUT"), digital("GREEN", "INPUT")],
     }),
     generic(

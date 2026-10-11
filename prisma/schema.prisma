@@ -43,6 +43,17 @@ enum SimulatorType {
   MIXER
   COMPRESSOR
   RELAY
+  // The behaviour library of TASK-1011 (runtime profiles; the server simulator runs the ten above).
+  HEATER
+  INDICATOR
+  SOFT_STARTER
+  MOTOR_STARTER
+  SERVO_DRIVE
+  SERVO_MOTOR
+  ENCODER
+  PID_CONTROLLER
+  SIGNAL_CONDITIONER
+  ACTUATOR
 }
 
 enum DriveType {

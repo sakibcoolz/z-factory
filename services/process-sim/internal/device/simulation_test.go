@@ -109,7 +109,7 @@ func expectRule(t *testing.T, err error, rule string) {
 }
 
 func TestEveryProfileDescribesItself(t *testing.T) {
-	want := []string{"COMPRESSOR", "CONVEYOR", "FAN", "MIXER", "MOTOR", "PUMP", "SENSOR", "SWITCH", "VALVE", "VFD"}
+	want := []string{"COMPRESSOR", "CONVEYOR", "FAN", "HEATER", "INDICATOR", "MIXER", "MOTOR", "PUMP", "RELAY", "SENSOR", "SWITCH", "VALVE", "VFD"}
 	var shipped []string
 	for _, key := range Profiles() {
 		if key != "BROKEN" {

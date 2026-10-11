@@ -259,20 +259,25 @@ func checkInputs(description Description, inputs Values) error {
 	return nil
 }
 
-// stageOf fixes the order of a step: drives, then motors, then loads, then valves and
-// everything else that acts, then what observes (sensors, switches).
+// observerStage is the stage of what observes (sensors, switches): stepped after
+// everything that acts, so it reads what the actors produced in this step.
+const observerStage = 5
+
+// stageOf fixes the order of a step: what supplies a motor (drives, relays, starters),
+// then motors, then loads, then controllers, then valves, heaters, indicators and
+// everything else that acts, then what observes.
 func stageOf(behavior Behavior) int {
 	switch behavior.(type) {
-	case *VFD:
+	case Supply:
 		return 0
 	case *Motor:
 		return 1
 	case Load:
 		return 2
 	case Forcible:
-		return 4
+		return observerStage
 	default:
-		return 3
+		return 4
 	}
 }
 
@@ -295,14 +300,17 @@ func (s *Simulation) relink() error {
 			}
 			switch role {
 			case "drive":
-				drive, ok := target.behavior.(*VFD)
-				if !ok || drive == nil {
-					return &ConfigError{Rule: "drive", Reason: fmt.Sprintf("%s is driven by a device that is not a VFD", device.Name)}
+				if _, ok := target.behavior.(Supply); !ok {
+					return &ConfigError{Rule: "drive", Reason: fmt.Sprintf("%s is driven by a device that is not a drive, relay, contactor or starter", device.Name)}
 				}
 				if other := target.peers["motor"]; other != nil {
-					return &ConfigError{Rule: "one-motor-per-drive", Reason: fmt.Sprintf("%s already drives %s: one VFD drives one motor", target.Name, other.Name)}
+					return &ConfigError{Rule: "one-motor-per-drive", Reason: fmt.Sprintf("%s already drives %s: one supply drives one motor", target.Name, other.Name)}
 				}
 				target.peers["motor"] = device
+			case "contactor":
+				if _, ok := target.behavior.(*Relay); !ok {
+					return &ConfigError{Rule: "contactor", Reason: fmt.Sprintf("%s is switched by a device that is not a relay or contactor", device.Name)}
+				}
 			case "motor":
 				if _, ok := target.behavior.(*Motor); !ok {
 					return &ConfigError{Rule: "motor", Reason: fmt.Sprintf("%s is driven by a device that is not a motor", device.Name)}
@@ -523,12 +531,12 @@ func (s *Simulation) advance(dt float64) []Event {
 	// Actors first, then observers, which read what the actors produced in this step.
 	for _, observers := range []bool{false, true} {
 		for _, device := range devices {
-			if (device.stage == 4) == observers {
+			if (device.stage == observerStage) == observers {
 				events = append(events, s.stepDevice(device, dt)...)
 			}
 		}
 		for _, device := range devices {
-			if (device.stage == 4) == observers && device.status == StatusOK {
+			if (device.stage == observerStage) == observers && device.status == StatusOK {
 				device.state = device.behavior.State()
 				device.outputs = device.behavior.Outputs(device.context())
 			}
