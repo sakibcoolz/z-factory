@@ -1,3 +1,4 @@
+import { DECISION_KINDS, DECISION_RULE } from "./llm-context";
 import { areasWithLlmContext, type LlmIndex } from "./llm-index";
 
 /** Section ids, shared by the page's anchors and the Markdown headings. */
@@ -7,6 +8,7 @@ export const LLM_INDEX_SECTIONS = [
   { id: "areas", title: "Engineering areas and routes" },
   { id: "llm-context", title: "Pages with an LLM Context tab" },
   { id: "navigation", title: "Where to go" },
+  { id: "decisions", title: "Decisions to ask the user" },
   { id: "files", title: "Files an agent can fetch" },
   { id: "workflow", title: "Recommended agent workflow" },
   { id: "rules", title: "Rules for agents" },
@@ -110,6 +112,16 @@ export function renderLlmIndexMarkdown(index: LlmIndex): string {
             `${area.label}: after ${area.upstream.map(areaLabel).join(", ") || "nothing"}; before ${area.downstream.map(areaLabel).join(", ") || "nothing"}`,
         ),
     ),
+    "",
+    `## ${sectionTitle("decisions")}`,
+    "",
+    DECISION_RULE,
+    "",
+    "Every page's LLM Context lists its missing decisions with one of these kinds, whether the user must confirm before the agent acts, a safe default when one exists, and what the application enforces whatever is chosen.",
+    "",
+    "| Kind | What it decides |",
+    "|---|---|",
+    ...Object.entries(DECISION_KINDS).map(([kind, meaning]) => `| \`${kind}\` | ${meaning} |`),
     "",
     `## ${sectionTitle("files")}`,
     "",

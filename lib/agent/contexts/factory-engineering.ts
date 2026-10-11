@@ -150,12 +150,25 @@ export function buildGatewaysContext(view: GatewaysView): LlmContextDocument {
           ? [
               {
                 label: "Which host address and port?",
+                decision: {
+                  kind: "endpoint" as const,
+                  confirm: "optional" as const,
+                  defaultChoice: "the next free port on 127.0.0.1, as the form suggests",
+                  enforced:
+                    "Only allowed bind addresses and a free port in the range; ports held by a container or another gateway are refused.",
+                },
                 detail: "Ask what the edge device can reach before opening an endpoint.",
               },
             ]
           : []),
         {
           label: "Which tags may an external client write?",
+          decision: {
+            kind: "write" as const,
+            confirm: "required" as const,
+            defaultChoice: "READ for every tag; READ_WRITE only for the command and setpoint tags the user names",
+            enforced: "Feedback, status and alarm tags and the program's outputs are never writable.",
+          },
           detail: "Exposing a command or setpoint tag as writable is the user's decision.",
         },
       ],
@@ -256,6 +269,11 @@ export function buildModulesContext(view: ModulesScreenView): LlmContextDocument
       decisions: [
         {
           label: "Which process, and which devices play which role?",
+          decision: {
+            kind: "scope" as const,
+            confirm: "required" as const,
+            enforced: "A role accepts only devices of its categories; a required role must be filled.",
+          },
           detail: "Ask before creating a module or assigning devices.",
         },
       ],
@@ -452,17 +470,35 @@ export function buildModuleEditorContext(view: ModuleDesignerView): LlmContextDo
       decisions: [
         ...emptyRequired.map((role) => ({
           label: `Which device for ${role.name}?`,
+          decision: {
+            kind: "relationship" as const,
+            confirm: "required" as const,
+            enforced: "Only devices of the categories the role accepts.",
+          },
           detail: `Required; accepts ${role.deviceCategoryCodes.join(", ") || "any category"}.`,
         })),
         ...(blocking.length > 0
           ? [
               {
                 label: "Which PLC tags carry the required signals?",
+                decision: {
+                  kind: "channel" as const,
+                  confirm: "required" as const,
+                  enforced: "Candidates with a refusal cannot be bound; one module per tag; type and unit must match.",
+                },
                 detail: "Ask which PLC and which channels before binding.",
               },
             ]
           : []),
-        ...(runtime.bridgeRunning ? [{ label: "The bridge is running", detail: ASK }] : []),
+        ...(runtime.bridgeRunning
+          ? [
+              {
+                label: "The bridge is running",
+                decision: { kind: "run-state" as const, confirm: "required" as const },
+                detail: ASK,
+              },
+            ]
+          : []),
       ],
       navigation: [
         { label: "Process modules", href: routes.modules(f) },

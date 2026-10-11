@@ -123,7 +123,8 @@ describe("the PLC context", () => {
     const context = buildPlcContext({ factory, view: empty, section: "io-mapping" });
     expect(labels(context.validation.items)).toEqual(["Nothing is wired to this PLC", "No free channel"]);
     expect(context.validation.status).toBe("issues");
-    expect(labels(context.decisions)).toEqual(["What should this PLC control?"]);
+    // The fixture's port offers two protocols, so the protocol decision is always there (TASK-1006).
+    expect(labels(context.decisions)).toEqual(["What should this PLC control?", "Which protocol?"]);
     expect(context.actions).toEqual([
       expect.objectContaining({ label: "Change the wiring in the designer", href: `/factories/${F}/designer` }),
     ]);
@@ -174,7 +175,7 @@ describe("the PLC context", () => {
       "Installable: SM 1231 AI4",
     ]);
     expect(context.capacity.at(-1)).toMatchObject({ label: "Rack slots", value: "2 of 3 free" });
-    expect(labels(context.decisions)).toEqual(["Which modules?"]);
+    expect(labels(context.decisions)).toEqual(["Which modules?", "Which protocol?"]);
     expect(context.actions.find((item) => item.label === "Install module")?.detail).toMatch(
       /1 compatible module model offered/,
     );
@@ -219,7 +220,7 @@ describe("the PLC context", () => {
       tone: "info",
       detail: "Already running.",
     });
-    expect(labels(context.decisions)).toEqual(["The runtime is running"]);
+    expect(labels(context.decisions)).toEqual(["The runtime is running", "Which protocol?"]);
     expect(JSON.stringify(context)).not.toContain("plc-01");
   });
 
@@ -290,7 +291,7 @@ describe("the PLC context", () => {
       "XV_101_Y1 AT %QX0.0: BOOL",
     );
     expect(labels(context.validation.items)).toEqual(["No program version stored"]);
-    expect(labels(context.decisions)).toEqual(["Control logic"]);
+    expect(labels(context.decisions)).toEqual(["Which protocol?", "Control logic"]);
     expect(context.actions.find((item) => item.label === "Save & deploy")?.href).toBe(
       `/factories/${F}/plcs/${P}/runtime`,
     );

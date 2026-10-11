@@ -61,13 +61,13 @@ describe("an LLM Context document", () => {
     const markdown = renderLlmContextMarkdown(
       createLlmContext(identity, {
         actions: [{ label: "Edit factory", href: "/factories/f1/edit", detail: "Name and description." }],
-        decisions: [{ label: "Which PLC?", tone: "warn" }],
+        decisions: [{ label: "Which PLC?", tone: "warn", decision: { kind: "model", confirm: "required" } }],
       }),
     );
     expect(markdown.startsWith("# LLM Context — Factory overview: Pump House\n")).toBe(true);
     for (const section of LLM_CONTEXT_SECTIONS) expect(markdown).toContain(`## ${section.title}`);
     expect(markdown).toContain("- [Edit factory](/factories/f1/edit) — Name and description.");
-    expect(markdown).toContain("- Which PLC? (warn)");
+    expect(markdown).toContain("- Which PLC? — model · confirm before acting (warn)");
     expect(markdown).toContain("Status: ok");
     expect((markdown.match(/^None\.$/gm) ?? []).length).toBe(6);
     expect(markdown).toContain("- [Before: Factories](/factories)");

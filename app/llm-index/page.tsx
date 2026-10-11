@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { SectionRule } from "@/components/ui/primitives";
 import { StatePill } from "@/components/ui/state-pill";
 import { areasWithLlmContext, buildLlmIndex, type EngineeringArea } from "@/lib/agent/llm-index";
+import { DECISION_KINDS, DECISION_RULE } from "@/lib/agent/llm-context";
 import { LLM_INDEX_SECTIONS, sectionTitle } from "@/lib/agent/llm-index-markdown";
 import { routes } from "@/lib/navigation/routes";
 
@@ -157,6 +158,31 @@ export default function LlmIndexPage() {
                 </li>
               ))}
           </ul>
+        </Section>
+
+        <Section id="decisions">
+          <p className="max-w-180 leading-normal text-fg-muted">{DECISION_RULE}</p>
+          <p className="zf-sub max-w-180">
+            Every page&apos;s LLM Context lists its missing decisions with one of these kinds, whether the user must
+            confirm before the agent acts, a safe default when one exists, and what the application enforces whatever is
+            chosen.
+          </p>
+          <table className="zf-tbl mt-2">
+            <thead>
+              <tr>
+                <th>Kind</th>
+                <th>What it decides</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(DECISION_KINDS).map(([kind, meaning]) => (
+                <tr key={kind} data-llm-decision-kind={kind}>
+                  <td className="mono">{kind}</td>
+                  <td>{meaning}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </Section>
 
         <Section id="files">

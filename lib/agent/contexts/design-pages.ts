@@ -168,6 +168,11 @@ export function buildTopologyContext({ factory, view, mode }: TopologyContextInp
           ? [
               {
                 label: "Which PLC?",
+                decision: {
+                  kind: "model" as const,
+                  confirm: "required" as const,
+                  enforced: "PLC identity is manufacturer, family and exact model; a vendor model runs on OpenPLC.",
+                },
                 detail: "Ask for the architecture and model before placing one.",
                 href: routes.catalog({ type: "PLC" }),
               },
@@ -175,14 +180,44 @@ export function buildTopologyContext({ factory, view, mode }: TopologyContextInp
           : []),
         {
           label: "Which model for a new device?",
+          decision: {
+            kind: "model" as const,
+            confirm: "required" as const,
+            enforced: "A device is created from a catalog model and keeps its facts.",
+          },
           detail: "Vendor models are hardware profiles with sources; generic ones are simulated. Ask before placing.",
         },
         {
           label: "Which relationship, when the canvas asks?",
+          decision: {
+            kind: "relationship" as const,
+            confirm: "required" as const,
+            enforced: "Only the relationships the two devices allow; one VFD drives one primary motor.",
+          },
           detail: "A drive and a motor, a sensor and what it measures: the user decides.",
         },
+        ...(plcs.length > 1
+          ? [
+              {
+                label: "Which PLC to wire to?",
+                decision: {
+                  kind: "endpoint" as const,
+                  confirm: "required" as const,
+                  enforced: "A device wires to one PLC's free compatible channels.",
+                },
+                value: plcs.map((plc) => plc.name).join(", "),
+                detail: "More than one PLC can take the device; the user decides which controls it.",
+              },
+            ]
+          : []),
         ...(factory.runtimeStatus !== "STOPPED"
-          ? [{ label: "The factory is running", detail: "Rewiring a running plant changes its I/O; ask first." }]
+          ? [
+              {
+                label: "The factory is running",
+                decision: { kind: "run-state" as const, confirm: "required" as const },
+                detail: "Rewiring a running plant changes its I/O; ask first.",
+              },
+            ]
           : []),
       ],
       navigation: [
@@ -447,6 +482,12 @@ export function buildDeviceContext({
           ? [
               {
                 label: "Which parameter values?",
+                decision: {
+                  kind: "parameters" as const,
+                  confirm: "required" as const,
+                  defaultChoice: "the model's defaults",
+                  enforced: "Values are kept within each parameter's range.",
+                },
                 detail: "They change how the simulated device behaves; ask before saving.",
               },
             ]
@@ -563,14 +604,32 @@ export function buildNewPlcContext({
       decisions: [
         {
           label: "Which model?",
+          decision: {
+            kind: "model" as const,
+            confirm: "required" as const,
+            enforced: "PLC identity is manufacturer, family and exact model; a vendor model runs on OpenPLC.",
+          },
           detail:
             "Ask which vendor model (with sources) or generic model the user wants, and why: I/O count, ports, verification.",
         },
         {
           label: "Compact or modular?",
+          decision: {
+            kind: "architecture" as const,
+            confirm: "required" as const,
+            defaultChoice: "compact, when the plant needs only built-in I/O",
+          },
           detail: "Compact for built-in I/O; modular when the plant needs modules chosen later.",
         },
-        { label: "The process role", detail: "What the PLC controls, in the user's words." },
+        {
+          label: "The process role",
+          decision: {
+            kind: "name" as const,
+            confirm: "optional" as const,
+            defaultChoice: "left empty; the role is metadata",
+          },
+          detail: "What the PLC controls, in the user's words.",
+        },
       ],
       navigation: [
         {
@@ -735,6 +794,11 @@ export function buildCatalogContext({ overview, model, peripherals, type }: Cata
       decisions: [
         {
           label: "Vendor or generic?",
+          decision: {
+            kind: "model" as const,
+            confirm: "required" as const,
+            enforced: "Vendor facts come with sources and are never invented.",
+          },
           detail:
             "A vendor model brings documented I/O and sources; a generic one is simulated with documented behaviour. The user chooses.",
         },
@@ -855,6 +919,12 @@ export function buildFactoriesContext({
       decisions: [
         {
           label: "Which factory, or a new one?",
+          decision: {
+            kind: "name" as const,
+            confirm: "required" as const,
+            defaultChoice: "the suggested free subnet",
+            enforced: "A subnet must not overlap another factory or a network on the Docker host.",
+          },
           detail:
             "Ask before creating; a new factory needs a name and, when the suggested subnet is not wanted, a subnet.",
         },

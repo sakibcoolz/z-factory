@@ -181,11 +181,24 @@ export function buildFactoryRuntimeContext({
           ? [
               {
                 label: "Start the plant?",
+                decision: {
+                  kind: "run-state" as const,
+                  confirm: "required" as const,
+                  enforced: "Start needs a PLC and a reachable Docker Engine; a failed PLC stops the sequence.",
+                },
                 detail: "Confirm with the user before starting; it creates containers and a network.",
               },
             ]
           : []),
-        ...(!stopped ? [{ label: "The plant is running", detail: ASK }] : []),
+        ...(!stopped
+          ? [
+              {
+                label: "The plant is running",
+                decision: { kind: "run-state" as const, confirm: "required" as const },
+                detail: ASK,
+              },
+            ]
+          : []),
       ],
       navigation: factoryNavigation(f, routes.runtime(f)),
     },
@@ -320,11 +333,28 @@ export function buildSimulatorContext({ factory, view }: SimulatorContextInput):
           ? [
               {
                 label: "Which fault, on which device?",
+                decision: {
+                  kind: "test-input" as const,
+                  confirm: "required" as const,
+                  enforced: "Only faults the device model declares; a fault is a field condition the program sees.",
+                },
                 detail: "A fault changes what the plant does; ask before injecting one.",
               },
             ]
           : []),
-        ...(!view.running && !view.blocker ? [{ label: "Start the simulation?", detail: ASK }] : []),
+        ...(!view.running && !view.blocker
+          ? [
+              {
+                label: "Start the simulation?",
+                decision: {
+                  kind: "run-state" as const,
+                  confirm: "required" as const,
+                  enforced: "Needs a started PLC with a ready Modbus endpoint.",
+                },
+                detail: ASK,
+              },
+            ]
+          : []),
       ],
       navigation: factoryNavigation(f, routes.simulator(f)),
     },
@@ -453,6 +483,11 @@ export function buildScenariosContext({
       decisions: [
         {
           label: "Which scenario?",
+          decision: {
+            kind: "test-input" as const,
+            confirm: "required" as const,
+            enforced: "A run starts from AUTO, ends in AUTO, and writes only externally writable tags.",
+          },
           detail: "Ask what the user wants to prove (a trip, an interlock, an alarm) before writing or running one.",
         },
       ],
@@ -561,6 +596,11 @@ export function buildLiveTagsContext({ factory, view, selectedPlcId }: LiveTagsC
       decisions: [
         {
           label: "Which value, and now?",
+          decision: {
+            kind: "write" as const,
+            confirm: "required" as const,
+            enforced: "Only external command memory is writable; a BOOL takes on or off, a number its exported range.",
+          },
           detail: "A write changes a running plant; ask for the value and confirm before writing.",
         },
       ],
@@ -688,6 +728,11 @@ export function buildEventsContext({
           ? [
               {
                 label: "Acknowledge on the user's behalf?",
+                decision: {
+                  kind: "write" as const,
+                  confirm: "required" as const,
+                  enforced: "Acknowledging never clears the condition.",
+                },
                 detail: "An acknowledgement is attributed; ask before recording one.",
               },
             ]
