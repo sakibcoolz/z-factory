@@ -111,6 +111,25 @@ func TestServesProtocolDevicesOverModbusTCP(t *testing.T) {
 		t.Fatalf("a repeated refusal is not recorded again within 30 s: %d", len(again))
 	}
 
+	// Communication lost (TASK-1014): the device answers nothing for its unit id, its quality
+	// is BAD, its behaviour goes on; back when the fault is cleared.
+	dev(t)(r.InjectFault("f", "vfd", "COMM_LOSS"))
+	_, err = client.ReadBits(modbus.Coil, 0, 1)
+	expectException(t, err, modbus.GatewayTargetFailed)
+	expectException(t, client.WriteCoil(0, true), modbus.GatewayTargetFailed)
+	snap(t)(r.Step("f", 10))
+	if vfd := dev(t)(r.Device("f", "vfd")); vfd.Quality != "BAD" || vfd.Outputs["running"] != 1 {
+		t.Fatalf("unreachable drive: %+v", vfd)
+	}
+	dev(t)(r.ClearFault("f", "vfd", "COMM_LOSS"))
+	snap(t)(r.Step("f", 1))
+	if _, err := client.ReadBits(modbus.Coil, 0, 1); err != nil {
+		t.Fatalf("answers again: %v", err)
+	}
+	if vfd := dev(t)(r.Device("f", "vfd")); vfd.Quality != "GOOD" {
+		t.Fatalf("quality back: %+v", vfd)
+	}
+
 	// Unloading closes the listener; loading again opens it.
 	if err := r.Unload("f"); err != nil {
 		t.Fatal(err)

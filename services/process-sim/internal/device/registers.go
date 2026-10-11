@@ -74,6 +74,8 @@ type RegisterMap struct {
 	Summary        string         `json:"summary"`
 	Conventions    Conventions    `json:"conventions"`
 	Registers      []RegisterSpec `json:"registers"`
+	// Faults a device gains by being served over the protocol (TASK-1014): COMM_LOSS.
+	Faults []Fault `json:"faults"`
 }
 
 // ProtocolConfig is how a device of a factory is served: the protocol, the unit id the
@@ -99,6 +101,7 @@ func RegisterMapOf(registerMap RegisterMap) {
 		panic(fmt.Sprintf("register map %s: %s", registerMap.Key, err.Error()))
 	}
 	registerMap.Conventions = modbusConventions
+	registerMap.Faults = []Fault{CommLossFault}
 	mapsMu.Lock()
 	defer mapsMu.Unlock()
 	if _, exists := maps[registerMap.Key]; exists {
@@ -280,6 +283,12 @@ type Written struct {
 	Signal  string
 	Value   float64
 	Changed bool
+}
+
+// Unreachable says whether a served device is to answer nothing: its communication is lost.
+func (s *Simulation) Unreachable(deviceID string) bool {
+	device, err := s.Device(deviceID)
+	return err == nil && device.active[CommLossFault.Code]
 }
 
 // ProtocolUnits maps the unit id of every protocol device to its id.

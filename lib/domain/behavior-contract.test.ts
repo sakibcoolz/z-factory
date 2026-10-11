@@ -294,3 +294,37 @@ describe("the behaviour contract", () => {
     );
   });
 });
+
+describe("the fault standard (TASK-1014)", () => {
+  it("gives every profile the generic OFFLINE fault, last, silent, non-latching and bad-quality", () => {
+    for (const profile of profiles) {
+      const last = profile.faults.at(-1);
+      expect(last, profile.key).toMatchObject({
+        code: "OFFLINE",
+        latching: false,
+        silent: true,
+        severity: "CRITICAL",
+        reset: "AUTO",
+        quality: "BAD",
+      });
+      expect(
+        profile.faults.filter((fault) => fault.code === "OFFLINE"),
+        profile.key,
+      ).toHaveLength(1);
+      expect(profile.badQualityOnFaults, profile.key).toContain("OFFLINE");
+      // Every fault states its reset rule, its effect and its quality: nothing is implicit.
+      for (const fault of profile.faults) {
+        expect(fault.effect.length, `${profile.key} ${fault.code}`).toBeGreaterThan(10);
+        expect(fault.reset).toBe(fault.latching ? "RESET_SIGNAL_OR_OPERATOR" : "AUTO");
+      }
+    }
+    // A limit-switch disagreement is a silent valve fault the PLC detects in its logic.
+    expect(profile("VALVE").faults.map((fault) => fault.code)).toEqual(["STUCK", "LIMIT_SWITCH_FAULT", "OFFLINE"]);
+    expect(profile("ACTUATOR").faults.map((fault) => fault.code)).toEqual([
+      "STUCK",
+      "AIR_LOSS",
+      "END_SENSOR_FAULT",
+      "OFFLINE",
+    ]);
+  });
+});

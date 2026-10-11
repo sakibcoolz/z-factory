@@ -129,6 +129,10 @@ type Device struct {
 	// registers is the declared map of a protocol device, nil otherwise.
 	registers *RegisterMap
 	protocol  *ProtocolConfig
+	// offline is whether the device was unavailable at the last step; the behaviour is
+	// restarted when the fault ends (TASK-1014).
+	offline     bool
+	lastQuality string
 }
 
 // Simulation is the device simulation of one factory: a deterministic set of coupled
@@ -203,11 +207,6 @@ func (s *Simulation) build(config Config) (*Device, error) {
 		}
 		faults[fault.Code] = fault
 	}
-	for code := range config.Faults {
-		if _, known := faults[code]; !known {
-			return nil, &ConfigError{Rule: "supported-fault", Reason: fmt.Sprintf("%s does not support the fault %s", config.Name, code)}
-		}
-	}
 	roles := map[string]Link{}
 	for _, link := range description.Links {
 		roles[link.Role] = link
@@ -232,8 +231,20 @@ func (s *Simulation) build(config Config) (*Device, error) {
 	if config.Protocol != nil {
 		copied := *config.Protocol
 		protocol = &copied
+		// A served device gains the protocol's faults (TASK-1014).
+		for _, fault := range registers.Faults {
+			if override, ok := config.Faults[fault.Code]; ok {
+				if override.Severity != nil {
+					fault.Severity = *override.Severity
+				}
+				if override.Latching != nil {
+					fault.Latching = *override.Latching
+				}
+			}
+			faults[fault.Code] = fault
+		}
 	}
-	return &Device{
+	device := &Device{
 		ID:         config.DeviceID,
 		Name:       config.Name,
 		Profile:    config.Profile,
@@ -250,7 +261,14 @@ func (s *Simulation) build(config Config) (*Device, error) {
 		sim:        s,
 		registers:  registers,
 		protocol:   protocol,
-	}, nil
+	}
+	for code := range config.Faults {
+		if _, known := faults[code]; !known {
+			return nil, &ConfigError{Rule: "supported-fault", Reason: fmt.Sprintf("%s does not support the fault %s", config.Name, code)}
+		}
+	}
+	device.lastQuality = device.quality()
+	return device, nil
 }
 
 func linkRoles(description Description) []string {
@@ -590,18 +608,50 @@ func (s *Simulation) advance(dt float64) []Event {
 	for _, device := range devices {
 		updateTrip(device)
 	}
+	// An unavailable device is not stepped and reads de-energized; when it comes back its
+	// behaviour restarts from its initial state, as equipment does after a power cycle.
+	for _, device := range devices {
+		offline := device.active[OfflineFault.Code]
+		if offline != device.offline && device.status == StatusOK {
+			// Losing the supply wipes the behaviour's state at once (a drive's frequency, a
+			// relay's contacts), so peers read it as gone; it comes back from the same
+			// initial state, and a trip does not survive the power cycle.
+			if err := device.behavior.Configure(s.configs[device.ID].Parameters); err == nil {
+				device.tripped = false
+			}
+		}
+		device.offline = offline
+	}
 	// Actors first, then observers, which read what the actors produced in this step.
 	for _, observers := range []bool{false, true} {
 		for _, device := range devices {
-			if (device.stage == observerStage) == observers {
+			if (device.stage == observerStage) == observers && !device.offline {
 				events = append(events, s.stepDevice(device, dt)...)
 			}
 		}
 		for _, device := range devices {
-			if (device.stage == observerStage) == observers && device.status == StatusOK {
-				device.state = device.behavior.State()
-				device.outputs = device.behavior.Outputs(device.context())
+			if (device.stage == observerStage) != observers || device.status != StatusOK {
+				continue
 			}
+			if device.offline {
+				description, _ := Describe(device.Profile)
+				device.state = "OFFLINE"
+				device.outputs = deEnergized(description)
+				continue
+			}
+			device.state = device.behavior.State()
+			device.outputs = device.behavior.Outputs(device.context())
+		}
+	}
+	for _, device := range devices {
+		quality := device.quality()
+		if quality != device.lastQuality {
+			severity := Info
+			if quality == "BAD" {
+				severity = Warning
+			}
+			events = append(events, Event{Type: "QUALITY_CHANGED", DeviceID: device.ID, Severity: severity, Payload: map[string]any{"from": device.lastQuality, "to": quality, "activeFaults": device.activeFaults()}})
+			device.lastQuality = quality
 		}
 	}
 	for index, device := range devices {
@@ -616,7 +666,7 @@ func (s *Simulation) advance(dt float64) []Event {
 			continue
 		}
 		severity := Info
-		if device.state == "FAULTED" {
+		if device.state == "FAULTED" || device.state == "OFFLINE" {
 			severity = Critical
 		}
 		events = append(events, Event{
@@ -720,14 +770,18 @@ func (d *Device) activeFaults() []string {
 	return codes
 }
 
-// Quality of a device's value: BAD for a sensor that lost its signal, and for a device
-// the runtime has set aside.
+// Quality of a device's value (TASK-1014): BAD for a device the runtime has set aside,
+// one that is unavailable or unreachable, a behaviour that reports its own value as
+// untrustworthy (a sensor that lost its signal), and one whose measured device is BAD.
 func (d *Device) quality() string {
-	if d.status != StatusOK {
+	if d.status != StatusOK || d.active[OfflineFault.Code] || d.active[CommLossFault.Code] {
 		return "BAD"
 	}
-	if qualified, ok := d.behavior.(Qualified); ok {
-		return qualified.Quality()
+	if qualified, ok := d.behavior.(Qualified); ok && qualified.Quality() == "BAD" {
+		return "BAD"
+	}
+	if measured := d.peers["measures"]; measured != nil && measured != d && measured.quality() == "BAD" {
+		return "BAD"
 	}
 	return "GOOD"
 }

@@ -36,7 +36,7 @@ func init() {
 				{Key: "closed", Direction: Out, Kind: Bool, Label: "Closed limit switch"},
 				faulted,
 			},
-			Faults: []Fault{stuck},
+			Faults: []Fault{stuck, limitSwitchFault},
 			Links: []Link{
 				{Role: "controller", Accepts: []string{"PID_CONTROLLER"}, Meaning: "the controller whose output is the position setpoint while it is enabled; the PLC's commands apply otherwise"},
 			},
@@ -51,6 +51,10 @@ func init() {
 }
 
 var stuck = Fault{Code: "STUCK", Name: "Stuck", Severity: Warning, Latching: false, Silent: true}
+
+// limitSwitchFault is a limit-switch disagreement: both end switches read closed at once,
+// whatever the position; the valve cannot tell, the PLC's logic can (TASK-1014).
+var limitSwitchFault = Fault{Code: "LIMIT_SWITCH_FAULT", Name: "Limit switch disagreement", Severity: Warning, Latching: false, Silent: true}
 
 func (v *Valve) Profile() string { return "VALVE" }
 func (v *Valve) Version() int    { return 1 }
@@ -121,10 +125,11 @@ func (v *Valve) Step(dt float64, ctx *Context) {
 }
 
 func (v *Valve) Outputs(ctx *Context) Values {
+	disagree := ctx.ActiveFaults["LIMIT_SWITCH_FAULT"]
 	return Values{
 		"position": v.position,
-		"opened":   asFloat(v.position >= 99.5),
-		"closed":   asFloat(v.position <= 0.5),
+		"opened":   asFloat(disagree || v.position >= 99.5),
+		"closed":   asFloat(disagree || v.position <= 0.5),
 		"faulted":  asFloat(reportsFault(ctx)),
 	}
 }

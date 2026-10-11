@@ -6,7 +6,13 @@
  * registers.go`), and the parity test holds the two descriptions together. Pure data;
  * importable anywhere.
  */
-import { BEHAVIOR_PROFILES, type BehaviorProfile, type BehaviorSignal } from "@/lib/domain/behavior-contract";
+import {
+  BEHAVIOR_PROFILES,
+  type BehaviorFault,
+  type BehaviorProfile,
+  type BehaviorSignal,
+  COMM_LOSS_FAULT,
+} from "@/lib/domain/behavior-contract";
 import type { ModbusArea, TagRole } from "@/lib/domain/tag";
 
 export const REGISTER_PROTOCOLS = ["MODBUS_TCP"] as const;
@@ -45,6 +51,8 @@ export type RegisterMap = {
   summary: string;
   conventions: { addressing: "zero-based"; byteOrder: "BIG_ENDIAN"; wordOrder: "HIGH_WORD_FIRST" };
   registers: readonly RegisterSpec[];
+  /** Faults a device gains by being served over the protocol (TASK-1014): COMM_LOSS. */
+  faults: readonly BehaviorFault[];
 };
 
 export const MODBUS_CONVENTIONS = {
@@ -108,6 +116,7 @@ const VFD_MODBUS_TCP: RegisterMap = {
   summary:
     "The generic drive over Modbus TCP: run, reverse and fault reset as coils, the frequency setpoint as a holding register in 0.1 Hz, running, at-setpoint and fault as discrete inputs, actual frequency and output current as input registers in 0.1 Hz and 0.1 A.",
   conventions: MODBUS_CONVENTIONS,
+  faults: [COMM_LOSS_FAULT],
   registers: [
     register(VFD, "run", 0, "COMMAND"),
     register(VFD, "reverse", 1, "COMMAND"),
@@ -180,6 +189,13 @@ export function wireRegisterMap(map: RegisterMap): Record<string, unknown> {
     profileVersion: map.profileVersion,
     summary: map.summary,
     conventions: { ...map.conventions },
+    faults: map.faults.map((fault) => ({
+      code: fault.code,
+      name: fault.name,
+      severity: fault.severity,
+      latching: fault.latching,
+      ...(fault.silent ? { silent: true } : {}),
+    })),
     registers: map.registers.map((entry) => {
       const wire: Record<string, unknown> = {
         signal: entry.signal,

@@ -64,7 +64,7 @@ Simulation coverage is explicit per catalog model:
 | TASK-1011 | DONE | Full industrial device behavior library |
 | TASK-1012 | DONE | Vendor catalog model to simulation-profile mapping |
 | TASK-1013 | DONE | Protocol/register-controlled device simulation |
-| TASK-1014 | PLANNED | Fault, failure and degraded-quality simulation |
+| TASK-1014 | DONE | Fault, failure and degraded-quality simulation |
 | TASK-1015 | PLANNED | Dynamic catalog-driven simulator instantiation |
 | TASK-1016 | PLANNED | Catalog simulation coverage report and validation |
 

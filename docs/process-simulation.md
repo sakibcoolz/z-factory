@@ -360,7 +360,11 @@ Events are the server simulator's, numbered per factory and stamped with the tic
 raised from its own physics; `FAULT_CLEARED` with `by: model` when it releases it), and
 since TASK-1013 `PROTOCOL_WRITE` (a signal a client set over the network, with the unit
 id, area and value) and `PROTOCOL_WRITE_REJECTED` (a refused write, at most once per
-address every 30 seconds).
+address every 30 seconds), and since TASK-1014 `QUALITY_CHANGED` (a device's feedback
+quality, with the active faults). The fault standard every profile follows, with the
+generic `OFFLINE` fault of every profile and the `COMM_LOSS` fault of every served
+device, is `docs/device-simulation.md` → Faults, failures and degraded quality; a
+device whose communication is lost answers exception `0B` at its unit id.
 
 ### Register maps and the Modbus listener (TASK-1013, ADR-0027)
 A protocol-controlled device is a behaviour profile behind a **declared register map**:

@@ -148,10 +148,12 @@ Sensor sources: `CONSTANT {value}`, `RAMP {from, to, periodS}`, `SINE {min, max,
 | MOTOR | `OVERLOAD` | motor de-energized even while its drive runs | yes |
 | PUMP | `DRY_RUN` | no flow or pressure; motor load drops | no |
 | VALVE | `STUCK` | does not move; not reported on `faulted` | no |
+| VALVE | `LIMIT_SWITCH_FAULT` | both limit switches read closed whatever the position; not reported (TASK-1014) | no |
 | SENSOR | `BAD_QUALITY` | reads bottom of range, `faulted` true, quality BAD | no |
 | SENSOR, SWITCH | `STUCK` | value frozen; not reported | no |
+| every type | `OFFLINE` | the device unavailable: not stepped, every output de-energized, quality BAD; restarts from its initial state when the fault ends (TASK-1014) | no |
 
-A latching fault trips the device: it stays faulted after the cause is cleared until it is reset, by a rising edge on its `faultReset` signal from the PLC or by an operator reset. A catalog `DeviceFaultDefinition` with the same code overrides severity and latching (`MANUAL` = latching).
+A latching fault trips the device: it stays faulted after the cause is cleared until it is reset, by a rising edge on its `faultReset` signal from the PLC or by an operator reset. A catalog `DeviceFaultDefinition` with the same code overrides severity and latching (`MANUAL` = latching). The standard every fault follows, in both simulators, is under "Faults, failures and degraded quality" below.
 
 ### Limits
 - The simulator screen of a stored factory (TASK-305) starts and stops the simulation, shows each device's command and feedback signals with the tags they are wired to, and injects, clears and resets faults. Forcing a sensor or switch value has a service but no control on the screen yet.
@@ -272,6 +274,24 @@ Approximations:
 A behaviour can raise a fault of its profile from its own physics (`Context.Raise`, the motor starter's overload) and release it when the cause is gone; the simulation applies it after the step like an injected fault (`FAULT_RAISED` / `FAULT_CLEARED` events), so latching, reporting and quality follow the fault definition and the PLC sees it only through feedback (TASK-1014 builds on this). Quality is reported by any observer that has one (`Qualified`: sensors, encoders, signal conditioners).
 
 Step order of the runtime since TASK-1011: what supplies a motor (drives, relays, starters) and servo drives, then motors and servo motors, then loads, then controllers, then valves, heaters, indicators, cylinders and everything else that acts, then what observes (sensors, switches, encoders, signal conditioners), in configuration order within a stage. A controller reads its transmitter's value from the previous step and the devices it controls take its output in the same step; a conditioner reads a transmitter configured before it in the same step.
+
+### Faults, failures and degraded quality (TASK-1014)
+Every fault of every profile, in the server's simulator and in the runtime, has the same shape and the same handling; the contract states each one with its reset rule, its effect and its quality (`BehaviorFault`), and nothing is implicit.
+
+- **Injecting** a fault makes its condition present from the next step; **clearing** ends the condition. A behaviour may raise and release a fault from its own physics the same way (the motor starter's thermal overload, TASK-1011), and the events say which happened: `FAULT_INJECTED` / `FAULT_CLEARED` for a tester, `FAULT_RAISED` / `FAULT_CLEARED` with `by: model` for the model. Injecting an active fault or clearing an absent one is refused (`fault-active`, `fault-not-active`).
+- **Latching is the profile's statement**, which the catalog may override per model (`DeviceFaultDefinition.resetBehavior`). A latching fault trips the device; the trip outlives the cause and ends only on a rising edge of the PLC's `faultReset` signal or the operator's reset (`DEVICE_RESET`), refused while the cause is present. A non-latching fault ends with its cause. A power cycle (OFFLINE ending) also ends a trip, as it does on real equipment.
+- **A silent fault** is one the device cannot report on its own `faulted` output: a stuck valve or cylinder, a welded contact, disagreeing limit or end sensors, a lost supply. The PLC sees the effect in the feedback and decides in its logic; the simulator never raises a flag the real device would not have.
+- **Quality** is the trust in a device's feedback, `GOOD` or `BAD`: BAD while a fault the profile names as bad-quality is present (a transmitter's `BAD_QUALITY`, an encoder's `SIGNAL_LOSS`, a conditioner's `OPEN_INPUT`), while the device is unavailable (`OFFLINE`) or unreachable (`COMM_LOSS`), while the runtime has set it aside (`FAULTED`, `QUARANTINED`), and **while the device it measures is BAD**: quality travels along `measures` links (a transmitter on an unavailable pump, a conditioner on such a transmitter). Each change is a `QUALITY_CHANGED` event (`from`, `to`, `activeFaults`), and the bridge carries the quality to the feedback tags (`feedbackQuality`), so the Live Tags screen and the PLC's program see the value as untrusted rather than as a healthy zero.
+- **Faults act on feedback only.** Nothing here writes a PLC output; commands keep landing on an unavailable device and do nothing until it is back. The PLC decides what to do with what it reads.
+
+Two faults are generic and belong to every device, declared once and appended to every profile and every served device:
+
+| Code | Belongs to | Effect |
+|---|---|---|
+| `OFFLINE` (device unavailable: lost supply, disconnected, powered down) | every profile, last in its fault list | not stepped; every output reads de-energized (false / 0), as powered-down wiring reads; quality BAD; its physics is wiped at once, so a motor it feeds coasts, a heater its contactor switches goes cold, a servo motor loses its drive; it restarts from its initial state, untripped, when the fault ends. Silent, non-latching, critical. |
+| `COMM_LOSS` (communication lost) | every device served over a protocol (the register map's fault, TASK-1013) | the runtime answers nothing for its unit id (exception `0B`); the behaviour goes on; quality BAD. Silent, non-latching, critical. |
+
+The examples of the phase map onto the standard as follows: communication loss → `COMM_LOSS`; bad quality → `BAD_QUALITY`, `SIGNAL_LOSS`, `OPEN_INPUT` and the propagation; stuck sensor or value → `STUCK`; overload, overcurrent, overtemperature, drive trip and motor fault → the latching trips of the drives, starters, motors and heaters; dry run → `DRY_RUN`; stuck valve or actuator → `STUCK`; limit-switch disagreement → `LIMIT_SWITCH_FAULT` of a valve and `END_SENSOR_FAULT` of a cylinder; controller or device unavailable → `OFFLINE`. Every catalog model the simulator runs lists `OFFLINE` among its faults, so the simulator screen can inject it; a vendor model lists it without a source, because it is Z-Factory's generic fault and not a vendor's claim.
 
 ### Protocol-controlled devices (TASK-1013, ADR-0027)
 A device the PLC commands over a network instead of terminals runs the same behaviour

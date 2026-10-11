@@ -135,7 +135,8 @@ const powerFlex525: Model = {
     coverage: "PARTIAL",
     profile: "VFD",
     profileVersion: 1,
-    faults: ["OVERCURRENT", "OVERTEMPERATURE"],
+    // OFFLINE is the generic fault every device has (TASK-1014), not a vendor fact.
+    faults: ["OVERCURRENT", "OVERTEMPERATURE", "OFFLINE"],
     // Factory defaults of the Basic Program Group (pages 86–87).
     parameters: { maxFrequencyHz: 60, accelTimeS: 10, decelTimeS: 10 },
     features: driveFeatures([

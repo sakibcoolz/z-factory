@@ -46,6 +46,8 @@ func init() {
 			Faults: []Fault{
 				{Code: "STUCK", Name: "Stuck", Severity: Warning, Latching: false, Silent: true},
 				{Code: "AIR_LOSS", Name: "Air supply lost", Severity: Critical, Latching: false, Silent: true},
+				// Both end sensors read at once, whatever the rod does (TASK-1014).
+				{Code: "END_SENSOR_FAULT", Name: "End sensor disagreement", Severity: Warning, Latching: false, Silent: true},
 			},
 			Parameters: mustJSON(defaultActuatorParams()),
 			ParameterSchema: []ParameterSpec{
@@ -136,10 +138,11 @@ func (a *Actuator) Step(dt float64, ctx *Context) {
 	}
 }
 
-func (a *Actuator) Outputs(_ *Context) Values {
+func (a *Actuator) Outputs(ctx *Context) Values {
+	disagree := ctx.ActiveFaults["END_SENSOR_FAULT"]
 	return Values{
-		"extended":  asFloat(a.position >= 99.5),
-		"retracted": asFloat(a.position <= 0.5),
+		"extended":  asFloat(disagree || a.position >= 99.5),
+		"retracted": asFloat(disagree || a.position <= 0.5),
 		"moving":    asFloat(a.state == "EXTENDING" || a.state == "RETRACTING"),
 		"position":  a.position,
 	}

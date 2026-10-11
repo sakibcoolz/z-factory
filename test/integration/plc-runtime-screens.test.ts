@@ -299,7 +299,11 @@ describeDb("program, versions, runtime and simulator read models", () => {
       ["closed", "PLC-01 · XV_101_ZSC"],
       ["faulted", null],
     ]);
-    expect(valve?.faults).toEqual([{ code: "STUCK", name: "Stuck", latching: false, active: false }]);
+    expect(valve?.faults).toEqual([
+      { code: "STUCK", name: "Stuck", latching: false, active: false },
+      { code: "LIMIT_SWITCH_FAULT", name: "Limit switch disagreement", latching: false, active: false },
+      { code: "OFFLINE", name: "Device unavailable", latching: false, active: false },
+    ]);
   });
 
   it("shows live commands, feedback and injected faults while the simulation runs", async () => {
@@ -323,7 +327,12 @@ describeDb("program, versions, runtime and simulator read models", () => {
     for (let step = 0; step < 20; step += 1) await simulation.simulator.tick(factoryId, 100);
     view = await getSimulationView(simulation, alice, factoryId);
     valve = view.devices.find((device) => device.deviceId === valveId);
-    expect(valve).toMatchObject({ faulted: true, faults: [expect.objectContaining({ code: "STUCK", active: true })] });
+    expect(valve).toMatchObject({ faulted: true });
+    expect(valve?.faults.map((fault) => [fault.code, fault.active])).toEqual([
+      ["STUCK", true],
+      ["LIMIT_SWITCH_FAULT", false],
+      ["OFFLINE", false],
+    ]);
     // A stuck valve does not move, whatever the PLC commands.
     expect(valve?.outputs.find((signal) => signal.key === "position")?.value).toBeCloseTo(40, 0);
 

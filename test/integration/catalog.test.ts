@@ -222,6 +222,7 @@ describeDb("device catalog against PostgreSQL", () => {
       orderBy: { code: "asc" },
     });
     expect(faults.map((fault) => [fault.code, fault.severity, fault.resetBehavior])).toEqual([
+      ["OFFLINE", "CRITICAL", "AUTO"],
       ["OVERCURRENT", "CRITICAL", "MANUAL"],
       ["OVERTEMPERATURE", "CRITICAL", "MANUAL"],
     ]);
@@ -250,7 +251,7 @@ describeDb("device catalog against PostgreSQL", () => {
     expect((await getCatalogModel(db, await modelId("Generic VFD, hardwired control"))).simulation).toMatchObject({
       coverage: "GENERIC",
       profile: { key: "VFD", version: 1 },
-      faults: ["OVERCURRENT", "OVERTEMPERATURE"],
+      faults: ["OVERCURRENT", "OVERTEMPERATURE", "OFFLINE"],
       statement: expect.stringContaining("not vendor firmware"),
     });
     expect((await getCatalogModel(db, await modelId("CPU 1214C DC/DC/DC"))).simulation).toMatchObject({
@@ -286,6 +287,7 @@ describeDb("device catalog against PostgreSQL", () => {
       { maxFrequencyHz: 50, accelTimeS: 3, decelTimeS: 3 },
     ]);
     expect(atvRow.faultDefinitions.map((fault) => [fault.code, fault.description])).toEqual([
+      ["OFFLINE", null],
       ["OVERCURRENT", "[Overcurrent] OCF, page 413"],
       ["OVERTEMPERATURE", "[Drive Overheating] OHF, page 413"],
     ]);

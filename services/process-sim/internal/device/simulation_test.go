@@ -632,7 +632,8 @@ func TestSensorSignalLossStuckAndForcing(t *testing.T) {
 	if snapshot := s.Snapshot()[0]; snapshot.Quality != "BAD" || snapshot.State != "BAD" {
 		t.Fatalf("snapshot %+v", snapshot)
 	}
-	if len(events) != 1 || events[0].Type != "SENSOR_VALUE_CHANGED" {
+	// The lost signal is a quality change first, then the value event.
+	if len(events) != 2 || events[0].Type != "QUALITY_CHANGED" || events[0].Payload["to"] != "BAD" || events[1].Type != "SENSOR_VALUE_CHANGED" {
 		t.Fatalf("events %+v", events)
 	}
 	s.ClearFault("s", "BAD_QUALITY")
@@ -852,7 +853,8 @@ func TestABadOrSlowBehaviourDoesNotStallTheOthers(t *testing.T) {
 			types = append(types, event.Type)
 		}
 	}
-	if !reflect.DeepEqual(types, []string{"DEVICE_RUNTIME_FAULT", "DEVICE_QUARANTINED"}) {
+	// A device set aside is BAD: each runtime fault is followed by its quality change.
+	if !reflect.DeepEqual(types, []string{"DEVICE_RUNTIME_FAULT", "QUALITY_CHANGED", "DEVICE_QUARANTINED", "QUALITY_CHANGED"}) {
 		t.Fatalf("isolation events %v", types)
 	}
 	if bad.Snapshot().Status != StatusFaulted || bad.Snapshot().Quality != "BAD" || bad.Snapshot().Error == "" {

@@ -110,6 +110,10 @@ func (h *factoryHandler) device(unit byte) (string, error) {
 	if !ok {
 		return "", modbus.Exception(modbus.GatewayPathUnavailable)
 	}
+	// A device whose communication is lost answers as a target that does not respond (TASK-1014).
+	if h.factory.sim.Unreachable(deviceID) {
+		return "", modbus.Exception(modbus.GatewayTargetFailed)
+	}
 	return deviceID, nil
 }
 

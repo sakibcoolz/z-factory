@@ -135,20 +135,55 @@ export type FaultDefinition = {
 
 const STUCK: FaultDefinition = { code: "STUCK", name: "Stuck", severity: "WARNING", latching: false, silent: true };
 
+/**
+ * The generic faults of the fault standard (TASK-1014). OFFLINE belongs to every device:
+ * lost supply, disconnected, powered down; the behaviour is not stepped, its feedback reads
+ * de-energized, its quality is BAD, and when the fault ends the behaviour restarts from
+ * its initial state, as equipment does after a power cycle. Silent: an unpowered device
+ * reports nothing. COMM_LOSS belongs to every device served over a protocol: the runtime
+ * stops answering for it and its quality is BAD.
+ */
+export const OFFLINE: FaultDefinition = {
+  code: "OFFLINE",
+  name: "Device unavailable",
+  severity: "CRITICAL",
+  latching: false,
+  silent: true,
+};
+export const COMM_LOSS: FaultDefinition = {
+  code: "COMM_LOSS",
+  name: "Communication lost",
+  severity: "CRITICAL",
+  latching: false,
+  silent: true,
+};
+/** Fault codes every device may have without the profile or a vendor document naming them. */
+export const GENERIC_FAULT_CODES: ReadonlySet<string> = new Set([OFFLINE.code, COMM_LOSS.code]);
+
+/** A limit-switch disagreement: both end switches read at once, whatever the position (TASK-1014). */
+const LIMIT_SWITCH_FAULT: FaultDefinition = {
+  code: "LIMIT_SWITCH_FAULT",
+  name: "Limit switch disagreement",
+  severity: "WARNING",
+  latching: false,
+  silent: true,
+};
+
 export const DEVICE_FAULTS: Record<SimulatedType, readonly FaultDefinition[]> = {
   VFD: [
     { code: "OVERCURRENT", name: "Overcurrent trip", severity: "CRITICAL", latching: true },
     { code: "OVERTEMPERATURE", name: "Overtemperature trip", severity: "CRITICAL", latching: true },
+    OFFLINE,
   ],
-  MOTOR: [{ code: "OVERLOAD", name: "Overload trip", severity: "CRITICAL", latching: true }],
-  PUMP: [{ code: "DRY_RUN", name: "Dry running", severity: "WARNING", latching: false }],
-  FAN: [],
-  CONVEYOR: [],
-  MIXER: [],
-  COMPRESSOR: [],
-  VALVE: [STUCK],
-  SENSOR: [{ code: "BAD_QUALITY", name: "Signal lost", severity: "WARNING", latching: false }, STUCK],
-  SWITCH: [STUCK],
+  MOTOR: [{ code: "OVERLOAD", name: "Overload trip", severity: "CRITICAL", latching: true }, OFFLINE],
+  PUMP: [{ code: "DRY_RUN", name: "Dry running", severity: "WARNING", latching: false }, OFFLINE],
+  FAN: [OFFLINE],
+  CONVEYOR: [OFFLINE],
+  MIXER: [OFFLINE],
+  COMPRESSOR: [OFFLINE],
+  VALVE: [STUCK, LIMIT_SWITCH_FAULT, OFFLINE],
+  SENSOR: [{ code: "BAD_QUALITY", name: "Signal lost", severity: "WARNING", latching: false }, STUCK, OFFLINE],
+  SWITCH: [STUCK, OFFLINE],
 };
 
 /** Event types the simulator emits (docs/events-telemetry.md). */
@@ -164,6 +199,7 @@ export const SIMULATION_EVENT_TYPES = [
   "FAULT_INJECTED",
   "FAULT_CLEARED",
   "DEVICE_RESET",
+  "QUALITY_CHANGED",
   "SIMULATED_INPUT_FORCED",
   "SIMULATED_INPUT_RELEASED",
   "CONNECTION_UP",

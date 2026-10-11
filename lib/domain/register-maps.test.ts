@@ -26,6 +26,10 @@ describe("the declared register maps (TASK-1013)", () => {
     }
     const map = vfd();
     expect(map).toMatchObject({ protocol: "MODBUS_TCP", profile: "VFD", profileVersion: 1, version: 1 });
+    // A served device gains the protocol's fault: communication lost (TASK-1014).
+    expect(map.faults.map((fault) => [fault.code, fault.latching, fault.silent, fault.quality])).toEqual([
+      ["COMM_LOSS", false, true, "BAD"],
+    ]);
     // Every signal of the profile is mapped, in the area its direction and kind dictate.
     const profile = BEHAVIOR_PROFILES.VFD!;
     expect(map.registers.map((register) => register.signal).sort()).toEqual(
@@ -91,5 +95,8 @@ describe("the declared register maps (TASK-1013)", () => {
       role: "COMMAND",
     });
     expect(registers[3]).toMatchObject({ unit: "Hz", range: { min: 0, maxParameter: "maxFrequencyHz" } });
+    expect(wire.faults).toEqual([
+      { code: "COMM_LOSS", name: "Communication lost", severity: "CRITICAL", latching: false, silent: true },
+    ]);
   });
 });

@@ -614,3 +614,90 @@ describe("catalog fault overrides and input validation", () => {
     );
   });
 });
+
+describe("the fault standard (TASK-1014)", () => {
+  it("reads an unavailable device as de-energized, propagates it along the chain, and restarts it from zero", () => {
+    const simulation = simulate(chain(""));
+    simulation.setInputs("vfd", { run: true, frequencySetpoint: 50 });
+    run(simulation, 20);
+    expect(simulation.outputs("pump")).toMatchObject({ running: true, flow: 100 });
+
+    // The drive loses its supply: de-energized feedback, BAD quality, the motor coasts, the pump stops.
+    simulation.injectFault("vfd", "OFFLINE");
+    const events = simulation.step(TICK);
+    expect(simulation.outputs("vfd")).toEqual({
+      running: false,
+      atSetpoint: false,
+      faulted: false,
+      actualFrequency: 0,
+      outputCurrent: 0,
+    });
+    expect(simulation.snapshot().find((device) => device.deviceId === "vfd")).toMatchObject({
+      state: "OFFLINE",
+      quality: "BAD",
+      faulted: true,
+      tripped: false,
+    });
+    expect(events.filter((event) => event.deviceId === "vfd").map((event) => event.type)).toEqual([
+      "QUALITY_CHANGED",
+      "VFD_STATE_CHANGED",
+    ]);
+    run(simulation, 30);
+    expect(simulation.outputs("motor")).toMatchObject({ running: false });
+    expect(simulation.outputs("pump")).toMatchObject({ running: false });
+    expect(simulation.outputs("pump").flow as number).toBeLessThan(0.01);
+    // Commands keep landing but do nothing while the device is unavailable.
+    simulation.setInputs("vfd", { run: true, frequencySetpoint: 50 });
+    run(simulation, 1);
+    expect(simulation.outputs("vfd").actualFrequency).toBe(0);
+    // Power returns: it ramps again from zero, quality GOOD; a reset is neither needed nor refused.
+    simulation.clearFault("vfd", "OFFLINE");
+    const back = simulation.step(TICK);
+    expect(back.filter((event) => event.deviceId === "vfd").map((event) => event.type)).toEqual([
+      "QUALITY_CHANGED",
+      "VFD_STATE_CHANGED",
+    ]);
+    const frequency = simulation.outputs("vfd").actualFrequency as number;
+    expect(frequency).toBeGreaterThan(0);
+    expect(frequency).toBeLessThan(50);
+    expect(simulation.quality("vfd")).toBe("GOOD");
+    simulation.reset("vfd");
+
+    // A sensor on an unavailable pump reads zero with BAD quality: quality travels along the link.
+    simulation.injectFault("pump", "OFFLINE");
+    const measured = simulation.step(TICK);
+    expect(simulation.outputs("pt").value).toBe(0);
+    expect(simulation.quality("pt")).toBe("BAD");
+    expect(measured.some((event) => event.deviceId === "pt" && event.type === "QUALITY_CHANGED")).toBe(true);
+    simulation.clearFault("pump", "OFFLINE");
+    run(simulation, 1);
+    expect(simulation.quality("pt")).toBe("GOOD");
+  });
+
+  it("ends a trip with the power cycle and shows a limit-switch disagreement to the PLC only", () => {
+    const simulation = simulate(chain(""));
+    simulation.setInputs("vfd", { run: true, frequencySetpoint: 50 });
+    run(simulation, 10);
+    simulation.injectFault("vfd", "OVERCURRENT");
+    run(simulation, 1);
+    simulation.clearFault("vfd", "OVERCURRENT");
+    run(simulation, 1);
+    expect(simulation.snapshot()[0]?.tripped).toBe(true);
+    simulation.injectFault("vfd", "OFFLINE");
+    run(simulation, 1);
+    simulation.clearFault("vfd", "OFFLINE");
+    run(simulation, 1);
+    expect(simulation.snapshot()[0]).toMatchObject({ tripped: false, state: "ACCELERATING" });
+
+    const valves = simulate([{ id: "xv", name: "XV", type: "VALVE" }]);
+    run(valves, 1);
+    expect(valves.outputs("xv")).toMatchObject({ closed: true, opened: false });
+    valves.injectFault("xv", "LIMIT_SWITCH_FAULT");
+    run(valves, 1);
+    expect(valves.outputs("xv")).toMatchObject({ closed: true, opened: true, faulted: false, position: 0 });
+    expect(valves.snapshot()[0]).toMatchObject({ faulted: true, quality: "GOOD" });
+    valves.clearFault("xv", "LIMIT_SWITCH_FAULT");
+    run(valves, 1);
+    expect(valves.outputs("xv")).toMatchObject({ opened: false });
+  });
+});

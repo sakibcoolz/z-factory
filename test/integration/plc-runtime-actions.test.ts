@@ -263,10 +263,19 @@ describeDb("program, runtime and simulator server actions", () => {
     const valve = async () =>
       (await getSimulationView(simulation, alice, factoryId)).devices.find((device) => device.deviceId === valveId);
     expect(await fault("inject:STUCK")).toEqual({ notice: "Fault STUCK injected." });
-    expect((await valve())?.faults).toEqual([expect.objectContaining({ code: "STUCK", active: true })]);
+    // The valve's faults (TASK-1014): its own, a limit-switch disagreement, and the generic OFFLINE.
+    expect((await valve())?.faults).toEqual([
+      expect.objectContaining({ code: "STUCK", active: true }),
+      expect.objectContaining({ code: "LIMIT_SWITCH_FAULT", active: false }),
+      expect.objectContaining({ code: "OFFLINE", active: false }),
+    ]);
     expect(await fault("inject:NO_SUCH_FAULT")).toMatchObject({ message: expect.any(String) });
     expect(await fault("clear:STUCK")).toEqual({ notice: "Fault STUCK cleared." });
-    expect((await valve())?.faults).toEqual([expect.objectContaining({ code: "STUCK", active: false })]);
+    expect((await valve())?.faults.map((fault) => [fault.code, fault.active])).toEqual([
+      ["STUCK", false],
+      ["LIMIT_SWITCH_FAULT", false],
+      ["OFFLINE", false],
+    ]);
     expect(await fault("reset")).toEqual({ notice: "Device reset." });
     expect(await fault("explode")).toEqual(refused("Unknown device operation."));
 

@@ -265,7 +265,7 @@ describeSim("the catalog device runtime (TASK-1009)", () => {
       "actualFrequency",
       "outputCurrent",
     ]);
-    expect(vfd.faults.map((fault) => fault.code)).toEqual(["OVERCURRENT", "OVERTEMPERATURE"]);
+    expect(vfd.faults.map((fault) => fault.code)).toEqual(["OVERCURRENT", "OVERTEMPERATURE", "OFFLINE"]);
     await expect(client.devices.profile("BOILER")).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
@@ -375,6 +375,13 @@ describeSim("the catalog device runtime (TASK-1009)", () => {
     expect(await exception(writeModbus(endpoint, "COIL", 5, true))).toBe(2);
     expect(await exception(readModbus(endpoint, "INPUT_REGISTER", 2, 1))).toBe(2);
     expect(await exception(readModbus({ ...endpoint, unitId: 8 }, "COIL", 0, 1))).toBe(0x0a);
+    // Communication lost (TASK-1014): the unit answers nothing, quality BAD; back when cleared.
+    await client.devices.injectFault("served", "vfd", "COMM_LOSS");
+    expect(await exception(readModbus(endpoint, "COIL", 0, 1))).toBe(0x0b);
+    expect((await client.devices.device("served", "vfd")).quality).toBe("BAD");
+    await client.devices.clearFault("served", "vfd", "COMM_LOSS");
+    await client.devices.step("served", 1);
+    expect(await readModbus(endpoint, "COIL", 0, 1)).toEqual([true]);
     const events = await client.devices.events("served");
     expect(events.filter((event) => event.type === "PROTOCOL_WRITE").map((event) => event.payload?.signal)).toEqual([
       "run",
@@ -419,14 +426,44 @@ describeSim("the catalog device runtime (TASK-1009)", () => {
     }
     expect(snapshot.devices.find((device) => device.deviceId === "ps")?.outputs.state).toBe(1);
     expect(snapshot.devices.find((device) => device.deviceId === "xv")?.outputs.opened).toBe(1);
+
+    // The fault standard agrees too (TASK-1014): the drive unavailable in both engines, the
+    // chain reads the same, and back from zero the same.
+    reference.injectFault("vfd", "OFFLINE");
+    await client.devices.injectFault("parity", "vfd", "OFFLINE");
+    for (let step = 0; step < 30; step += 1) reference.step(0.1);
+    const offline = await client.devices.step("parity", 30);
+    for (const device of offline.devices) {
+      const expected = reference.outputs(device.deviceId);
+      for (const [key, value] of Object.entries(expected)) {
+        expect(device.outputs[key], `offline ${device.deviceId}.${key}`).toBeCloseTo(toNumber(value), 6);
+      }
+      expect(device.quality, device.deviceId).toBe(reference.quality(device.deviceId));
+    }
+    expect(offline.devices.find((device) => device.deviceId === "vfd")).toMatchObject({
+      state: "OFFLINE",
+      quality: "BAD",
+    });
+    reference.clearFault("vfd", "OFFLINE");
+    await client.devices.clearFault("parity", "vfd", "OFFLINE");
+    for (let step = 0; step < 20; step += 1) reference.step(0.1);
+    const back = await client.devices.step("parity", 20);
+    for (const device of back.devices) {
+      const expected = reference.outputs(device.deviceId);
+      for (const [key, value] of Object.entries(expected)) {
+        expect(device.outputs[key], `back ${device.deviceId}.${key}`).toBeCloseTo(toNumber(value), 6);
+      }
+    }
   });
 
   it("isolates factories, takes devices in and out while running, and names the rule of a refusal", async () => {
     await client.devices.load(factoryConfig("other"));
-    expect((await client.devices.inspect("parity")).tick).toBe(95);
+    // 95 ticks of the parity chain, then 30 unavailable and 20 back (the fault standard).
+    expect((await client.devices.inspect("parity")).tick).toBe(145);
     await client.devices.start("other");
     await client.devices.step("other", 10);
-    expect((await client.devices.inspect("parity")).tick).toBe(95);
+    // 95 ticks of the parity chain, then 30 unavailable and 20 back (the fault standard).
+    expect((await client.devices.inspect("parity")).tick).toBe(145);
 
     await client.devices.upsertDevice("other", { deviceId: "fan", name: "FN-01", profile: "FAN", profileVersion: 1 });
     expect((await client.devices.inspect("other")).deviceCount).toBe(CHAIN.length + 1);
