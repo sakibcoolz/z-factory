@@ -23,6 +23,7 @@ Examples:
 - SENSOR_VALUE_CHANGED
 - CONNECTION_UP / CONNECTION_DOWN
 - FAULT_INJECTED / FAULT_CLEARED
+- QUALITY_CHANGED (a device's feedback quality, GOOD ↔ BAD; TASK-1014)
 - ALARM_RAISED / ALARM_ACKNOWLEDGED / ALARM_CLEARED
 - PLC_LINK_CHANGED (family LINK; a PLC-to-PLC link or one of its mappings created, changed or removed, with the link's version)
 - CONNECTION_DOWN / CONNECTION_UP with `link: plc-link` (TASK-703): a PLC-to-PLC link's quality changed; `deviceId` is the client PLC, `to` the server, `state` the new quality (`STALE`, `DISCONNECTED`, `GOOD`) and `message` the reason. They raise no alarm.
@@ -71,7 +72,7 @@ An ALARM signal of a process module that becomes active records `PROCESS_ALARM_R
 
 ## Implementation (TASK-204)
 - Envelope type: `lib/domain/events.ts`. In-process bus: `lib/events/bus.ts` (`getEventBus()`); it keeps no history. The SSE transport is not built yet.
-- The device simulator emits: `SIMULATION_STARTED`, `SIMULATION_STOPPED`, `VFD_STATE_CHANGED`, `MOTOR_STATE_CHANGED`, `PUMP_STATE_CHANGED`, `VALVE_STATE_CHANGED`, `SENSOR_VALUE_CHANGED`, `DEVICE_STATE_CHANGED`, `FAULT_INJECTED`, `FAULT_CLEARED`, `DEVICE_RESET`, `SIMULATED_INPUT_FORCED`, `SIMULATED_INPUT_RELEASED`, `CONNECTION_UP`, `CONNECTION_DOWN` (PLC link of the simulator; `deviceId` is the PLC).
+- The device simulator emits: `SIMULATION_STARTED`, `SIMULATION_STOPPED`, `VFD_STATE_CHANGED`, `MOTOR_STATE_CHANGED`, `PUMP_STATE_CHANGED`, `VALVE_STATE_CHANGED`, `SENSOR_VALUE_CHANGED`, `DEVICE_STATE_CHANGED`, `FAULT_INJECTED`, `FAULT_CLEARED`, `DEVICE_RESET`, `QUALITY_CHANGED` (TASK-1014), `SIMULATED_INPUT_FORCED`, `SIMULATED_INPUT_RELEASED`, `CONNECTION_UP`, `CONNECTION_DOWN` (PLC link of the simulator; `deviceId` is the PLC).
 - State-change payload: `{ from, to, outputs }`. Fault payload: `{ code, name, latching, source }`.
 - Every emitted event is stored as a `RuntimeEvent` and published on the bus. Events are emitted on state changes, faults, operator actions and link changes, never per tick. A sensor emits value events only when its `eventDeadband` is configured.
 - Snapshots: one `DeviceRuntimeSnapshot` row per device, overwritten every `SIMULATION_SNAPSHOT_MS` and when the simulation stops.
@@ -91,7 +92,7 @@ Configuration events written inside a configuration transaction (`FACTORY_CREATE
 | Lifecycle | `FACTORY_CREATED`, `DEVICE_CREATED`, `DEVICE_STARTING`, `DEVICE_RUNNING`, `DEVICE_STOPPED`, `SIMULATION_STARTED`, `SIMULATION_STOPPED` |
 | Program | `PLC_PROGRAM_DEPLOYED`, `PLC_PROGRAM_DEPLOY_FAILED` |
 | Device state | `VFD_STATE_CHANGED`, `MOTOR_STATE_CHANGED`, `PUMP_STATE_CHANGED`, `VALVE_STATE_CHANGED`, `SENSOR_VALUE_CHANGED`, `DEVICE_STATE_CHANGED`, `SIMULATED_INPUT_FORCED`, `SIMULATED_INPUT_RELEASED` |
-| Faults | `DEVICE_FAULTED`, `FAULT_INJECTED`, `FAULT_CLEARED`, `DEVICE_RESET` |
+| Faults | `DEVICE_FAULTED`, `FAULT_INJECTED`, `FAULT_CLEARED`, `DEVICE_RESET`, `QUALITY_CHANGED` |
 | Alarms | `ALARM_RAISED`, `ALARM_ACKNOWLEDGED`, `ALARM_CLEARED` |
 | Commands | `COMMAND_ACCEPTED`, `COMMAND_FAILED`, `COMMAND_REJECTED`, `GATEWAY_COMMAND_RECEIVED` |
 | Connections | `CONNECTION_UP`, `CONNECTION_DOWN` (`payload.link`: `tag-monitor` or `device-simulator`), `GATEWAY_CLIENT_CONNECTED`, `GATEWAY_CLIENT_DISCONNECTED` (an edge device at a gateway endpoint; `deviceId` is the gateway, `payload.name` the device's address) |
