@@ -95,3 +95,4 @@ Phase 11 execution units:
 - TASK-1105 Mixed Modbus + OPC UA worker orchestration
 - TASK-1106 Multi-protocol command/write lifecycle & safety
 - TASK-1107 UI, observability, migration & mixed-protocol E2E validation
+- TASK-1108 Expose Factory & factory-level Edge Deployment JSON generation
