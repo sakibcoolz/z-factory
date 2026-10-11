@@ -14,9 +14,11 @@ import {
   type CatalogModule,
   factKey,
   isSimulated,
+  protocolOf,
   resolveFactSource,
 } from "@/lib/catalog/schema";
 import { findBehaviorProfile } from "@/lib/domain/behavior-contract";
+import { findRegisterMap } from "@/lib/domain/register-maps";
 import type { Prisma, PrismaClient } from "@/lib/generated/prisma/client";
 
 type Tx = Prisma.TransactionClient;
@@ -162,6 +164,36 @@ async function ingestModel(tx: Tx, model: CatalogModel, familyId: string): Promi
     if (existing) await tx.deviceIoDefinition.update({ where: { id: existing.id }, data: values });
     else
       await tx.deviceIoDefinition.create({ data: { deviceModelId, terminalLabel: terminal.terminalLabel, ...values } });
+  }
+  // A protocol-controlled model's register definitions are the declared map, register by
+  // register (TASK-1013); the catalog rules have checked the map is declared and fits.
+  const protocol = protocolOf(model);
+  const registerMap = protocol ? findRegisterMap(protocol.registerMap) : undefined;
+  if (protocol && registerMap) {
+    for (const register of registerMap.registers) {
+      const values = {
+        dataType: register.dataType,
+        wordCount: register.wordCount,
+        byteOrder: "BIG_ENDIAN" as const,
+        wordOrder: "HIGH_WORD_FIRST" as const,
+        access: register.access,
+        scale: register.scale,
+        unit: register.unit,
+        semanticRole: register.role,
+      };
+      await tx.protocolRegisterDefinition.upsert({
+        where: {
+          deviceModelId_protocol_area_address: {
+            deviceModelId,
+            protocol: protocol.kind,
+            area: register.area,
+            address: register.address,
+          },
+        },
+        create: { deviceModelId, protocol: protocol.kind, area: register.area, address: register.address, ...values },
+        update: values,
+      });
+    }
   }
   if (!isSimulated(model)) return deviceModelId;
   // Faults and parameter values are those of the model's behaviour profile; the catalog

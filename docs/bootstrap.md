@@ -82,6 +82,8 @@ All variables are read through `lib/env.ts`, which validates them with Zod and f
 | `PROCESS_SIM_TOKEN` | no | — | the service's bearer token (at least 16 characters); sent by the server only, never by a browser |
 | `PROCESS_SIM_MAX_INSTANCES` | no | `services/process-sim` (container) | Process-module instances the service holds at most (default `256`) |
 | `PROCESS_SIM_MAX_DEVICES` | no | `services/process-sim` (container) | Devices of the catalog device runtime the service holds at most, over all factories (default `2048`; TASK-1009) |
+| `PROCESS_SIM_MODBUS_BIND` | no | `services/process-sim` (container) | Address the service's Modbus TCP listeners for protocol-controlled devices bind to (default `127.0.0.1`; TASK-1013, `docs/security.md`) |
+| `PROCESS_SIM_MODBUS_PORTS` | no | `services/process-sim` (container) | Port range of those listeners, one port per factory with protocol devices, `min-max` (default `17000-17999`) |
 | `PROCESS_SIM_TICK_MS` | no | `100` | simulated time per process-model tick (10–10000) |
 | `PROCESS_BRIDGE_CYCLE_MS` | no | `200` | real time between two exchanges of the process bridge with the PLCs (50–5000); each advances the models by the same simulated time |
 | `TAG_POLL_MS` | no | `lib/services/runtime-deps.ts` | How often the tags of a running PLC are read for live values, 100–60000 ms (default `500`) |

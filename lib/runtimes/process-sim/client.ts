@@ -6,6 +6,7 @@ import type {
   DeviceSimDeviceSnapshot,
   DeviceSimEvent,
   DeviceSimProfile,
+  DeviceSimRegisterMap,
   DeviceSimSnapshot,
   DeviceSimSummary,
   ProcessSimConfig,
@@ -92,6 +93,9 @@ export function createProcessSimClient(options: {
   const devices = {
     profiles: () => request<{ profiles: DeviceSimProfile[] }>("GET", "/v1/profiles").then((body) => body.profiles),
     profile: (key: string) => request<DeviceSimProfile>("GET", `/v1/profiles/${encodeURIComponent(key)}`),
+    registerMaps: () =>
+      request<{ registerMaps: DeviceSimRegisterMap[] }>("GET", "/v1/register-maps").then((body) => body.registerMaps),
+    registerMap: (key: string) => request<DeviceSimRegisterMap>("GET", `/v1/register-maps/${encodeURIComponent(key)}`),
     list: () => request<{ factories: DeviceSimSummary[] }>("GET", "/v1/factories").then((body) => body.factories),
     load: (config: DeviceSimConfig) => request<DeviceSimSnapshot>("PUT", factory(config.factoryId), config),
     inspect: (factoryId: string) => request<DeviceSimSnapshot>("GET", factory(factoryId)),

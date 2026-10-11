@@ -294,6 +294,37 @@ describeDb("device catalog against PostgreSQL", () => {
       where: { deviceModel: { modelName: "Generic VFD, hardwired control" } },
     });
     expect(genericFaults.every((fault) => fault.description === null)).toBe(true);
+    // The Modbus drive (TASK-1013): the runtime's profile and map named, the map stored register by register.
+    const modbusDrive = await getCatalogModel(db, await modelId("Generic VFD, Modbus TCP"));
+    expect(modbusDrive.simulation).toMatchObject({
+      coverage: "NOT_SIMULATABLE",
+      profile: null,
+      runtimeOnly: { profile: { key: "VFD", version: 1 } },
+      protocol: { kind: "MODBUS_TCP", registerMap: { key: "VFD_MODBUS_TCP", version: 1 } },
+    });
+    expect(
+      modbusDrive.registers.map((register) => [
+        register.area,
+        register.address,
+        register.access,
+        register.dataType,
+        register.scale,
+        register.unit,
+        register.semanticRole,
+      ]),
+    ).toEqual([
+      ["COIL", 0, "READ_WRITE", "BOOL", 1, null, "COMMAND"],
+      ["COIL", 1, "READ_WRITE", "BOOL", 1, null, "COMMAND"],
+      ["COIL", 2, "READ_WRITE", "BOOL", 1, null, "COMMAND"],
+      ["DISCRETE_INPUT", 0, "READ_ONLY", "BOOL", 1, null, "STATUS"],
+      ["DISCRETE_INPUT", 1, "READ_ONLY", "BOOL", 1, null, "STATUS"],
+      ["DISCRETE_INPUT", 2, "READ_ONLY", "BOOL", 1, null, "ALARM"],
+      ["HOLDING_REGISTER", 0, "READ_WRITE", "UINT16", 0.1, "Hz", "SETPOINT"],
+      ["INPUT_REGISTER", 0, "READ_ONLY", "UINT16", 0.1, "Hz", "FEEDBACK"],
+      ["INPUT_REGISTER", 1, "READ_ONLY", "UINT16", 0.1, "A", "FEEDBACK"],
+    ]);
+    expect(await db.protocolRegisterDefinition.count()).toBe(9);
+    expect((await getCatalogModel(db, await modelId("Generic VFD, hardwired control"))).registers).toEqual([]);
     expect(overview.manufacturers.map((manufacturer) => [manufacturer.name, manufacturer.modelCount])).toEqual([
       ["Generic / simulated", 28],
       ["Rockwell Automation", 2],

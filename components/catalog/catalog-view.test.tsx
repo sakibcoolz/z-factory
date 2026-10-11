@@ -18,6 +18,8 @@ const notSimulated: CatalogModelDetail["simulation"] = {
   parameters: {},
   features: [],
   sources: {},
+  protocol: null,
+  runtimeOnly: null,
   statement: "configuration and metadata only; the simulator executes no behaviour for it",
 };
 
@@ -35,6 +37,7 @@ const plc: CatalogModelDetail = {
   controlCapability: "PROGRAMMABLE",
   lifecycleStatus: "UNKNOWN",
   simulation: notSimulated,
+  registers: [],
   source: {
     url: "https://cache.industry.siemens.com/dl/files/145/39710145/att_5787/v1/s71200_easy_book_en-US_en-US.pdf",
     title: "SIMATIC S7-1200 Easy Book",
@@ -219,6 +222,8 @@ describe("catalog model view", () => {
             parameters: {},
             features: [],
             sources: {},
+            protocol: null,
+            runtimeOnly: null,
             statement:
               "the generic behaviour of its category (behaviour profile VALVE v1): a behaviour model, not vendor firmware",
           },
@@ -300,6 +305,8 @@ describe("catalog model view", () => {
               },
               "feature:S_RAMP": { reference: "A439 [S Curve %], page 119", note: null, document: null },
             },
+            protocol: null,
+            runtimeOnly: null,
             statement:
               "a declared subset of this model's behaviour is implemented (behaviour profile VFD v1): a behaviour model, not vendor firmware",
           },
@@ -316,6 +323,76 @@ describe("catalog model view", () => {
     expect(screen.getAllByRole("link", { name: "PowerFlex 520-series User Manual" }).length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText(/F012 HW OverCurrent, page 161 — the profile's one overcurrent trip/)).toBeInTheDocument();
     expect(screen.getByText(/A439 \[S Curve %\], page 119/)).toBeInTheDocument();
+  });
+
+  it("shows the declared register map of a protocol-controlled model (TASK-1013)", () => {
+    render(
+      <CatalogModelView
+        model={{
+          ...plc,
+          modelName: "Generic VFD, Modbus TCP",
+          sku: null,
+          architectureType: null,
+          manufacturer: "Generic / simulated",
+          family: "Generic drives",
+          categoryCode: "VFD",
+          categoryName: "Variable-frequency drive",
+          verificationStatus: "GENERIC",
+          runtimeSupport: "NONE",
+          controlCapability: "PROTOCOL_CONTROLLED",
+          source: { url: null, title: null, revision: null, retrievedAt: null, verifiedAt: null },
+          simulation: {
+            ...notSimulated,
+            reason: "The runtime runs profile VFD and serves its registers over Modbus TCP.",
+            protocol: { kind: "MODBUS_TCP", registerMap: { key: "VFD_MODBUS_TCP", version: 1 } },
+            runtimeOnly: { profile: { key: "VFD", version: 1 } },
+          },
+          ports: [{ name: "Ethernet", physicalType: "Ethernet", protocols: ["MODBUS_TCP"], portCount: 1, notes: null }],
+          registers: [
+            {
+              protocol: "MODBUS_TCP",
+              area: "COIL",
+              address: 0,
+              dataType: "BOOL",
+              wordCount: 1,
+              access: "READ_WRITE",
+              scale: 1,
+              unit: null,
+              semanticRole: "COMMAND",
+            },
+            {
+              protocol: "MODBUS_TCP",
+              area: "HOLDING_REGISTER",
+              address: 0,
+              dataType: "UINT16",
+              wordCount: 1,
+              access: "READ_WRITE",
+              scale: 0.1,
+              unit: "Hz",
+              semanticRole: "SETPOINT",
+            },
+            {
+              protocol: "MODBUS_TCP",
+              area: "INPUT_REGISTER",
+              address: 0,
+              dataType: "UINT16",
+              wordCount: 1,
+              access: "READ_ONLY",
+              scale: 0.1,
+              unit: "Hz",
+              semanticRole: "FEEDBACK",
+            },
+          ],
+        }}
+      />,
+    );
+    expect(screen.getByText(/declared register map VFD_MODBUS_TCP v1/)).toBeInTheDocument();
+    const table = screen.getByRole("table");
+    expect(within(table).getAllByRole("row")).toHaveLength(4);
+    expect(within(table).getByText("holding register")).toBeInTheDocument();
+    expect(within(table).getAllByText("read / write")).toHaveLength(2);
+    expect(within(table).getByText("setpoint")).toBeInTheDocument();
+    expect(screen.getByText(/never guessed/)).toBeInTheDocument();
   });
 
   it("says a programmable controller is not a simulated device, and why", () => {

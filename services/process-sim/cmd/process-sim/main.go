@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -37,6 +38,17 @@ func main() {
 
 	processes := engine.New(log, maxInstances)
 	devices := runtime.New(log, maxDevices, device.Options{})
+	// Where factories' protocol devices are served over Modbus TCP (TASK-1013).
+	modbusPorts := envOr("PROCESS_SIM_MODBUS_PORTS", "17000-17999")
+	var minPort, maxPort int
+	if _, err := fmt.Sscanf(modbusPorts, "%d-%d", &minPort, &maxPort); err != nil {
+		log.Error("PROCESS_SIM_MODBUS_PORTS must be a range like 17000-17999")
+		os.Exit(2)
+	}
+	if err := devices.ConfigureModbus(runtime.ModbusOptions{Bind: envOr("PROCESS_SIM_MODBUS_BIND", "127.0.0.1"), MinPort: minPort, MaxPort: maxPort}); err != nil {
+		log.Error("refusing to start", "error", err.Error())
+		os.Exit(2)
+	}
 	server, err := api.New(processes, devices, os.Getenv("PROCESS_SIM_TOKEN"), log)
 	if err != nil {
 		log.Error("refusing to start", "error", err.Error())
@@ -54,7 +66,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	go func() {
-		log.Info("process-sim listening", "addr", addr, "version", api.Version, "contractVersion", engine.ContractVersion, "deviceContractVersion", device.ContractVersion, "maxInstances", maxInstances, "maxDevices", maxDevices, "profiles", device.Profiles())
+		log.Info("process-sim listening", "addr", addr, "version", api.Version, "contractVersion", engine.ContractVersion, "deviceContractVersion", device.ContractVersion, "maxInstances", maxInstances, "maxDevices", maxDevices, "profiles", device.Profiles(), "registerMaps", device.RegisterMaps(), "modbusBind", envOr("PROCESS_SIM_MODBUS_BIND", "127.0.0.1"), "modbusPorts", modbusPorts)
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Error("server stopped", "error", err.Error())
 			os.Exit(1)

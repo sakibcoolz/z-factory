@@ -3,7 +3,13 @@ import { describe, expect, it } from "vitest";
 import { loadCatalog, mergeCatalogs } from "@/lib/catalog";
 import { GENERIC_CATEGORIES } from "@/lib/catalog/generic-categories";
 import { genericModels } from "@/lib/catalog/generic-models";
-import { type CatalogInput, GENERIC_MANUFACTURER, parseCatalog, resolveFactSource } from "@/lib/catalog/schema";
+import {
+  type CatalogInput,
+  GENERIC_MANUFACTURER,
+  parseCatalog,
+  protocolOf,
+  resolveFactSource,
+} from "@/lib/catalog/schema";
 import { siemens } from "@/lib/catalog/vendor/siemens";
 import { CONTROL_CAPABILITIES, DRIVE_TYPES, signalFits, VERIFICATION_STATUSES } from "@/lib/domain/catalog";
 import { DomainError } from "@/lib/domain/errors";
@@ -173,6 +179,39 @@ describe("shipped catalog", () => {
       ["Schneider Electric", "TM241CE24T", "TM241CE24T", "COMPACT"],
     ]);
     expect(plcs.every((model) => model.controlCapability === "PROGRAMMABLE")).toBe(true);
+  });
+
+  it("names what the runtime runs for the models the server's simulator does not (TASK-1013)", () => {
+    const byName = Object.fromEntries(catalog.models.map((model) => [model.modelName, model.simulation]));
+    const modbusDrive = byName["Generic VFD, Modbus TCP"];
+    expect(modbusDrive).toMatchObject({
+      coverage: "NOT_SIMULATABLE",
+      reason: expect.stringContaining("VFD_MODBUS_TCP"),
+      runtimeOnly: {
+        profile: "VFD",
+        profileVersion: 1,
+        protocol: { kind: "MODBUS_TCP", registerMap: "VFD_MODBUS_TCP", registerMapVersion: 1 },
+      },
+    });
+    for (const [name, profile] of [
+      ["Generic contactor, 24 V DC coil", "RELAY"],
+      ["Generic heater, contactor-switched", "HEATER"],
+      ["Generic stack light, 24 V DC", "INDICATOR"],
+      ["Generic temperature controller", "PID_CONTROLLER"],
+    ]) {
+      expect(byName[name!], name).toMatchObject({
+        coverage: "NOT_SIMULATABLE",
+        runtimeOnly: { profile, profileVersion: 1 },
+      });
+    }
+    // Nothing else names a protocol: a vendor's register map is never guessed.
+    const withProtocol = catalog.models.filter((model) => protocolOf(model) !== null);
+    expect(withProtocol.map((model) => model.modelName)).toEqual(["Generic VFD, Modbus TCP"]);
+    // The remote I/O station and the gateway say what is missing, not that registers are coming.
+    expect(byName["Generic remote I/O station, Modbus TCP"]).toMatchObject({
+      coverage: "NOT_SIMULATABLE",
+      reason: expect.stringContaining("No behaviour profile"),
+    });
   });
 
   it("maps the two vendor drives onto the generic VFD profile with sourced factory values (TASK-1012)", () => {
@@ -591,6 +630,58 @@ describe("simulation decision rules", () => {
     expectRejected(
       withDrive(simulated("VFD"), true, ["PARAMETER_CONFIGURABLE", "FIRMWARE_DEPLOYABLE"]),
       /no firmware is deployed to it/,
+    );
+  });
+
+  it("serves a protocol device only on a declared register map of its profile, through a port (TASK-1013)", () => {
+    const modbus = { kind: "MODBUS_TCP" as const, registerMap: "VFD_MODBUS_TCP", registerMapVersion: 1 };
+    const port = { name: "Ethernet", physicalType: "Ethernet", protocols: ["MODBUS_TCP" as const] };
+    const served = (protocol: Record<string, unknown>, ports: Array<typeof port> = [port]): CatalogInput => ({
+      ...siemens,
+      models: [
+        ...siemens.models,
+        {
+          ...vendorDrive(simulated("VFD", [], { protocol: { ...modbus, ...protocol } as never })),
+          ports,
+          capabilities: ports.length > 0 ? ["PARAMETER_CONFIGURABLE", "MODBUS_SERVER"] : ["PARAMETER_CONFIGURABLE"],
+        },
+      ],
+    });
+    expect(parseCatalog(served({})).models[2]?.simulation).toMatchObject({ protocol: modbus });
+    expectRejected(served({ registerMap: "PUMP_MODBUS_TCP" }), /not declared; vendor maps are never guessed/);
+    expectRejected(served({ registerMapVersion: 2 }), /not declared/);
+    expectRejected(served({}, []), /communication port for it/);
+    // A map of another profile is refused; so is a protocol kind the catalog does not know.
+    expectRejected(
+      withModel(genericModels, (model) => ({
+        ...model,
+        modelName: "Generic pump, Modbus",
+        family: "Generic pumps",
+        category: "PUMP",
+        ports: [port],
+        terminals: [],
+        simulation: simulated("PUMP", [], { protocol: modbus }),
+      })),
+      /map of its behaviour profile/,
+    );
+    expect(() => parseCatalog(served({ kind: "PROFINET" }))).toThrow();
+    // A NOT_SIMULATABLE model may name what the runtime runs for it, under the same rules.
+    const runtimeOnly = (block: Record<string, unknown>): CatalogInput =>
+      withModel(genericModels, (model) => ({
+        ...model,
+        runtimeSupport: "NONE",
+        terminals: [],
+        ports: [port],
+        simulation: { coverage: "NOT_SIMULATABLE", reason: "test: the runtime runs it", runtimeOnly: block } as never,
+      }));
+    expect(
+      parseCatalog(runtimeOnly({ profile: "VFD", profileVersion: 1, protocol: modbus })).models[0]?.simulation,
+    ).toMatchObject({ coverage: "NOT_SIMULATABLE", runtimeOnly: { profile: "VFD", protocol: modbus } });
+    expectRejected(runtimeOnly({ profile: "BOILER", profileVersion: 1 }), /runtime profile/);
+    expectRejected(runtimeOnly({ profile: "PUMP", profileVersion: 1 }), /runtime profile is the one of its category/);
+    expectRejected(
+      runtimeOnly({ profile: "VFD", profileVersion: 1, protocol: { ...modbus, registerMap: "X" } }),
+      /never guessed/,
     );
   });
 

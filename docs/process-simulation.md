@@ -325,7 +325,11 @@ invalid parameter, named), `supported-fault`, `link-role`, `link-target`, `drive
 `one-motor-per-drive`, `motor`, `one-load-per-motor`, `measured-device`,
 `measured-signal`, `contactor` and `controller` (TASK-1011: a heater's contactor is a relay,
 a heater's or valve's controller a PID controller, a servo motor's drive a servo drive),
-`input-signal`. Then, per factory: `start`, `stop`, `reset` (every
+`input-signal`, and for protocol devices (TASK-1013) `protocol-kind`, `unit-id` (1–247),
+`register-map` (a declared map), `register-map-version`, `register-map-profile` (the map
+is the device's profile's), `unique-unit-id` (per factory), `modbus-listener` (a factory
+with protocol devices names a `modbusTcp` port), `modbus-port` (0 or within the runtime's
+range) and `modbus-listen` (the port could not be opened). Then, per factory: `start`, `stop`, `reset` (every
 device rebuilt from its configuration, a `RESET` event), `step?ticks=n` (a RUNNING
 factory; `409 wrong-state`, rule `factory-state`), `GET` (the snapshot with every
 device), `DELETE`, `events?after=seq` (the last 500). Per device, while the factory is
@@ -353,7 +357,57 @@ Events are the server simulator's, numbered per factory and stamped with the tic
 `FAULT_INJECTED`, `FAULT_CLEARED`, `DEVICE_RESET`, `SIMULATED_INPUT_FORCED`,
 `SIMULATED_INPUT_RELEASED`, plus the runtime's `DEVICE_RUNTIME_FAULT`,
 `DEVICE_QUARANTINED` and `RESET`, and since TASK-1011 `FAULT_RAISED` (a fault a behaviour
-raised from its own physics; `FAULT_CLEARED` with `by: model` when it releases it).
+raised from its own physics; `FAULT_CLEARED` with `by: model` when it releases it), and
+since TASK-1013 `PROTOCOL_WRITE` (a signal a client set over the network, with the unit
+id, area and value) and `PROTOCOL_WRITE_REJECTED` (a refused write, at most once per
+address every 30 seconds).
+
+### Register maps and the Modbus listener (TASK-1013, ADR-0027)
+A protocol-controlled device is a behaviour profile behind a **declared register map**:
+every register is one signal of the profile at one Modbus area and address, with its
+data type, scale, offset, unit, access and role, and for a writable register the range a
+write must stay in. The area and the access follow from the signal: a boolean command is
+a coil, a numeric setpoint a holding register, boolean feedback a discrete input, numeric
+feedback an input register; commands and setpoints are `READ_WRITE`, feedback
+`READ_ONLY`. `GET /v1/register-maps` (and `/v1/register-maps/{key}`) describes every map
+the runtime serves (`internal/device/registers.go`, validated against the profile when
+declared); the same maps are the contract on the server (`lib/domain/register-maps.ts`),
+and the parity test compares the two field by field. Z-Factory ships one map,
+`VFD_MODBUS_TCP` v1, the generic Modbus drive's (`docs/device-simulation.md` →
+Protocol-controlled devices). A vendor's map would be catalog data with its provenance
+(TASK-1012) and is never guessed: a device may name only a declared map.
+
+A device is served by naming its protocol in its configuration
+(`"protocol": { "kind": "MODBUS_TCP", "unitId": 7, "registerMap": "VFD_MODBUS_TCP",
+"registerMapVersion": 1 }`) in a factory that asks for a listener
+(`"modbusTcp": { "port": 0 }`; 0 takes any free port, otherwise a port of
+`PROCESS_SIM_MODBUS_PORTS`). The runtime opens one Modbus TCP listener per such factory
+on `PROCESS_SIM_MODBUS_BIND` (default `127.0.0.1`) when the factory is loaded and closes
+it when the factory is unloaded or replaced; the summary reports it under `modbusTcp`
+(address, port, devices served) and a device snapshot carries its `protocol`. Every
+protocol device of the factory answers at its unit id:
+
+| Request | Answer |
+|---|---|
+| read coils / holding registers of mapped addresses | the device's commands and setpoints as last written, scaled to raw words |
+| read discrete inputs / input registers of mapped addresses | the device's feedback as the behaviour produced it at the last step, scaled |
+| write a coil or holding register the map names as writable | the behaviour's input is set (engineering value = raw × scale + offset), checked against the register's range (a bound naming a parameter is resolved against the device's effective parameters); `PROTOCOL_WRITE` per changed signal |
+| write several registers at once | applied whole or not at all |
+| an address the map does not name, or a write to a read-only area | exception `02`, nothing touched; `PROTOCOL_WRITE_REJECTED` |
+| a value outside the register's range | exception `03`, nothing touched; `PROTOCOL_WRITE_REJECTED` |
+| a unit id no device has | exception `0A` |
+| a function other than 1–6, 15, 16, or a malformed request | exception `01` / `03`; a connection that does not speak Modbus TCP is closed |
+
+The behaviour is the same as a hardwired device's: a write over Modbus lands on the same
+input a PLC output wired to a terminal would set, and the next step reacts to it. The
+runtime never writes a PLC output; it only takes what a client writes to the device
+(ADR-0015). A listener takes at most 8 connections and closes one that is silent for two
+minutes; it has no authentication, like every Modbus TCP server (`docs/security.md`).
+
+What is not done: reaching a listener from a PLC container. The runtime listens on the
+host's loopback by default and PLC containers live on factory networks; TASK-1015 decides
+the network path and configures the PLC's Modbus master for the device. A remote I/O
+station has no profile yet, because it exposes channels rather than a behaviour.
 
 ### Determinism and isolation
 Within a factory the step order is fixed: drives, motors, loads, valves, then sensors
@@ -376,7 +430,7 @@ sensors and switches.
 ## Observability
 Structured JSON logs (`log/slog`) for every request, instance lifecycle change and event.
 `GET /healthz` (no token): status, version, contract version, device contract version,
-uptime, instance count, model types, factory and device counts, profiles. `GET /metrics`
+uptime, instance count, model types, factory and device counts, profiles, register maps. `GET /metrics`
 (token): instances by status, ticks total, duration of the last tick, model types, and
 under `devices` the runtime's counters: factories and devices by status, the device
 limit, factory ticks total, the last tick's duration, stalled factories, profiles.
@@ -390,6 +444,10 @@ limit, factory ticks total, the last tick's duration, stalled factories, profile
 - Z-Factory: `PROCESS_SIM_URL` and `PROCESS_SIM_TOKEN` (both optional; without them there
   is no process simulation), `PROCESS_SIM_TICK_MS` and `PROCESS_BRIDGE_CYCLE_MS` for the
   bridge. The client is `createProcessSimClient` in `lib/runtimes/process-sim/client.ts`.
+- The service's Modbus listeners (TASK-1013): `PROCESS_SIM_MODBUS_BIND` (default
+  `127.0.0.1`) and `PROCESS_SIM_MODBUS_PORTS` (default `17000-17999`); the compose file
+  passes both through and publishes no listener port, so a served device is reachable
+  only inside the container until TASK-1015 decides the network path.
 - Tests: `go test -race ./...` in the service; `test/integration/process-sim.test.ts`
   starts the built binary when `PROCESS_SIM_BIN` names it, drives it through the client and
   restarts it, and (TASK-1009) loads a factory of devices into the catalog device runtime,

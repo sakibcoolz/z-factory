@@ -277,6 +277,9 @@ export function CatalogModelView({ model, peripherals }: CatalogModelViewProps) 
       <p className="zf-sub">
         {`${model.simulation.statement.charAt(0).toUpperCase()}${model.simulation.statement.slice(1)}.`}
         {model.simulation.reason ? ` ${model.simulation.reason}` : ""}
+        {model.simulation.protocol
+          ? ` Served over ${model.simulation.protocol.kind.replace("MODBUS_TCP", "Modbus TCP")} with the declared register map ${model.simulation.protocol.registerMap.key} v${model.simulation.protocol.registerMap.version} (below).`
+          : ""}
       </p>
       {model.simulation.profile ? (
         <div className="grid grid-cols-3 gap-3">
@@ -317,6 +320,45 @@ export function CatalogModelView({ model, peripherals }: CatalogModelViewProps) 
             </Fact>
           </div>
         </div>
+      ) : null}
+
+      {model.registers.length > 0 ? (
+        <>
+          <SectionRule>
+            <span className="zf-k">Register map</span>
+          </SectionRule>
+          <p className="zf-sub">
+            What the device exposes on the network, register by register: zero-based addresses, big-endian, high word
+            first; engineering value = raw × scale. Declared by Z-Factory for the generic model; a vendor&apos;s map is
+            never guessed.
+          </p>
+          <table className="zf-tbl">
+            <thead>
+              <tr>
+                <th>Area</th>
+                <th>Address</th>
+                <th>Type</th>
+                <th>Access</th>
+                <th>Scale</th>
+                <th>Unit</th>
+                <th>Role</th>
+              </tr>
+            </thead>
+            <tbody>
+              {model.registers.map((register) => (
+                <tr key={`${register.protocol}-${register.area}-${register.address}`}>
+                  <td className="mono">{register.area.toLowerCase().replace(/_/g, " ")}</td>
+                  <td className="mono">{register.address}</td>
+                  <td className="mono">{register.dataType}</td>
+                  <td className="mono">{register.access === "READ_WRITE" ? "read / write" : "read only"}</td>
+                  <td className="mono">{register.scale}</td>
+                  <td className="mono">{register.unit ?? "—"}</td>
+                  <td className="mono">{register.semanticRole?.toLowerCase().replace(/_/g, " ") ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
       ) : null}
 
       <SectionRule>

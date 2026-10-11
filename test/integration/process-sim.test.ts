@@ -3,6 +3,9 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createServer } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { BEHAVIOR_PROFILES } from "@/lib/domain/behavior-contract";
+import { DomainError } from "@/lib/domain/errors";
+import { REGISTER_MAPS, wireRegisterMap } from "@/lib/domain/register-maps";
+import { readModbus, writeModbus, writeModbusRegisters } from "@/lib/protocols/modbus/client";
 import {
   DEVICE_SIM_CONTRACT_VERSION,
   type DeviceSimConfig,
@@ -307,6 +310,92 @@ describeSim("the catalog device runtime (TASK-1009)", () => {
       );
       expect(described.parameters, where).toEqual(defaults);
     }
+  });
+
+  it("describes every register map exactly as the contract does, and serves it over Modbus TCP (TASK-1013)", async () => {
+    const health = await client.health();
+    expect(health.registerMaps).toEqual(Object.keys(REGISTER_MAPS).sort());
+    for (const contract of Object.values(REGISTER_MAPS)) {
+      expect(await client.devices.registerMap(contract.key), contract.key).toEqual(wireRegisterMap(contract));
+    }
+    expect((await client.devices.registerMaps()).map((map) => map.key)).toEqual(Object.keys(REGISTER_MAPS).sort());
+    await expect(client.devices.registerMap("PUMP_MODBUS_TCP")).rejects.toMatchObject({ code: "NOT_FOUND" });
+
+    // A factory with a Modbus drive feeding a motor, served on any free port of the runtime's range.
+    const served: DeviceSimConfig = {
+      contractVersion: DEVICE_SIM_CONTRACT_VERSION,
+      factoryId: "served",
+      configVersion: 1,
+      tickMs: 100,
+      clock: "manual",
+      modbusTcp: { port: 0 },
+      devices: [
+        {
+          deviceId: "vfd",
+          name: "VFD-01",
+          profile: "VFD",
+          profileVersion: 1,
+          parameters: { maxFrequencyHz: 60 },
+          protocol: { kind: "MODBUS_TCP", unitId: 7, registerMap: "VFD_MODBUS_TCP", registerMapVersion: 1 },
+        },
+        { deviceId: "motor", name: "M-01", profile: "MOTOR", profileVersion: 1, links: { drive: "vfd" } },
+      ],
+    };
+    const loaded = await client.devices.load(served);
+    expect(loaded.modbusTcp).toMatchObject({ devices: 1 });
+    expect(loaded.modbusTcp?.port).toBeGreaterThan(0);
+    expect(loaded.devices.find((device) => device.deviceId === "vfd")?.protocol).toEqual(served.devices[0]?.protocol);
+    const [host, portText] = loaded.modbusTcp!.address.split(":");
+    const endpoint = { host: host!, port: Number(portText), unitId: 7 };
+
+    // The PLC's writes land on the behaviour's inputs; reads give feedback after the steps.
+    await writeModbus(endpoint, "COIL", 0, true);
+    await writeModbus(endpoint, "HOLDING_REGISTER", 0, 450);
+    await client.devices.start("served");
+    const snapshot = await client.devices.step("served", 100);
+    const vfd = snapshot.devices.find((device) => device.deviceId === "vfd")!;
+    expect(vfd.inputs).toMatchObject({ run: 1, frequencySetpoint: 45 });
+    expect(vfd.outputs.actualFrequency).toBe(45);
+    expect(await readModbus(endpoint, "DISCRETE_INPUT", 0, 3)).toEqual([true, true, false]);
+    expect(await readModbus(endpoint, "INPUT_REGISTER", 0, 1)).toEqual([450]);
+    expect(await readModbus(endpoint, "COIL", 0, 3)).toEqual([true, false, false]);
+    expect(await readModbus(endpoint, "HOLDING_REGISTER", 0, 1)).toEqual([450]);
+    // Refusals: the range (03), an unmapped or read-only address (02), another unit id (0A).
+    const exception = async (promise: Promise<unknown>) => {
+      try {
+        await promise;
+      } catch (error) {
+        expect(error).toBeInstanceOf(DomainError);
+        return (error as DomainError).details.exceptionCode;
+      }
+      throw new Error("expected a Modbus exception");
+    };
+    expect(await exception(writeModbus(endpoint, "HOLDING_REGISTER", 0, 650))).toBe(3);
+    expect(await exception(writeModbusRegisters(endpoint, 0, [100, 200]))).toBe(2);
+    expect(await exception(writeModbus(endpoint, "COIL", 5, true))).toBe(2);
+    expect(await exception(readModbus(endpoint, "INPUT_REGISTER", 2, 1))).toBe(2);
+    expect(await exception(readModbus({ ...endpoint, unitId: 8 }, "COIL", 0, 1))).toBe(0x0a);
+    const events = await client.devices.events("served");
+    expect(events.filter((event) => event.type === "PROTOCOL_WRITE").map((event) => event.payload?.signal)).toEqual([
+      "run",
+      "frequencySetpoint",
+    ]);
+    // A refusal is recorded once per address in 30 s: the two at holding register 0 are one event.
+    expect(events.filter((event) => event.type === "PROTOCOL_WRITE_REJECTED")).toHaveLength(2);
+    // The rules of a refused configuration are named.
+    await expect(client.devices.load({ ...served, factoryId: "x", modbusTcp: undefined })).rejects.toMatchObject({
+      code: "VALIDATION",
+      details: { rule: "modbus-listener" },
+    });
+    await expect(
+      client.devices.load({
+        ...served,
+        factoryId: "x",
+        devices: [{ ...served.devices[0]!, protocol: { ...served.devices[0]!.protocol!, registerMap: "PUMP" } }],
+      }),
+    ).rejects.toMatchObject({ code: "VALIDATION", details: { rule: "register-map" } });
+    await client.devices.unload("served");
+    await expect(readModbus(endpoint, "COIL", 0, 1)).rejects.toMatchObject({ code: "RUNTIME_FAILURE" });
   });
 
   it("gives the same values as the server's own simulator for the same configuration and inputs", async () => {

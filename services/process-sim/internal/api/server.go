@@ -110,6 +110,7 @@ func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
 		"factories":             devices.Factories,
 		"devices":               devices.Devices,
 		"profiles":              devices.Profiles,
+		"registerMaps":          device.RegisterMaps(),
 	})
 }
 

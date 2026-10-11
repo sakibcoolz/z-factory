@@ -32,6 +32,11 @@ services:
       PROCESS_SIM_TOKEN: ${PROCESS_SIM_TOKEN:-}
       PROCESS_SIM_MAX_INSTANCES: ${PROCESS_SIM_MAX_INSTANCES:-256}
       PROCESS_SIM_MAX_DEVICES: ${PROCESS_SIM_MAX_DEVICES:-2048}
+      # Modbus TCP listeners for protocol-controlled devices (TASK-1013); no port of the
+      # range is published, so a served device is reachable only inside the container
+      # until TASK-1015 decides the path a PLC container takes.
+      PROCESS_SIM_MODBUS_BIND: ${PROCESS_SIM_MODBUS_BIND:-127.0.0.1}
+      PROCESS_SIM_MODBUS_PORTS: ${PROCESS_SIM_MODBUS_PORTS:-17000-17999}
     ports:
       - "127.0.0.1:${PROCESS_SIM_PORT:-7700}:7700"
     cpus: 1

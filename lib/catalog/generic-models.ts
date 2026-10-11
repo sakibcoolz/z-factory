@@ -24,9 +24,22 @@ const simulated = (profile: string, faults: string[] = []): Simulation => ({
 /** A model nothing executes: it can be placed and wired, and the reason says why that is all. */
 const notSimulated = (reason: string): Simulation => ({ coverage: "NOT_SIMULATABLE", reason });
 
-/** The runtime has the profile (TASK-1011); the server's simulator runs factories until TASK-1015. */
-const runtimeOnly = (profile: string) =>
-  `The runtime's behaviour profile ${profile} models it; the server's device simulator does not run it until TASK-1015 moves factories to the runtime.`;
+/**
+ * The runtime has the profile (TASK-1011) and, for a protocol device, serves its declared
+ * register map (TASK-1013); the server's simulator runs factories until TASK-1015, so the
+ * model stays NOT_SIMULATABLE and names what the runtime would run.
+ */
+const runtimeOnly = (profile: string, protocol?: { kind: "MODBUS_TCP"; registerMap: string }): Simulation => ({
+  coverage: "NOT_SIMULATABLE",
+  reason: protocol
+    ? `The runtime runs profile ${profile} and serves its registers over Modbus TCP (map ${protocol.registerMap}); the server's simulator has no protocol side and runs factories until TASK-1015.`
+    : `The runtime's behaviour profile ${profile} models it; the server's device simulator does not run it until TASK-1015 moves factories to the runtime.`,
+  runtimeOnly: {
+    profile,
+    profileVersion: 1,
+    ...(protocol ? { protocol: { ...protocol, registerMapVersion: 1 } } : {}),
+  },
+});
 
 const generic = (
   category: string,
@@ -127,12 +140,13 @@ export const genericModels: CatalogInput = {
         ],
       },
     ),
-    // Commanded over the network. Not executable yet: the simulator has no Modbus device side.
+    // Commanded over the network: the runtime serves the generic drive's declared register
+    // map (TASK-1013); factories reach it once TASK-1015 moves them to the runtime.
     generic(
       "VFD",
       "Generic drives",
       "Generic VFD, Modbus TCP",
-      notSimulated("The simulator has no Modbus device side yet; the drive's registers are not served (TASK-1013)."),
+      runtimeOnly("VFD", { kind: "MODBUS_TCP", registerMap: "VFD_MODBUS_TCP" }),
       {
         controlCapability: "PROTOCOL_CONTROLLED",
         capabilities: ["PARAMETER_CONFIGURABLE", "REMOTE_CONTROL", "MODBUS_SERVER"],
@@ -213,20 +227,20 @@ export const genericModels: CatalogInput = {
       },
     ),
     // Modelled by the runtime (TASK-1011) but not run by the server's simulator until TASK-1015.
-    generic("CONTACTOR", "Generic contactors", "Generic contactor, 24 V DC coil", notSimulated(runtimeOnly("RELAY")), {
+    generic("CONTACTOR", "Generic contactors", "Generic contactor, 24 V DC coil", runtimeOnly("RELAY"), {
       terminals: [digital("A1", "INPUT"), digital("AUX", "OUTPUT")],
     }),
-    generic("HEATER", "Generic heaters", "Generic heater, contactor-switched", notSimulated(runtimeOnly("HEATER")), {
+    generic("HEATER", "Generic heaters", "Generic heater, contactor-switched", runtimeOnly("HEATER"), {
       terminals: [digital("ON", "INPUT")],
     }),
-    generic("INDICATOR", "Generic indicators", "Generic stack light, 24 V DC", notSimulated(runtimeOnly("INDICATOR")), {
+    generic("INDICATOR", "Generic indicators", "Generic stack light, 24 V DC", runtimeOnly("INDICATOR"), {
       terminals: [digital("RED", "INPUT"), digital("YELLOW", "INPUT"), digital("GREEN", "INPUT")],
     }),
     generic(
       "TEMPERATURE_CONTROLLER",
       "Generic controllers",
       "Generic temperature controller",
-      notSimulated(runtimeOnly("PID_CONTROLLER")),
+      runtimeOnly("PID_CONTROLLER"),
       {
         controlCapability: "PARAMETER_CONFIGURED",
         capabilities: ["PARAMETER_CONFIGURABLE", "LOCAL_CONTROL"],
@@ -237,7 +251,9 @@ export const genericModels: CatalogInput = {
       "REMOTE_IO",
       "Generic remote I/O",
       "Generic remote I/O station, Modbus TCP",
-      notSimulated("The simulator serves no Modbus registers yet (TASK-1013)."),
+      notSimulated(
+        "No behaviour profile models a remote I/O station yet (channels the PLC reads and writes over Modbus TCP); the runtime serves registers only for a declared map.",
+      ),
       {
         controlCapability: "PROTOCOL_CONTROLLED",
         capabilities: ["REMOTE_IO", "MODBUS_SERVER"],
@@ -248,7 +264,9 @@ export const genericModels: CatalogInput = {
       "GATEWAY",
       "Generic gateways",
       "Generic Modbus TCP gateway",
-      notSimulated("The simulator serves no Modbus registers yet (TASK-1013)."),
+      notSimulated(
+        "A gateway stands for an external device, served by a gateway endpoint of the server (ADR-0013); no behaviour profile models a protocol converter.",
+      ),
       {
         controlCapability: "PROTOCOL_CONTROLLED",
         capabilities: ["MODBUS_CLIENT", "MODBUS_SERVER"],
