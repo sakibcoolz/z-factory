@@ -119,7 +119,7 @@ A tag with `sourceDeviceInstanceId` and `sourceSignal` wires one device signal. 
 The tag's scale and offset convert between the simulated engineering value and the PLC's raw value. A value outside the tag's range saturates.
 
 ### Parameters
-From the device's `SimulationProfile` (`docs/database.md`); every value has a generic default. Defaults are not vendor data.
+From the device's `SimulationProfile` (`docs/database.md`): the instance's own, else the model's (the catalog's `simulation.parameters`, TASK-1010); every value has a generic default. Defaults are not vendor data. The machine-readable description of every parameter, with unit, bounds and role, is the behaviour contract below.
 
 | Type | Parameters (default) |
 |---|---|
@@ -200,7 +200,7 @@ Phase 10 expands device behavior simulation into the Go simulation runtime so th
 
 This does **not** mean every vendor product is firmware-emulated. When no legal/usable vendor runtime, emulator or Docker image exists, Z-Factory runs a documented behavior profile. Model-specific values are used only when supported by authoritative catalog sources.
 
-Every catalog model must declare one coverage state:
+Every catalog model must declare one coverage state (as built in TASK-1010: the `simulation` block of every catalog model, checked against the behaviour contract and stored on `DeviceModel`; `docs/device-catalog.md` → Simulation decision):
 - `FULL`: every Z-Factory-declared behavior for the model is implemented.
 - `PARTIAL`: a defined subset is implemented.
 - `GENERIC`: category behavior is available but not vendor/model-specific behavior.
@@ -222,6 +222,23 @@ Target categories include drives/starters, motors, pumps/fans/conveyors/mixers/c
 The simulator remains subordinate to PLC program authority: it consumes program-generated commands and returns simulated feedback. It never decides local PLC physical outputs on behalf of the program.
 
 Execution tasks: TASK-1009 through TASK-1016 in `docs/phases/phase-10-agent-ready-catalog-simulator/tasks/`.
+
+### The behaviour contract (TASK-1010, ADR-0026)
+`lib/domain/behavior-contract.ts` is the one machine-readable statement of every behaviour profile, the contract the catalog (`docs/device-catalog.md` → Simulation decision), the parameter forms, the runtime's profile map and the coverage report (TASK-1016) read. Per profile (`BEHAVIOR_PROFILES`, one per simulated type, version 1):
+
+| Part | What it states |
+|---|---|
+| `signals` | commands and setpoints (`IN`, PLC logic drives them) and feedback (`OUT`), each with kind, label, unit and, for a number, its range by fixed bounds (`position` 0–100 %) or by the parameter that sets a bound (`actualFrequency` up to `maxFrequencyHz`, `value` within `rangeMin`…`rangeMax`) |
+| `parameters` | `NUMBER` (unit, generic default or none, bounds with inclusive or exclusive ends), `CHOICE` (the allowed values) or `STRUCTURED` (the kinds a signal source may take, each with its fields); each with a role: `RATING`, `TIMING` (ramps, lags, travel), `LIMIT`, `INITIAL`, `SOURCE`, `SHAPE`, `EVENT` |
+| `states` | the behaviour's states (`STOPPED`, `ACCELERATING`, `OPEN`, `DRY_RUN`, `GOOD`, `BAD` …) |
+| `faults` | code, name, severity, latching, silent, and from these the reset rule (`AUTO` when the cause ends, `RESET_SIGNAL_OR_OPERATOR` for a trip), the effect in words, and the quality of the feedback while present (`BAD_QUALITY` of a sensor is `BAD`) |
+| `badQualityOnFaults` | the faults that make the feedback BAD; a device the runtime sets aside (ADR-0025) is always BAD |
+| `links` | couplings by role (`drive`, `motor`, `measures`), whether required, the profiles accepted, the connection relationship they are made from (`DRIVES`, `MECHANICALLY_DRIVES`, `MEASURES`) and which side the peer is |
+| `protocol` | `NONE` for every shipped profile; a profile the runtime serves over Modbus TCP will say so (TASK-1013) |
+| `forcible`, `forcedKind` | whether a tester may force the value (sensors a number, switches 0 or 1; ADR-0015) |
+| `fidelity` | the approximations in words and what is deliberately not modelled |
+
+The Go runtime describes the same profiles (`GET /v1/profiles`, now with `parameterSchema` beside the defaults) and its `Configure` refuses exactly what the schema excludes (`internal/device/schema_test.go` walks every bound); `test/integration/process-sim.test.ts` compares the two descriptions field by field, so the contract and the code that runs it cannot drift apart. `checkParameterValue` is the one check the catalog applies to a model's parameter values. `coverageStatement` is the sentence shown with a coverage state: a behaviour model, not vendor firmware.
 
 ### As built (TASK-1009, ADR-0025)
 The catalog device runtime is part of `services/process-sim`: behaviour profiles in
