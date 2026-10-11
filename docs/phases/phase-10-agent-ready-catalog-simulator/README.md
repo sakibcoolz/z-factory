@@ -58,7 +58,7 @@ Simulation coverage is explicit per catalog model:
 | TASK-1005 | DONE | Sidebar cleanup and active-feature navigation |
 | TASK-1006 | DONE | User-decision and recommendation guidance |
 | TASK-1007 | DONE | Agent-readable validation and error explanations |
-| TASK-1008 | PLANNED | Browser-agent end-to-end engineering validation |
+| TASK-1008 | DONE | Browser-agent end-to-end engineering validation |
 | TASK-1009 | PLANNED | Go Catalog Simulation Runtime foundation |
 | TASK-1010 | PLANNED | Catalog device capability and behavior schema |
 | TASK-1011 | PLANNED | Full industrial device behavior library |
