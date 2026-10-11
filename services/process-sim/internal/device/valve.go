@@ -38,7 +38,11 @@ func init() {
 			},
 			Faults:     []Fault{stuck},
 			Parameters: mustJSON(defaultValveParams()),
-			States:     []string{"CLOSED", "OPENING", "OPEN", "CLOSING", "STOPPED", "FAULTED"},
+			ParameterSchema: []ParameterSpec{
+				secondsParam("travelTimeS", "Travel time", 5, "Time for a full stroke."),
+				{Key: "initialPosition", Label: "Initial position", Kind: "NUMBER", Role: "INITIAL", Unit: "%", Default: 0.0, Min: f64(0), Max: f64(100), MinInclusive: true, MaxInclusive: true},
+			},
+			States: []string{"CLOSED", "OPENING", "OPEN", "CLOSING", "STOPPED", "FAULTED"},
 		}
 	})
 }

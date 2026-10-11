@@ -35,6 +35,8 @@ Examples: PLC, VFD, MOTOR, PUMP, FAN, BLOWER, CONVEYOR, MIXER, COMPRESSOR, VALVE
 
 `verificationStatus = UNVERIFIED | VERIFIED | GENERIC`. `GENERIC` marks a simulated profile that makes no vendor claim. Unique: `(familyId, modelName)`.
 
+`simulationCoverage = FULL | PARTIAL | GENERIC | NOT_SIMULATABLE` (TASK-1010, ADR-0026) is the model's simulation decision: how much of its behaviour the simulator implements, a behaviour model never vendor firmware. `simulationProfile` and `simulationProfileVersion` name the behaviour profile of `lib/domain/behavior-contract.ts` it runs on (null when `NOT_SIMULATABLE`); `simulationJson` keeps the declared block as the catalog states it (reason, faults, parameter values, declared features). Written by the catalog import from the model's `simulation` block (`docs/device-catalog.md` → Simulation decision); a model's parameter values also become its model-level `SimulationProfile`.
+
 For PLCs, `architectureType = COMPACT | MODULAR`; it is null for every other category.
 `controlCapability = DIRECT_IO | PARAMETER_CONFIGURED | PROTOCOL_CONTROLLED | PROGRAMMABLE` says how the device is controlled. It is declared per model and never inferred from the category. `metadataJson` holds further documented facts (memory, expansion limits).
 `runtimeSupport = OPENPLC | DEVICE_SIM | MODBUS_SIM | EXTERNAL | NONE` (the same `RuntimeType` enum is used by `DeviceInstance.runtimeType`; `EXTERNAL` is physical hardware outside the factory network).
@@ -330,7 +332,7 @@ For high-volume history, partitioning/retention should be introduced first. Time
 Every factual vendor hardware profile keeps source URL plus verification metadata. Never fabricate pinouts, I/O counts, register maps, or electrical limits.
 
 ## Implementation (TASK-102)
-- Schema: `prisma/schema.prisma`; migrations: `prisma/migrations/` (`init`, `device_io_endpoint`, `factory_subnet_no_overlap`, `plc_api_host_port`, `tag_source_signal`, `catalog_capabilities`, `device_io_simulator_signal`, `device_canvas_position`, `catalog_3d_assets`, `catalog_asset_generation`, `process_modules`, `endpoint_wiring`, `device_capabilities`, `process_model_link`, `module_plc_io_mapping`, `io_point_tags_read_only`, `plc_communications`, `plc_link_mappings`); generated client: `lib/generated/prisma/` (git-ignored).
+- Schema: `prisma/schema.prisma`; migrations: `prisma/migrations/` (`init`, `device_io_endpoint`, `factory_subnet_no_overlap`, `plc_api_host_port`, `tag_source_signal`, `catalog_capabilities`, `device_io_simulator_signal`, `device_canvas_position`, `catalog_3d_assets`, `catalog_asset_generation`, `process_modules`, `endpoint_wiring`, `device_capabilities`, `process_model_link`, `module_plc_io_mapping`, `io_point_tags_read_only`, `plc_communications`, `plc_link_mappings`, `catalog_simulation_coverage`); generated client: `lib/generated/prisma/` (git-ignored).
 - Primary keys are UUID v7 (`@default(uuid(7))`, PostgreSQL `uuid`), except `TelemetrySample.id` (`bigint` identity) and the one-to-one tables keyed by their owner (`ElectricalProfile`, `PlcInstanceProfile`, `DeviceRuntimeSnapshot`).
 - Catalog rows referenced by factory data are protected with `ON DELETE RESTRICT`; factory-owned rows cascade from `Factory`.
 - `DeviceInstance.dockerContainerId` is server-side only and never sent to the browser.
@@ -366,6 +368,7 @@ Prisma cannot express CHECK or EXCLUDE constraints, so these live as hand-writte
 | `AlarmEvent_cleared_after_started_check`, `TelemetrySample_value_check` | history sanity |
 | `Catalog3dAsset_version_check`, `Catalog3dAsset_scale_check` | version >= 1; scale null or positive |
 | `Catalog3dAsset_ready_file_check` | a `READY` asset has a storage key, a checksum and a size |
+| `DeviceModel_simulation_profile_check` | a simulated model (`simulationCoverage` other than `NOT_SIMULATABLE`) names its behaviour profile and a version of at least 1; a `NOT_SIMULATABLE` model names none (TASK-1010) |
 | `DeviceInstance_scene_transform_check` | `sceneScale` between 0.1 and 10, `sceneRotationDeg` from 0 to below 360 |
 | `DeviceIoDefinition_max_connections_check`, `CommunicationPort_max_connections_check` | an endpoint takes at least one wire |
 | `ProcessModuleType_code_check`, `ProcessModuleType_version_check` | code is capitals, digits and underscores; version >= 1 |

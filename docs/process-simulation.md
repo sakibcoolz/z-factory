@@ -284,11 +284,16 @@ produces), kind (`BOOL` travels as 0 or 1, `NUMBER`), label and unit; faults wit
 severity, latching and whether the device reports them itself; links by role (`drive`
 of a motor: a VFD; `motor` of a load: a motor; `measures` of a sensor or switch: the
 device whose output a MEASURED source follows); the parameters with their generic
-defaults; the states; whether a tester may force the value (sensors: a number;
-switches: 0 or 1). Z-Factory names a device's profile from the catalog's simulation
-metadata (`DEVICE_PROFILES` in `lib/domain/process-sim.ts`, by the category's
-`simulatorType`), never from a condition in the UI; TASK-1010 formalises the catalog
-side, TASK-1011 adds the remaining categories.
+defaults and, since TASK-1010, `parameterSchema`: every parameter with its kind
+(`NUMBER`, `CHOICE`, `STRUCTURED`), role (`RATING`, `TIMING`, `LIMIT`, `INITIAL`,
+`SOURCE`, `SHAPE`, `EVENT`), unit, default, bounds (with inclusive or exclusive ends),
+choices or kinds, exactly what `Configure` enforces; the states; whether a tester may
+force the value (sensors: a number; switches: 0 or 1). The same facts are the behaviour
+contract on the server (`lib/domain/behavior-contract.ts`, ADR-0026), and the parity test
+compares the two. Z-Factory names a device's profile from the catalog's simulation
+metadata (every catalog model's `simulation` block, `DEVICE_PROFILES` in
+`lib/domain/process-sim.ts` by the category's `simulatorType`), never from a condition
+in the UI; TASK-1011 adds the remaining categories.
 
 ### Factory contract (device contract version 1)
 ```json

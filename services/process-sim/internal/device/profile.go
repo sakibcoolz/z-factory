@@ -79,20 +79,59 @@ type Link struct {
 	Meaning string `json:"meaning"`
 }
 
+// ParameterSpec describes one parameter of a profile (TASK-1010): its kind (NUMBER,
+// CHOICE or STRUCTURED), what it is for (RATING, TIMING, LIMIT, INITIAL, SOURCE, SHAPE,
+// EVENT), its unit, its generic default and its bounds. Configure enforces exactly what
+// the spec says; the behaviour contract on the server (lib/domain/behavior-contract.ts)
+// states the same and the parity test compares the two.
+type ParameterSpec struct {
+	Key   string `json:"key"`
+	Label string `json:"label"`
+	Kind  string `json:"kind"`
+	Role  string `json:"role"`
+	Unit  string `json:"unit,omitempty"`
+	// The generic default; absent for an optional parameter the behaviour derives.
+	Default      any      `json:"default,omitempty"`
+	Min          *float64 `json:"min,omitempty"`
+	Max          *float64 `json:"max,omitempty"`
+	MinInclusive bool     `json:"minInclusive,omitempty"`
+	MaxInclusive bool     `json:"maxInclusive,omitempty"`
+	// CHOICE: the allowed values.
+	Choices []string `json:"choices,omitempty"`
+	// STRUCTURED: the kinds the structure may take, each with its fields.
+	Kinds       map[string][]string `json:"kinds,omitempty"`
+	Description string              `json:"description,omitempty"`
+}
+
 // Description is what a profile declares about itself: the stable contract Z-Factory,
 // the catalog (TASK-1010) and the coverage report (TASK-1016) read.
 type Description struct {
 	Key     string `json:"key"`
 	Version int    `json:"version"`
 	// What the profile models, in one sentence, and what it does not.
-	Summary    string          `json:"summary"`
-	Signals    []Signal        `json:"signals"`
-	Faults     []Fault         `json:"faults"`
-	Links      []Link          `json:"links,omitempty"`
+	Summary string   `json:"summary"`
+	Signals []Signal `json:"signals"`
+	Faults  []Fault  `json:"faults"`
+	Links   []Link   `json:"links,omitempty"`
+	// The generic defaults, as a parameter body Configure accepts.
 	Parameters json.RawMessage `json:"parameters"`
-	States     []string        `json:"states"`
-	Forcible   bool            `json:"forcible"`
-	ForcedKind Kind            `json:"forcedKind,omitempty"`
+	// The machine-readable schema of the parameters (TASK-1010).
+	ParameterSchema []ParameterSpec `json:"parameterSchema"`
+	States          []string        `json:"states"`
+	Forcible        bool            `json:"forcible"`
+	ForcedKind      Kind            `json:"forcedKind,omitempty"`
+}
+
+func f64(value float64) *float64 { return &value }
+
+// ratingParam is a positive rating with no upper bound.
+func ratingParam(key, label string, def float64, unit, description string) ParameterSpec {
+	return ParameterSpec{Key: key, Label: label, Kind: "NUMBER", Role: "RATING", Unit: unit, Default: def, Min: f64(0), Description: description}
+}
+
+// secondsParam is a duration: above zero, at most an hour.
+func secondsParam(key, label string, def float64, description string) ParameterSpec {
+	return ParameterSpec{Key: key, Label: label, Kind: "NUMBER", Role: "TIMING", Unit: "s", Default: def, Min: f64(0), Max: f64(3600), MaxInclusive: true, Description: description}
 }
 
 // Values are a device's inputs or outputs by signal key. A BOOL is 0 or 1.

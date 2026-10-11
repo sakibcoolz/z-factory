@@ -37,7 +37,11 @@ func init() {
 			Faults:     []Fault{{Code: "DRY_RUN", Name: "Dry running", Severity: Warning, Latching: false}},
 			Links:      loadLinks,
 			Parameters: mustJSON(defaultPumpParams()),
-			States:     []string{"STOPPED", "RUNNING", "DRY_RUN"},
+			ParameterSchema: []ParameterSpec{
+				ratingParam("ratedFlow", "Rated flow", 100, "", "Flow at rated speed, in the unit of the tag it is mapped to."),
+				ratingParam("ratedPressure", "Rated discharge pressure", 4, "", ""),
+			},
+			States: []string{"STOPPED", "RUNNING", "DRY_RUN"},
 		}
 	})
 	for _, kind := range []string{"FAN", "CONVEYOR", "MIXER", "COMPRESSOR"} {
@@ -59,7 +63,11 @@ func init() {
 				Faults:     []Fault{},
 				Links:      loadLinks,
 				Parameters: mustJSON(map[string]any{"ratedOutput": 100, "loadProfile": profile}),
-				States:     []string{"STOPPED", "RUNNING"},
+				ParameterSchema: []ParameterSpec{
+					ratingParam("ratedOutput", "Rated output", 100, "", "Output at rated speed: airflow, belt speed, …"),
+					{Key: "loadProfile", Label: "Load profile", Kind: "CHOICE", Role: "SHAPE", Default: profile, Choices: []string{"QUADRATIC", "CONSTANT"}, Description: "How shaft torque grows with speed."},
+				},
+				States: []string{"STOPPED", "RUNNING"},
 			}
 		})
 	}

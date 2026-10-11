@@ -10,6 +10,16 @@ import {
 } from "@/lib/domain/catalog-view";
 import { CatalogModelView } from "./catalog-view";
 
+const notSimulated: CatalogModelDetail["simulation"] = {
+  coverage: "NOT_SIMULATABLE",
+  profile: null,
+  reason: "A programmable controller: its program runs on the OpenPLC adapter.",
+  faults: [],
+  parameters: {},
+  features: [],
+  statement: "configuration and metadata only; the simulator executes no behaviour for it",
+};
+
 const plc: CatalogModelDetail = {
   id: "0199a000-0000-7000-8000-000000000001",
   modelName: "CPU 1214C DC/DC/DC",
@@ -23,6 +33,7 @@ const plc: CatalogModelDetail = {
   runtimeSupport: "OPENPLC",
   controlCapability: "PROGRAMMABLE",
   lifecycleStatus: "UNKNOWN",
+  simulation: notSimulated,
   source: {
     url: "https://cache.industry.siemens.com/dl/files/145/39710145/att_5787/v1/s71200_easy_book_en-US_en-US.pdf",
     title: "SIMATIC S7-1200 Easy Book",
@@ -199,6 +210,16 @@ describe("catalog model view", () => {
           verificationStatus: "GENERIC",
           runtimeSupport: "DEVICE_SIM",
           controlCapability: "DIRECT_IO",
+          simulation: {
+            coverage: "GENERIC",
+            profile: { key: "VALVE", version: 1 },
+            reason: null,
+            faults: ["STUCK"],
+            parameters: {},
+            features: [],
+            statement:
+              "the generic behaviour of its category (behaviour profile VALVE v1): a behaviour model, not vendor firmware",
+          },
           source: { url: null, title: null, revision: null, retrievedAt: null, verifiedAt: null },
           electrical: null,
           ports: [],
@@ -222,7 +243,20 @@ describe("catalog model view", () => {
     expect(screen.getByText("Y1 · in · 24 V DC")).toBeInTheDocument();
     expect(screen.getByText("direct PLC I/O")).toBeInTheDocument();
     expect(screen.getByText(/makes no claim about any vendor/)).toBeInTheDocument();
+    expect(screen.getByText("simulation · generic")).toBeInTheDocument();
+    expect(
+      screen.getByText(/behaviour profile VALVE v1\): a behaviour model, not vendor firmware\./),
+    ).toBeInTheDocument();
+    expect(screen.getByText("STUCK")).toBeInTheDocument();
+    expect(screen.getByText("the profile's generic defaults")).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
+  });
+
+  it("says a programmable controller is not a simulated device, and why", () => {
+    render(<CatalogModelView model={plc} peripherals={[]} />);
+    expect(screen.getByText("simulation · not simulated")).toBeInTheDocument();
+    expect(screen.getByText(/executes no behaviour for it\. A programmable controller/)).toBeInTheDocument();
+    expect(screen.queryByText("Declared features")).not.toBeInTheDocument();
   });
 });
 

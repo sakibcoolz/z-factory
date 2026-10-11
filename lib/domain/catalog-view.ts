@@ -2,6 +2,7 @@
  * Shapes the catalog service returns and the catalog screens render
  * (docs/device-catalog.md). Types and pure rules; importable anywhere.
  */
+import { coverageStatement, type SimulationCoverage } from "@/lib/domain/behavior-contract";
 import type { ControlCapability, VerificationStatus } from "@/lib/domain/catalog";
 import type { IoDirection, IoPointType, IoSignalClass, PlcArchitecture, TerminalKind } from "@/lib/domain/device";
 
@@ -71,12 +72,74 @@ export function assetSummaryLabel(asset: CatalogAssetSummary): string {
   return rendered;
 }
 
+/**
+ * The simulation decision of a model (TASK-1010), as the catalog shows it: a statement
+ * about a behaviour model, never about vendor firmware.
+ */
+export type CatalogSimulation = {
+  coverage: SimulationCoverage;
+  /** The behaviour profile the model runs on; null when nothing executes it. */
+  profile: { key: string; version: number } | null;
+  /** Why nothing executes a NOT_SIMULATABLE model. */
+  reason: string | null;
+  /** Fault codes of the profile the model supports. */
+  faults: string[];
+  /** Parameter values the model sets; the profile's generic defaults otherwise. */
+  parameters: Record<string, number | string>;
+  /** Model-specific behaviours declared for a vendor model, and whether each is implemented. */
+  features: Array<{ key: string; label: string; implemented: boolean }>;
+  /** The sentence to show for the coverage. */
+  statement: string;
+};
+
+type StoredSimulation = {
+  simulationCoverage: SimulationCoverage;
+  simulationProfile: string | null;
+  simulationProfileVersion: number | null;
+  simulationJson: unknown;
+};
+
+const stringList = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+
+/** The simulation decision of a stored model, from its columns and the declared block. */
+export function summarizeSimulation(row: StoredSimulation): CatalogSimulation {
+  const block = (row.simulationJson ?? {}) as Record<string, unknown>;
+  const profile =
+    row.simulationProfile && row.simulationProfileVersion
+      ? { key: row.simulationProfile, version: row.simulationProfileVersion }
+      : null;
+  const parameters = Object.fromEntries(
+    Object.entries((block.parameters as Record<string, unknown> | undefined) ?? {}).filter(
+      (entry): entry is [string, number | string] => typeof entry[1] === "number" || typeof entry[1] === "string",
+    ),
+  );
+  const features = Array.isArray(block.features)
+    ? (block.features as Array<Record<string, unknown>>).map((feature) => ({
+        key: String(feature.key),
+        label: String(feature.label),
+        implemented: feature.implemented === true,
+      }))
+    : [];
+  return {
+    coverage: row.simulationCoverage,
+    profile,
+    reason: typeof block.reason === "string" ? block.reason : null,
+    faults: stringList(block.faults),
+    parameters,
+    features,
+    statement: coverageStatement(row.simulationCoverage, profile),
+  };
+}
+
 export type CatalogModelSummary = {
   id: string;
   modelName: string;
   sku: string | null;
   architectureType: PlcArchitecture | null;
   verificationStatus: VerificationStatus;
+  /** How much of the model's behaviour the simulator implements. */
+  coverage: SimulationCoverage;
   asset: CatalogAssetSummary;
 };
 
@@ -95,7 +158,15 @@ export type CatalogOverview = {
   }>;
   /** Categories that have at least one model. */
   categories: Array<{ code: string; name: string; modelCount: number }>;
-  totals: { models: number; manufacturers: number; verified: number; generic: number; withAsset: number };
+  totals: {
+    models: number;
+    manufacturers: number;
+    verified: number;
+    generic: number;
+    withAsset: number;
+    /** Models the simulator executes: coverage other than NOT_SIMULATABLE. */
+    simulated: number;
+  };
 };
 
 /** A run of identical channels, e.g. "14 × DI, 24 V DC". */
@@ -106,7 +177,7 @@ export type ChannelSummary = {
   acceptedSignalTypes: string[];
 };
 
-export type CatalogModelDetail = CatalogModelSummary & {
+export type CatalogModelDetail = Omit<CatalogModelSummary, "coverage"> & {
   manufacturer: string;
   family: string;
   categoryCode: string;
@@ -114,6 +185,7 @@ export type CatalogModelDetail = CatalogModelSummary & {
   runtimeSupport: string;
   controlCapability: ControlCapability;
   lifecycleStatus: string;
+  simulation: CatalogSimulation;
   /** Where the facts come from. All null for generic models. */
   source: {
     url: string | null;

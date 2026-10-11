@@ -34,6 +34,7 @@ export const catalogRepository = {
                 sku: true,
                 architectureType: true,
                 verificationStatus: true,
+                simulationCoverage: true,
                 active3dAssetId: true,
                 assets3d: { select: { id: true, version: true, status: true }, orderBy: { version: "desc" } },
               },

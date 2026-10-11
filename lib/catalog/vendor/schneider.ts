@@ -4,7 +4,7 @@
  * were not checked, are left out rather than filled in.
  */
 import type { CatalogInput } from "@/lib/catalog/schema";
-import { PLC_CAPABILITIES } from "@/lib/catalog/capabilities";
+import { PLC_CAPABILITIES, PLC_SIMULATION } from "@/lib/catalog/capabilities";
 
 const RETRIEVED = "2026-10-05";
 const MANUFACTURER = "Schneider Electric";
@@ -33,6 +33,7 @@ export const schneider: CatalogInput = {
       runtimeSupport: "OPENPLC",
       controlCapability: "PROGRAMMABLE",
       capabilities: [...PLC_CAPABILITIES],
+      simulation: PLC_SIMULATION,
       verification: hardwareGuide,
       // Rated voltage 24 V DC, power supply voltage range 20.4…28.8 V DC.
       electrical: { supplyType: "DC", nominalVoltage: 24, voltageMin: 20.4, voltageMax: 28.8 },

@@ -109,7 +109,7 @@ Examples:
 Use manufacturer product pages/manuals as authoritative sources. Store normalized facts and URLs; do not ingest protected manuals/CAD/images unless licensing allows.
 
 ## Implementation (TASK-301)
-Code: `lib/catalog/` (definitions, rules, import), `lib/domain/catalog.ts` (vocabulary), `lib/validation/compatibility.ts`, `lib/services/catalog-service.ts`. Screen: `/catalog`.
+Code: `lib/catalog/` (definitions, rules, import), `lib/domain/catalog.ts` (vocabulary), `lib/domain/behavior-contract.ts` (the behaviour contract the simulation decisions are checked against, TASK-1010), `lib/validation/compatibility.ts`, `lib/services/catalog-service.ts`. Screen: `/catalog`.
 
 ### Where catalog facts live
 Catalog records are data files in the repository, written to the database by `npm run db:seed`:
@@ -124,7 +124,8 @@ The import matches every row by its natural key and updates it in place, so it c
 - A `VERIFIED` record carries source URL, title, revision and retrieval date, and a verification date.
 - A vendor record has its exact order number; a generic record has none and belongs to the manufacturer `Generic / simulated`.
 - Only PLC models declare an architecture. A modular PLC has no built-in channels; a module is compatible only with modular CPUs of its own family.
-- A terminal may name a simulator signal only if the device type has that signal in that direction. A model may list only faults its behaviour model supports.
+- A terminal may name a simulator signal only if the model's behaviour profile has that signal in that direction. A model may list only faults its profile supports.
+- Every model declares its simulation decision; the rules are under "Simulation decision" below.
 - Unknown fields, categories and manufacturers are rejected.
 
 ### Vendor records (all verified on 2026-10-05)
@@ -159,7 +160,28 @@ A device terminal fits a PLC channel when the point class matches (a device outp
 Occupancy of a specific PLC instance is checked when a device is wired (TASK-302).
 
 ### Control capability and runtime
-`controlCapability` (direct I/O, parameter-configured, protocol-controlled, programmable) and `runtimeSupport` are set per model. Two models of one category can differ: the generic VFD exists hardwired and as a Modbus TCP device. Models without a behaviour model (contactor, heater, stack light, temperature controller, remote I/O, gateway, Modbus TCP VFD) are `NONE`: they can be placed and wired but are not executed.
+`controlCapability` (direct I/O, parameter-configured, protocol-controlled, programmable) and `runtimeSupport` are set per model. Two models of one category can differ: the generic VFD exists hardwired and as a Modbus TCP device. Models without a behaviour profile (contactor, heater, stack light, temperature controller, remote I/O, gateway, Modbus TCP VFD) are `NONE`: they can be placed and wired but are not executed, and their simulation decision says why.
+
+### Simulation decision (TASK-1010, ADR-0026)
+Every model carries a `simulation` block: the one coverage state Phase 10 requires, and what it rests on. Whatever the state, it is a statement about a Z-Factory behaviour model, never about vendor firmware; the catalog screen and its LLM Context say so beside it.
+
+| Coverage | Block | Meaning |
+|---|---|---|
+| `NOT_SIMULATABLE` | `reason` | configuration and metadata only; nothing executes the model. The reason names why: no behaviour profile for the category yet, no Modbus device side yet, a supply with nothing to simulate, or a programmable controller whose program runs on the OpenPLC adapter |
+| `GENERIC` | `profile`, `profileVersion`, `faults`, `parameters` | the generic behaviour of the category's profile (`lib/domain/behavior-contract.ts`); nothing model-specific |
+| `PARTIAL` | the same plus `features` | a declared subset of the model's behaviour is implemented: at least one feature implemented and one not |
+| `FULL` | the same plus `features` | every declared feature is implemented |
+
+Rules checked by `parseCatalog`, each refused with `rule: catalog-definition` and a sentence naming what is wrong:
+- A model the device simulator executes (`runtimeSupport: DEVICE_SIM`) declares a profile, and only such a model does: `NONE`, `OPENPLC` and the other runtimes are `NOT_SIMULATABLE`.
+- The profile exists, at that version, and is the profile of the model's category (`simulatorType`): a pump cannot claim the drive's behaviour.
+- `faults` are fault codes of the profile; `parameters` name parameters of the profile and lie within its bounds (a value outside is refused with the bound it breaks); a terminal's `simulatorSignal` is a signal of the profile in that direction, and a model that is not simulated names none.
+- Generic and vendor facts stay apart: a generic model is `GENERIC` or `NOT_SIMULATABLE` and never declares features. A vendor model may be `GENERIC` with no claim; `PARTIAL` or `FULL` coverage, and any parameter value, are model-specific facts that need the model's `VERIFIED` provenance (TASK-1012 adds the source per fact). A programmable controller is `NOT_SIMULATABLE` as a device.
+- `FULL` means every declared feature is implemented; `PARTIAL` means some are and some are not; a feature is declared once.
+
+Shipped: every generic model the simulator runs is `GENERIC` on the profile of its category with the faults it supports; the four vendor PLCs and the generic RTU are `NOT_SIMULATABLE` as program hosts; the contactor, heater, stack light and temperature controller wait for their profiles (TASK-1011); the Modbus drive, remote I/O station and gateway wait for the Modbus device side (TASK-1013); the power supply has nothing to simulate. Nothing claims `PARTIAL` or `FULL` yet.
+
+Stored on `DeviceModel` as `simulationCoverage`, `simulationProfile`, `simulationProfileVersion` and the block itself in `simulationJson`; parameter values become the model-level `SimulationProfile` the simulator reads (`docs/device-simulation.md` → Parameters). The catalog screen shows the coverage, the profile, the faults, the parameter values and the declared features of the selected model; the overview counts simulated models.
 
 ### Relationships
 `DRIVES` accepts a VFD, servo drive or soft starter as source and a motor or servo motor as target; a servo motor needs a servo drive. One drive drives one motor. `CONTROLS`, `COMMUNICATES_WITH`, `MEASURES` and `FEEDS_BACK_TO` are unrestricted, so controller, remote-I/O and gateway chains and direct sensor-to-PLC wiring are all representable.

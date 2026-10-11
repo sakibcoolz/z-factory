@@ -1,10 +1,10 @@
 /**
- * The parameters a configurable device shows and stores (TASK-308). They are the
- * numeric parameters of the device's behaviour model (`lib/runtimes/device-sim/params.ts`),
- * described for a form. Every default is a generic value, never a vendor specification.
+ * The parameters a configurable device shows and stores (TASK-308). They are the numeric
+ * parameters of the device's behaviour profile (`lib/domain/behavior-contract.ts`), as a
+ * form shows them. Every default is a generic value, never a vendor specification.
  * Pure; importable anywhere.
  */
-import { isLoadType } from "@/lib/domain/simulation";
+import { type BehaviorProfile, findBehaviorProfile, type NumberParameter } from "@/lib/domain/behavior-contract";
 
 export type ParameterField = {
   key: string;
@@ -18,78 +18,33 @@ export type ParameterField = {
   description: string | null;
 };
 
-const field = (
-  key: string,
-  label: string,
-  defaultValue: number,
-  options: Partial<Omit<ParameterField, "key" | "label" | "defaultValue">> = {},
-): ParameterField => ({
-  key,
-  label,
-  defaultValue,
-  unit: options.unit ?? null,
-  min: options.min ?? 0,
-  max: options.max ?? null,
-  minInclusive: options.minInclusive ?? false,
-  description: options.description ?? null,
+const toField = (parameter: NumberParameter & { default: number }): ParameterField => ({
+  key: parameter.key,
+  label: parameter.label,
+  unit: parameter.unit,
+  min: parameter.min,
+  max: parameter.max,
+  minInclusive: parameter.minInclusive,
+  defaultValue: parameter.default,
+  description: parameter.description,
 });
 
-const seconds = (key: string, label: string, defaultValue: number, description?: string) =>
-  field(key, label, defaultValue, { unit: "s", max: 3600, description: description ?? null });
-
-const VFD_FIELDS: ParameterField[] = [
-  field("maxFrequencyHz", "Maximum output frequency", 50, { unit: "Hz", max: 1000 }),
-  seconds("accelTimeS", "Acceleration time", 5, "Time to ramp from zero to the maximum frequency."),
-  seconds("decelTimeS", "Deceleration time", 5, "Time to ramp from the maximum frequency to zero."),
-];
-
-const MOTOR_FIELDS: ParameterField[] = [
-  field("ratedSpeedRpm", "Rated speed", 1450, { unit: "rpm" }),
-  field("ratedFrequencyHz", "Rated frequency", 50, { unit: "Hz" }),
-  field("ratedCurrentA", "Rated current", 10, { unit: "A" }),
-  field("noLoadCurrentRatio", "No-load current ratio", 0.35, {
-    min: 0,
-    max: 1,
-    minInclusive: true,
-    description: "Share of the rated current drawn with no load on the shaft.",
-  }),
-  seconds("timeConstantS", "Speed time constant", 0.5),
-  seconds("coastTimeConstantS", "Coast-down time constant", 2),
-];
-
-const PUMP_FIELDS: ParameterField[] = [
-  field("ratedFlow", "Rated flow", 100, {
-    description: "Flow at rated speed, in the unit of the tag it is mapped to.",
-  }),
-  field("ratedPressure", "Rated discharge pressure", 4),
-];
-
-const LOAD_FIELDS: ParameterField[] = [
-  field("ratedOutput", "Rated output", 100, { description: "Output at rated speed: airflow, belt speed, …" }),
-];
-
-const VALVE_FIELDS: ParameterField[] = [
-  seconds("travelTimeS", "Travel time", 5, "Time for a full stroke."),
-  field("initialPosition", "Initial position", 0, { unit: "%", min: 0, max: 100, minInclusive: true }),
-];
+/** Profiles whose numbers are set on the Parameters form. */
+const hasForm = (profile: BehaviorProfile) => !profile.forcible;
 
 /**
- * The editable parameters of a behaviour model. Sensors and switches are driven by a
- * signal source, not by numbers of their own, and have none here.
+ * The editable parameters of a behaviour profile: its numeric parameters with a generic
+ * default. Sensors and switches are driven by a signal source, not by numbers of their
+ * own; their source is configured with the simulation profile, so they have none here.
  */
 export function parameterFieldsFor(simulatorType: string): ParameterField[] {
-  switch (simulatorType) {
-    case "VFD":
-      return VFD_FIELDS;
-    case "MOTOR":
-      return MOTOR_FIELDS;
-    case "PUMP":
-      return PUMP_FIELDS;
-    case "VALVE":
-      return VALVE_FIELDS;
-    default:
-      return isLoadType(simulatorType) ? LOAD_FIELDS : [];
-  }
+  const profile = findBehaviorProfile(simulatorType);
+  if (!profile || !hasForm(profile)) return [];
+  return profile.parameters
+    .filter((parameter): parameter is NumberParameter & { default: number } => {
+      return parameter.kind === "NUMBER" && parameter.default !== null;
+    })
+    .map(toField);
 }
 
 /** The stored values a form shows: what was saved, else the generic default. */

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { SectionRule } from "@/components/ui/primitives";
 import { StatePill, type Tone } from "@/components/ui/state-pill";
 import { formatFact, signalTypeLabel } from "@/lib/catalog/format";
+import { SIMULATION_COVERAGE_LABELS, type SimulationCoverage } from "@/lib/domain/behavior-contract";
 import { CONTROL_CAPABILITY_LABELS } from "@/lib/domain/catalog";
 import {
   assetSummaryLabel,
@@ -64,6 +65,18 @@ export function VerificationPill({ model }: { model: Pick<CatalogModelDetail, "v
   }
   if (model.verificationStatus === "GENERIC") return <StatePill tone="off">generic · simulated</StatePill>;
   return <StatePill tone="deg">unverified</StatePill>;
+}
+
+const COVERAGE_TONE: Record<SimulationCoverage, Tone> = {
+  FULL: "run",
+  PARTIAL: "start",
+  GENERIC: "off",
+  NOT_SIMULATABLE: "deg",
+};
+
+/** How much of the model's behaviour the simulator implements: a behaviour model, never vendor firmware. */
+export function CoveragePill({ coverage }: { coverage: SimulationCoverage }) {
+  return <StatePill tone={COVERAGE_TONE[coverage]}>{`simulation · ${SIMULATION_COVERAGE_LABELS[coverage]}`}</StatePill>;
 }
 
 const ASSET_TONE: Record<CatalogAssetSummary["state"], Tone> = {
@@ -237,6 +250,44 @@ export function CatalogModelView({ model, peripherals }: CatalogModelViewProps) 
       ) : (
         <p className="zf-sub">Generic simulated profile. It makes no claim about any vendor&apos;s device.</p>
       )}
+
+      <SectionRule>
+        <span className="zf-k">Simulation</span>
+        <CoveragePill coverage={model.simulation.coverage} />
+      </SectionRule>
+      <p className="zf-sub">
+        {`${model.simulation.statement.charAt(0).toUpperCase()}${model.simulation.statement.slice(1)}.`}
+        {model.simulation.reason ? ` ${model.simulation.reason}` : ""}
+      </p>
+      {model.simulation.profile ? (
+        <div className="grid grid-cols-3 gap-3">
+          <div className="zf-cell">
+            <Fact label="Faults">
+              {model.simulation.faults.length > 0 ? model.simulation.faults.join(", ") : "none declared"}
+            </Fact>
+          </div>
+          <div className="zf-cell">
+            <Fact label="Parameters">
+              {Object.keys(model.simulation.parameters).length > 0
+                ? Object.entries(model.simulation.parameters).map(([key, value]) => (
+                    <span key={key} className="block">{`${key} = ${value}`}</span>
+                  ))
+                : "the profile's generic defaults"}
+            </Fact>
+          </div>
+          <div className="zf-cell">
+            <Fact label="Declared features">
+              {model.simulation.features.length > 0
+                ? model.simulation.features.map((feature) => (
+                    <span key={feature.key} className="block">
+                      {`${feature.label} · ${feature.implemented ? "implemented" : "not implemented"}`}
+                    </span>
+                  ))
+                : "none: the generic behaviour of the category"}
+            </Fact>
+          </div>
+        </div>
+      ) : null}
 
       <SectionRule>
         <span className="zf-k">3D asset</span>

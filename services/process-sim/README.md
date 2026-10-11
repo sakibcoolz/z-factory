@@ -21,8 +21,12 @@ Since TASK-1009 the service also hosts the catalog device runtime (ADR-0025): be
 profiles in `internal/device` (one file per profile, the factory simulation that couples
 them in `simulation.go`), the host of many factories in `internal/runtime`, and the
 `/v1/factories` and `/v1/profiles` routes in `internal/api/devices.go`. A new profile is
-one file that calls `device.Register` from `init`; `simulation_test.go` checks every
-registered profile describes itself and runs with its defaults.
+one file that calls `device.Register` from `init` with its description, including the
+`ParameterSchema` its `Configure` enforces (TASK-1010); `simulation_test.go` checks every
+registered profile describes itself and runs with its defaults, `schema_test.go` that
+every bound, choice and kind in the schema is what `Configure` refuses or accepts, and
+the server's parity test (`test/integration/process-sim.test.ts`) that the description
+equals the behaviour contract in `lib/domain/behavior-contract.ts`.
 
 Container: `docker compose --profile sim up process-sim` builds the image from this
 directory and runs it with the limits of `compose.yaml`.

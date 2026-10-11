@@ -131,8 +131,8 @@ Services in `lib/services/catalog-service.ts`. The catalog is shared reference d
 
 | Operation | Entry point | Returns |
 |---|---|---|
-| overview | `getCatalogOverview(db)` | manufacturer › family › model tree, categories with models, totals |
-| model | `getCatalogModel(db, modelId)` | identity, source, supply, ports, built-in I/O or terminals, facts; rack and installable modules for a modular PLC |
+| overview | `getCatalogOverview(db)` | manufacturer › family › model tree (each model with its simulation coverage), categories with models, totals (including simulated models) |
+| model | `getCatalogModel(db, modelId)` | identity, source, supply, ports, built-in I/O or terminals, facts, the simulation decision (coverage, profile, faults, parameter values, declared features, and the sentence that it is a behaviour model, not vendor firmware; TASK-1010); rack and installable modules for a modular PLC |
 | peripherals of a PLC | `listCompatiblePeripherals(db, plcModelId, { compatibleOnly })` | per peripheral model: the PLC point class each terminal needs, whether it fits (built-in channels or installable modules), and shared protocols |
 
 Writing the catalog is not an API: `ingestCatalog(db, loadCatalog())` runs from `npm run db:seed`.

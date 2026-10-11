@@ -7,11 +7,30 @@ import { type CatalogInput, GENERIC_MANUFACTURER } from "@/lib/catalog/schema";
 
 type Model = NonNullable<CatalogInput["models"]>[number];
 type Terminal = NonNullable<Model["terminals"]>[number];
+type Simulation = Model["simulation"];
+
+/**
+ * The simulation decision of a generic model (TASK-1010): the generic behaviour of its
+ * category's profile, with the faults it supports. A generic model never has
+ * model-specific behaviour, so its coverage is GENERIC.
+ */
+const simulated = (profile: string, faults: string[] = []): Simulation => ({
+  coverage: "GENERIC",
+  profile,
+  profileVersion: 1,
+  faults,
+});
+
+/** A model nothing executes: it can be placed and wired, and the reason says why that is all. */
+const notSimulated = (reason: string): Simulation => ({ coverage: "NOT_SIMULATABLE", reason });
+
+const NO_PROFILE_YET = "No behaviour profile exists for this category yet (TASK-1011).";
 
 const generic = (
   category: string,
   family: string,
   modelName: string,
+  simulation: Simulation,
   options: Partial<
     Pick<
       Model,
@@ -20,7 +39,6 @@ const generic = (
       | "runtimeSupport"
       | "terminals"
       | "ports"
-      | "faults"
       | "electrical"
       | "architectureType"
       | "builtInChannels"
@@ -31,9 +49,10 @@ const generic = (
   category,
   family,
   modelName,
-  runtimeSupport: "DEVICE_SIM",
+  runtimeSupport: simulation.coverage === "NOT_SIMULATABLE" ? "NONE" : "DEVICE_SIM",
   controlCapability: "DIRECT_IO",
   verification: { status: "GENERIC" },
+  simulation,
   ...options,
 });
 
@@ -67,74 +86,82 @@ const SUPPLY_24V: Terminal[] = [
 
 /** A transmitter with one analog output carrying the measured value. */
 const transmitter = (modelName: string, signalType: "CURRENT_4_20MA" | "VOLTAGE_0_10V") =>
-  generic("SENSOR", "Generic transmitters", modelName, {
+  generic("SENSOR", "Generic transmitters", modelName, simulated("SENSOR", ["BAD_QUALITY", "STUCK"]), {
     terminals: [analog("OUT", "OUTPUT", signalType, "value"), ...SUPPLY_24V],
-    faults: ["BAD_QUALITY", "STUCK"],
     electrical: DC_24V,
   });
 
 /** A device with one 24 V DC contact the PLC reads. */
 const contact = (category: string, family: string, modelName: string) =>
-  generic(category, family, modelName, { terminals: [digital("OUT", "OUTPUT", "state")], faults: ["STUCK"] });
+  generic(category, family, modelName, simulated("SWITCH", ["STUCK"]), {
+    terminals: [digital("OUT", "OUTPUT", "state")],
+  });
 
 const ETHERNET_MODBUS = [{ name: "Ethernet", physicalType: "Ethernet", protocols: ["MODBUS_TCP" as const] }];
 
 export const genericModels: CatalogInput = {
   manufacturers: [{ name: GENERIC_MANUFACTURER }],
   models: [
-    generic("VFD", "Generic drives", "Generic VFD, hardwired control", {
-      controlCapability: "PARAMETER_CONFIGURED",
-      capabilities: ["PARAMETER_CONFIGURABLE", "LOCAL_CONTROL"],
-      terminals: [
-        digital("RUN", "INPUT", "run"),
-        digital("REV", "INPUT", "reverse"),
-        digital("RESET", "INPUT", "faultReset"),
-        analog("REF", "INPUT", "VOLTAGE_0_10V", "frequencySetpoint"),
-        digital("RUNNING", "OUTPUT", "running"),
-        digital("FAULT", "OUTPUT", "faulted"),
-        analog("FREQ", "OUTPUT", "VOLTAGE_0_10V", "actualFrequency"),
-        // The motor output, the reference potential of the control terminals, and the earth terminal of the housing.
-        ...PHASES("OUTPUT"),
-        { terminalLabel: "COM", kind: "COMMON", maxConnections: 4 },
-        { terminalLabel: "PE", kind: "EARTH" },
-      ],
-      faults: ["OVERCURRENT", "OVERTEMPERATURE"],
-    }),
+    generic(
+      "VFD",
+      "Generic drives",
+      "Generic VFD, hardwired control",
+      simulated("VFD", ["OVERCURRENT", "OVERTEMPERATURE"]),
+      {
+        controlCapability: "PARAMETER_CONFIGURED",
+        capabilities: ["PARAMETER_CONFIGURABLE", "LOCAL_CONTROL"],
+        terminals: [
+          digital("RUN", "INPUT", "run"),
+          digital("REV", "INPUT", "reverse"),
+          digital("RESET", "INPUT", "faultReset"),
+          analog("REF", "INPUT", "VOLTAGE_0_10V", "frequencySetpoint"),
+          digital("RUNNING", "OUTPUT", "running"),
+          digital("FAULT", "OUTPUT", "faulted"),
+          analog("FREQ", "OUTPUT", "VOLTAGE_0_10V", "actualFrequency"),
+          // The motor output, the reference potential of the control terminals, and the earth terminal of the housing.
+          ...PHASES("OUTPUT"),
+          { terminalLabel: "COM", kind: "COMMON", maxConnections: 4 },
+          { terminalLabel: "PE", kind: "EARTH" },
+        ],
+      },
+    ),
     // Commanded over the network. Not executable yet: the simulator has no Modbus device side.
-    generic("VFD", "Generic drives", "Generic VFD, Modbus TCP", {
-      controlCapability: "PROTOCOL_CONTROLLED",
-      capabilities: ["PARAMETER_CONFIGURABLE", "REMOTE_CONTROL", "MODBUS_SERVER"],
-      runtimeSupport: "NONE",
-      ports: ETHERNET_MODBUS,
-    }),
-    generic("MOTOR", "Generic motors", "Generic three-phase motor", {
+    generic(
+      "VFD",
+      "Generic drives",
+      "Generic VFD, Modbus TCP",
+      notSimulated("The simulator has no Modbus device side yet; the drive's registers are not served (TASK-1013)."),
+      {
+        controlCapability: "PROTOCOL_CONTROLLED",
+        capabilities: ["PARAMETER_CONFIGURABLE", "REMOTE_CONTROL", "MODBUS_SERVER"],
+        ports: ETHERNET_MODBUS,
+      },
+    ),
+    generic("MOTOR", "Generic motors", "Generic three-phase motor", simulated("MOTOR", ["OVERLOAD"]), {
       terminals: [
         digital("K1", "INPUT", "run"),
         digital("K1 AUX", "OUTPUT", "running"),
         ...PHASES("INPUT"),
         { terminalLabel: "PE", kind: "EARTH" },
       ],
-      faults: ["OVERLOAD"],
     }),
-    generic("PUMP", "Generic pumps", "Generic centrifugal pump", { faults: ["DRY_RUN"] }),
-    generic("FAN", "Generic fans", "Generic fan"),
-    generic("CONVEYOR", "Generic conveyors", "Generic belt conveyor"),
-    generic("MIXER", "Generic mixers", "Generic agitator"),
-    generic("COMPRESSOR", "Generic compressors", "Generic compressor"),
-    generic("VALVE", "Generic valves", "Generic on/off valve, 24 V DC", {
+    generic("PUMP", "Generic pumps", "Generic centrifugal pump", simulated("PUMP", ["DRY_RUN"])),
+    generic("FAN", "Generic fans", "Generic fan", simulated("FAN")),
+    generic("CONVEYOR", "Generic conveyors", "Generic belt conveyor", simulated("CONVEYOR")),
+    generic("MIXER", "Generic mixers", "Generic agitator", simulated("MIXER")),
+    generic("COMPRESSOR", "Generic compressors", "Generic compressor", simulated("COMPRESSOR")),
+    generic("VALVE", "Generic valves", "Generic on/off valve, 24 V DC", simulated("VALVE", ["STUCK"]), {
       terminals: [
         digital("Y1", "INPUT", "open"),
         digital("ZSO", "OUTPUT", "opened"),
         digital("ZSC", "OUTPUT", "closed"),
       ],
-      faults: ["STUCK"],
     }),
-    generic("VALVE", "Generic valves", "Generic control valve, 4–20 mA", {
+    generic("VALVE", "Generic valves", "Generic control valve, 4–20 mA", simulated("VALVE", ["STUCK"]), {
       terminals: [
         analog("POS REF", "INPUT", "CURRENT_4_20MA", "positionSetpoint"),
         analog("POS FB", "OUTPUT", "CURRENT_4_20MA", "position"),
       ],
-      faults: ["STUCK"],
     }),
     transmitter("Generic pressure transmitter, 4–20 mA", "CURRENT_4_20MA"),
     transmitter("Generic pressure transmitter, 0–10 V", "VOLTAGE_0_10V"),
@@ -147,59 +174,84 @@ export const genericModels: CatalogInput = {
     contact("SWITCH", "Generic switches", "Generic pressure switch, 24 V DC"),
     contact("PROXIMITY_SENSOR", "Generic proximity sensors", "Generic proximity sensor, 24 V DC PNP"),
     // A programmable RTU: the same program, version and runtime workflow as a PLC, on the OpenPLC adapter.
-    generic("RTU", "Generic RTUs", "Generic RTU, IEC 61131-3", {
-      controlCapability: "PROGRAMMABLE",
-      capabilities: ["PROGRAMMABLE", "IEC_61131_3", "MODBUS_SERVER", "REMOTE_CONTROL", "DATA_LOGGING"],
-      runtimeSupport: "OPENPLC",
-      architectureType: "COMPACT",
-      ports: ETHERNET_MODBUS,
-      builtInChannels: [
-        { ioType: "DI", count: 8, signalType: "DC_24V" },
-        { ioType: "DO", count: 4, signalType: "DC_24V" },
-        { ioType: "AI", count: 4, signalType: "CURRENT_4_20MA", acceptedSignalTypes: ["CURRENT_0_20MA"] },
-      ],
-      electrical: DC_24V,
-    }),
+    generic(
+      "RTU",
+      "Generic RTUs",
+      "Generic RTU, IEC 61131-3",
+      notSimulated(
+        "A programmable controller: its program runs on the OpenPLC adapter. The device simulator models no RTU.",
+      ),
+      {
+        controlCapability: "PROGRAMMABLE",
+        capabilities: ["PROGRAMMABLE", "IEC_61131_3", "MODBUS_SERVER", "REMOTE_CONTROL", "DATA_LOGGING"],
+        runtimeSupport: "OPENPLC",
+        architectureType: "COMPACT",
+        ports: ETHERNET_MODBUS,
+        builtInChannels: [
+          { ioType: "DI", count: 8, signalType: "DC_24V" },
+          { ioType: "DO", count: 4, signalType: "DC_24V" },
+          { ioType: "AI", count: 4, signalType: "CURRENT_4_20MA", acceptedSignalTypes: ["CURRENT_0_20MA"] },
+        ],
+        electrical: DC_24V,
+      },
+    ),
     // Distribution: the terminals that are shared, each within the number of wires it takes.
-    generic("POWER_SUPPLY", "Generic power supplies", "Generic 24 V DC power supply", {
-      runtimeSupport: "NONE",
-      terminals: [
-        { terminalLabel: "+24V", kind: "POWER", direction: "OUTPUT", signalType: "DC_24V", maxConnections: 8 },
-        { terminalLabel: "0V", kind: "COMMON", maxConnections: 8 },
-        { terminalLabel: "PE", kind: "EARTH", maxConnections: 8 },
-      ],
-      electrical: DC_24V,
-    }),
-    // Not simulated yet: there is no behaviour model for these categories.
-    generic("CONTACTOR", "Generic contactors", "Generic contactor, 24 V DC coil", {
-      runtimeSupport: "NONE",
+    generic(
+      "POWER_SUPPLY",
+      "Generic power supplies",
+      "Generic 24 V DC power supply",
+      notSimulated("A supply has no behaviour the PLC commands or reads; it is wiring only."),
+      {
+        terminals: [
+          { terminalLabel: "+24V", kind: "POWER", direction: "OUTPUT", signalType: "DC_24V", maxConnections: 8 },
+          { terminalLabel: "0V", kind: "COMMON", maxConnections: 8 },
+          { terminalLabel: "PE", kind: "EARTH", maxConnections: 8 },
+        ],
+        electrical: DC_24V,
+      },
+    ),
+    // Not simulated yet: there is no behaviour profile for these categories.
+    generic("CONTACTOR", "Generic contactors", "Generic contactor, 24 V DC coil", notSimulated(NO_PROFILE_YET), {
       terminals: [digital("A1", "INPUT"), digital("AUX", "OUTPUT")],
     }),
-    generic("HEATER", "Generic heaters", "Generic heater, contactor-switched", {
-      runtimeSupport: "NONE",
+    generic("HEATER", "Generic heaters", "Generic heater, contactor-switched", notSimulated(NO_PROFILE_YET), {
       terminals: [digital("ON", "INPUT")],
     }),
-    generic("INDICATOR", "Generic indicators", "Generic stack light, 24 V DC", {
-      runtimeSupport: "NONE",
+    generic("INDICATOR", "Generic indicators", "Generic stack light, 24 V DC", notSimulated(NO_PROFILE_YET), {
       terminals: [digital("RED", "INPUT"), digital("YELLOW", "INPUT"), digital("GREEN", "INPUT")],
     }),
-    generic("TEMPERATURE_CONTROLLER", "Generic controllers", "Generic temperature controller", {
-      controlCapability: "PARAMETER_CONFIGURED",
-      capabilities: ["PARAMETER_CONFIGURABLE", "LOCAL_CONTROL"],
-      runtimeSupport: "NONE",
-      terminals: [digital("ENABLE", "INPUT"), digital("ALARM", "OUTPUT"), analog("PV", "OUTPUT", "CURRENT_4_20MA")],
-    }),
-    generic("REMOTE_IO", "Generic remote I/O", "Generic remote I/O station, Modbus TCP", {
-      controlCapability: "PROTOCOL_CONTROLLED",
-      capabilities: ["REMOTE_IO", "MODBUS_SERVER"],
-      runtimeSupport: "NONE",
-      ports: ETHERNET_MODBUS,
-    }),
-    generic("GATEWAY", "Generic gateways", "Generic Modbus TCP gateway", {
-      controlCapability: "PROTOCOL_CONTROLLED",
-      capabilities: ["MODBUS_CLIENT", "MODBUS_SERVER"],
-      runtimeSupport: "NONE",
-      ports: ETHERNET_MODBUS,
-    }),
+    generic(
+      "TEMPERATURE_CONTROLLER",
+      "Generic controllers",
+      "Generic temperature controller",
+      notSimulated(NO_PROFILE_YET),
+      {
+        controlCapability: "PARAMETER_CONFIGURED",
+        capabilities: ["PARAMETER_CONFIGURABLE", "LOCAL_CONTROL"],
+        terminals: [digital("ENABLE", "INPUT"), digital("ALARM", "OUTPUT"), analog("PV", "OUTPUT", "CURRENT_4_20MA")],
+      },
+    ),
+    generic(
+      "REMOTE_IO",
+      "Generic remote I/O",
+      "Generic remote I/O station, Modbus TCP",
+      notSimulated("The simulator serves no Modbus registers yet (TASK-1013)."),
+      {
+        controlCapability: "PROTOCOL_CONTROLLED",
+        capabilities: ["REMOTE_IO", "MODBUS_SERVER"],
+        ports: ETHERNET_MODBUS,
+      },
+    ),
+    generic(
+      "GATEWAY",
+      "Generic gateways",
+      "Generic Modbus TCP gateway",
+      notSimulated("The simulator serves no Modbus registers yet (TASK-1013)."),
+      {
+        controlCapability: "PROTOCOL_CONTROLLED",
+        capabilities: ["MODBUS_CLIENT", "MODBUS_SERVER"],
+        ports: ETHERNET_MODBUS,
+      },
+    ),
   ],
 };

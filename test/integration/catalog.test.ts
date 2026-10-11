@@ -233,7 +233,31 @@ describeDb("device catalog against PostgreSQL", () => {
 
   it("lists the catalog as manufacturer, family and model with totals", async () => {
     const overview = await getCatalogOverview(db);
-    expect(overview.totals).toEqual({ models: 32, manufacturers: 4, verified: 4, generic: 28, withAsset: 0 });
+    expect(overview.totals).toEqual({
+      models: 32,
+      manufacturers: 4,
+      verified: 4,
+      generic: 28,
+      withAsset: 0,
+      simulated: 19,
+    });
+    // Every stored model carries its simulation decision (TASK-1010): the generic hardwired
+    // drive runs on its category's profile; a vendor PLC is a program host, not a simulated device.
+    const drive = overview.manufacturers
+      .flatMap((manufacturer) => manufacturer.families.flatMap((family) => family.models))
+      .find((model) => model.modelName === "Generic VFD, hardwired control");
+    expect(drive?.coverage).toBe("GENERIC");
+    expect((await getCatalogModel(db, await modelId("Generic VFD, hardwired control"))).simulation).toMatchObject({
+      coverage: "GENERIC",
+      profile: { key: "VFD", version: 1 },
+      faults: ["OVERCURRENT", "OVERTEMPERATURE"],
+      statement: expect.stringContaining("not vendor firmware"),
+    });
+    expect((await getCatalogModel(db, await modelId("CPU 1214C DC/DC/DC"))).simulation).toMatchObject({
+      coverage: "NOT_SIMULATABLE",
+      profile: null,
+      reason: expect.stringContaining("OpenPLC"),
+    });
     expect(overview.manufacturers.map((manufacturer) => [manufacturer.name, manufacturer.modelCount])).toEqual([
       ["Generic / simulated", 28],
       ["Rockwell Automation", 1],

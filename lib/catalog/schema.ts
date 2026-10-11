@@ -17,7 +17,7 @@ import {
   TERMINAL_KINDS,
 } from "@/lib/domain/device";
 import { DomainError } from "@/lib/domain/errors";
-import { DEVICE_FAULTS, findSignal, isSimulatedType } from "@/lib/domain/simulation";
+import { type BehaviorProfile, checkParameterValue, findBehaviorProfile } from "@/lib/domain/behavior-contract";
 
 const text = z.string().trim().min(1).max(200);
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "use YYYY-MM-DD");
@@ -120,6 +120,38 @@ const terminalSchema = z
     if (terminal.kind !== "SIGNAL") refuse("simulatorSignal");
   });
 
+/** A behaviour of a vendor model Z-Factory declares, and whether the simulator implements it. */
+const featureSchema = z.strictObject({
+  key: z.string().regex(/^[A-Z][A-Z0-9_]{1,63}$/, "an UPPER_SNAKE key"),
+  label: text,
+  implemented: z.boolean(),
+});
+
+const simulatedSchema = {
+  /** The behaviour profile of `lib/domain/behavior-contract.ts` the model runs on, and its version. */
+  profile: text,
+  profileVersion: z.number().int().min(1),
+  /** Fault codes of the profile this model supports. */
+  faults: z.array(text).default([]),
+  /** Parameter values of the profile for this model; the others keep the profile's generic defaults. */
+  parameters: z.record(z.string(), z.union([z.number(), z.string()])).default({}),
+};
+
+/**
+ * The simulation decision of a model (Phase 10, TASK-1010): exactly one coverage state.
+ * Whatever the state, it is a statement about a behaviour model, never about vendor firmware.
+ */
+const simulationSchema = z.discriminatedUnion("coverage", [
+  /** Configuration and metadata only. The reason says why nothing executes it. */
+  z.strictObject({ coverage: z.literal("NOT_SIMULATABLE"), reason: text }),
+  /** The generic behaviour of the category, nothing model-specific. */
+  z.strictObject({ coverage: z.literal("GENERIC"), ...simulatedSchema }),
+  /** A declared subset of the model's behaviour is implemented. */
+  z.strictObject({ coverage: z.literal("PARTIAL"), ...simulatedSchema, features: z.array(featureSchema).min(2) }),
+  /** Every declared behaviour of the model is implemented. */
+  z.strictObject({ coverage: z.literal("FULL"), ...simulatedSchema, features: z.array(featureSchema).min(1) }),
+]);
+
 const modelSchema = z.strictObject({
   manufacturer: text,
   category: z.enum(GENERIC_CATEGORIES.map((category) => category.code) as [string, ...string[]]),
@@ -137,8 +169,8 @@ const modelSchema = z.strictObject({
   ports: z.array(portSchema).default([]),
   builtInChannels: z.array(channelGroupSchema).default([]),
   terminals: z.array(terminalSchema).default([]),
-  /** Fault codes of the generic behaviour model this device supports. */
-  faults: z.array(text).default([]),
+  /** What the simulator does for the model: its coverage, profile, faults and parameters, or why nothing. */
+  simulation: simulationSchema,
   /** Further documented facts (memory, expansion limits, …), shown as-is. */
   facts: z.record(z.string(), jsonValue).default({}),
 });
@@ -188,6 +220,15 @@ export type CatalogInput = z.input<typeof catalogSchema>;
 export type Catalog = z.infer<typeof catalogSchema>;
 export type CatalogModel = Catalog["models"][number];
 export type CatalogModule = Catalog["modules"][number];
+export type CatalogSimulation = CatalogModel["simulation"];
+export type SimulatedCatalogModel = CatalogModel & {
+  simulation: Exclude<CatalogSimulation, { coverage: "NOT_SIMULATABLE" }>;
+};
+
+/** Whether a model's simulation decision names a behaviour profile. */
+export function isSimulated(model: CatalogModel): model is SimulatedCatalogModel {
+  return model.simulation.coverage !== "NOT_SIMULATABLE";
+}
 export type CatalogChannelGroup = CatalogModel["builtInChannels"][number];
 
 /** Name of the manufacturer that owns every generic, simulated model. */
@@ -240,11 +281,89 @@ function checkModel(model: CatalogModel, manufacturers: ReadonlySet<string>): vo
   const labels = model.terminals.map((terminal) => terminal.terminalLabel);
   if (new Set(labels).size !== labels.length) throw fail("Terminal labels must be unique within a model.", where);
 
-  const simulatorType = GENERIC_CATEGORIES.find((category) => category.code === model.category)?.simulatorType;
-  const simulated = simulatorType !== undefined && isSimulatedType(simulatorType) ? simulatorType : undefined;
+  checkSimulation(model, generic, where);
+}
+
+/**
+ * The simulation decision of a model against the behaviour contract (TASK-1010): the
+ * profile is one of its category, the runtime agrees with the coverage, the faults,
+ * parameters and terminal signals are the profile's, model-specific facts have their
+ * provenance, and the coverage matches the declared features.
+ */
+function checkSimulation(model: CatalogModel, generic: boolean, where: Record<string, unknown>): void {
+  const { simulation } = model;
+  const simulated = simulation.coverage !== "NOT_SIMULATABLE";
+  if ((model.runtimeSupport === "DEVICE_SIM") !== simulated) {
+    throw fail(
+      "A model the device simulator executes declares its behaviour profile and coverage; a model it does not execute is NOT_SIMULATABLE.",
+      { ...where, runtimeSupport: model.runtimeSupport, coverage: simulation.coverage },
+    );
+  }
+  if (!isSimulated(model)) {
+    const named = model.terminals.find((terminal) => terminal.simulatorSignal);
+    if (named) {
+      throw fail("A terminal names a simulator signal, but the model is not simulated.", {
+        ...where,
+        terminal: named.terminalLabel,
+      });
+    }
+    return;
+  }
+  const { profile: key, profileVersion, parameters } = model.simulation;
+  const profile = findBehaviorProfile(key);
+  if (!profile) throw fail("A model names a behaviour profile that does not exist.", { ...where, profile: key });
+  if (profile.version !== profileVersion) {
+    throw fail("A model names a version of its behaviour profile that does not exist.", {
+      ...where,
+      profile: key,
+      profileVersion,
+      known: profile.version,
+    });
+  }
+  const categoryType = GENERIC_CATEGORIES.find((category) => category.code === model.category)?.simulatorType;
+  if (categoryType !== profile.simulatorType) {
+    throw fail("A model's behaviour profile is the one of its category.", {
+      ...where,
+      profile: key,
+      category: model.category,
+    });
+  }
+  // Generic and vendor facts stay apart: a generic model has nothing model-specific; a
+  // vendor model's model-specific behaviour is a fact that needs its verified source.
+  if (generic && model.simulation.coverage !== "GENERIC") {
+    throw fail("A generic model has no model-specific behaviour: its coverage is GENERIC or NOT_SIMULATABLE.", where);
+  }
+  const modelSpecific = model.simulation.coverage !== "GENERIC" || Object.keys(parameters).length > 0;
+  if (!generic && modelSpecific && model.verification.status !== "VERIFIED") {
+    throw fail(
+      "Model-specific behaviour of a vendor model (PARTIAL or FULL coverage, parameter values) needs its VERIFIED provenance.",
+      { ...where, coverage: model.simulation.coverage },
+    );
+  }
+  if ("features" in model.simulation) {
+    const { features, coverage } = model.simulation;
+    if (new Set(features.map((feature) => feature.key)).size !== features.length) {
+      throw fail("A feature is declared twice.", where);
+    }
+    const implemented = features.filter((feature) => feature.implemented).length;
+    if (coverage === "FULL" && implemented !== features.length) {
+      throw fail("FULL coverage means every declared feature is implemented.", { ...where, implemented });
+    }
+    if (coverage === "PARTIAL" && (implemented === 0 || implemented === features.length)) {
+      throw fail("PARTIAL coverage means some declared features are implemented and some are not.", {
+        ...where,
+        implemented,
+        declared: features.length,
+      });
+    }
+  }
+  checkProfileUse(model, profile, where);
+}
+
+function checkProfileUse(model: SimulatedCatalogModel, profile: BehaviorProfile, where: Record<string, unknown>) {
   for (const terminal of model.terminals) {
     if (!terminal.simulatorSignal) continue;
-    const signal = simulated ? findSignal(simulated, terminal.simulatorSignal) : undefined;
+    const signal = profile.signals.find((candidate) => candidate.key === terminal.simulatorSignal);
     // A terminal the device reads is a simulator input; one it drives is a simulator output.
     const consistent =
       signal &&
@@ -257,9 +376,23 @@ function checkModel(model: CatalogModel, manufacturers: ReadonlySet<string>): vo
       });
     }
   }
-  for (const code of model.faults) {
-    if (!simulated || !DEVICE_FAULTS[simulated].some((fault) => fault.code === code)) {
+  for (const code of model.simulation.faults) {
+    if (!profile.faults.some((fault) => fault.code === code)) {
       throw fail("A model lists a fault its behaviour model does not support.", { ...where, fault: code });
+    }
+  }
+  for (const [key, value] of Object.entries(model.simulation.parameters)) {
+    const parameter = profile.parameters.find((candidate) => candidate.key === key);
+    if (!parameter) {
+      throw fail("A model sets a parameter its behaviour profile does not have.", { ...where, parameter: key });
+    }
+    const reason = checkParameterValue(parameter, value);
+    if (reason) {
+      throw fail("A model sets a parameter outside the bounds of its behaviour profile.", {
+        ...where,
+        parameter: key,
+        reason,
+      });
     }
   }
 }

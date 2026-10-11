@@ -7,6 +7,7 @@ import {
   type ChannelSummary,
   type PeripheralCompatibility,
   summarizeAssetVersions,
+  summarizeSimulation,
 } from "@/lib/domain/catalog-view";
 import { isProgrammableController } from "@/lib/domain/device-capabilities";
 import { DomainError } from "@/lib/domain/errors";
@@ -51,6 +52,7 @@ export async function getCatalogOverview(db: PrismaClient): Promise<CatalogOverv
   let verified = 0;
   let generic = 0;
   let withAsset = 0;
+  let simulated = 0;
   const manufacturers = rows
     .map((manufacturer) => {
       const families = manufacturer.families
@@ -63,14 +65,15 @@ export async function getCatalogOverview(db: PrismaClient): Promise<CatalogOverv
           };
           category.modelCount += family.models.length;
           categories.set(category.code, category);
-          const models = family.models.map(({ active3dAssetId, assets3d, ...model }) => {
+          const models = family.models.map(({ active3dAssetId, assets3d, simulationCoverage, ...model }) => {
             if (model.verificationStatus === "VERIFIED") verified += 1;
             if (model.verificationStatus === "GENERIC") generic += 1;
+            if (simulationCoverage !== "NOT_SIMULATABLE") simulated += 1;
             const asset = summarizeAssetVersions(
               assets3d.map((version) => ({ ...version, active: version.id === active3dAssetId })),
             );
             if (asset.activeVersion !== null) withAsset += 1;
-            return { ...model, asset };
+            return { ...model, coverage: simulationCoverage, asset };
           });
           return {
             id: family.id,
@@ -97,6 +100,7 @@ export async function getCatalogOverview(db: PrismaClient): Promise<CatalogOverv
       verified,
       generic,
       withAsset,
+      simulated,
     },
   };
 }
@@ -151,6 +155,7 @@ export async function getCatalogModel(db: PrismaClient, modelId: string): Promis
     runtimeSupport: model.runtimeSupport,
     controlCapability: model.controlCapability,
     lifecycleStatus: model.lifecycleStatus,
+    simulation: summarizeSimulation(model),
     source: {
       url: model.sourceUrl,
       title: model.sourceTitle,

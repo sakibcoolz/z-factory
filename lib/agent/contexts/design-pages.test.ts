@@ -437,7 +437,7 @@ const overview: CatalogOverview = {
     { code: "PLC", name: "PLC / programmable controller", modelCount: 3 },
     { code: "VALVE", name: "Valve", modelCount: 2 },
   ],
-  totals: { models: 5, manufacturers: 2, verified: 2, generic: 3, withAsset: 1 },
+  totals: { models: 5, manufacturers: 2, verified: 2, generic: 3, withAsset: 1, simulated: 2 },
 };
 
 describe("the catalog context", () => {
@@ -456,6 +456,15 @@ describe("the catalog context", () => {
       runtimeSupport: "OPENPLC",
       controlCapability: "PROGRAMMABLE",
       lifecycleStatus: "ACTIVE",
+      simulation: {
+        coverage: "NOT_SIMULATABLE",
+        profile: null,
+        reason: "Its program runs on the OpenPLC adapter.",
+        faults: [],
+        parameters: {},
+        features: [],
+        statement: "configuration and metadata only; the simulator executes no behaviour for it",
+      },
       source: {
         url: "https://example.invalid/1214c",
         title: "S7-1200 manual",
@@ -516,6 +525,12 @@ describe("the catalog context", () => {
     });
     expect(context.context.find((item) => item.label === "Verification")?.detail).toContain("S7-1200 manual");
     expect(context.context.find((item) => item.label === "Built-in I/O")?.value).toBe("14 DI");
+    expect(context.context.find((item) => item.label === "Models")?.value).toContain("2 simulated");
+    expect(context.context.find((item) => item.label === "Simulation")).toMatchObject({
+      value: "not simulated",
+      detail:
+        "configuration and metadata only; the simulator executes no behaviour for it · Its program runs on the OpenPLC adapter.",
+    });
     expect(context.objects.find((item) => item.label === "PLC / programmable controller")?.tone).toBe("ok");
     expect(labels(context.relationships)).toEqual([
       "Generic Generic valve can be wired to CPU 1214C",
