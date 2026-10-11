@@ -2,8 +2,16 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createServer } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { PROCESS_SIM_CONTRACT_VERSION, PROCESS_SIM_MODELS, type ProcessSimConfig } from "@/lib/domain/process-sim";
+import {
+  DEVICE_SIM_CONTRACT_VERSION,
+  type DeviceSimConfig,
+  PROCESS_SIM_CONTRACT_VERSION,
+  PROCESS_SIM_MODELS,
+  type ProcessSimConfig,
+} from "@/lib/domain/process-sim";
+import { type DeviceConfig, FactorySimulation } from "@/lib/runtimes/device-sim/engine";
 import { createProcessSimClient, type ProcessSimClient } from "@/lib/runtimes/process-sim/client";
+import { toDeviceSimDevices } from "@/lib/runtimes/process-sim/devices";
 
 /**
  * Z-Factory against the running process simulation service (TASK-602): the built binary
@@ -184,4 +192,159 @@ describeSim("process simulation service", () => {
     await client.start("pump-a");
     expect((await client.step("pump-a", 50)).outputs.DUTY_SPEED).toBe(50);
   }, 30_000);
+});
+
+/** VFD → motor → pump with a pressure transmitter and a pressure switch, as the server's simulator configures it. */
+const CHAIN: DeviceConfig[] = [
+  { id: "vfd", name: "VFD-01", type: "VFD", params: { accelTimeS: 4, decelTimeS: 6 } },
+  { id: "motor", name: "M-01", type: "MOTOR", driveId: "vfd" },
+  { id: "pump", name: "P-01", type: "PUMP", motorId: "motor", params: { ratedFlow: 120, ratedPressure: 6 } },
+  {
+    id: "pt",
+    name: "PT-01",
+    type: "SENSOR",
+    measuresId: "pump",
+    params: { source: { kind: "MEASURED", signal: "pressure" }, timeConstantS: 0.5, rangeMin: 0, rangeMax: 10 },
+  },
+  {
+    id: "ps",
+    name: "PS-01",
+    type: "SWITCH",
+    measuresId: "pump",
+    params: { source: { kind: "MEASURED", signal: "pressure", onAbove: 3, offBelow: 1 } },
+  },
+  { id: "xv", name: "XV-01", type: "VALVE", params: { travelTimeS: 2 } },
+  { id: "tt", name: "TT-01", type: "SENSOR", params: { source: { kind: "RANDOM", min: 10, max: 20, seed: 7 } } },
+];
+
+const factoryConfig = (factoryId: string, overrides: Partial<DeviceSimConfig> = {}): DeviceSimConfig => ({
+  contractVersion: DEVICE_SIM_CONTRACT_VERSION,
+  factoryId,
+  configVersion: 1,
+  tickMs: 100,
+  clock: "manual",
+  devices: toDeviceSimDevices(CHAIN),
+  ...overrides,
+});
+
+const toNumber = (value: number | boolean) => (typeof value === "boolean" ? (value ? 1 : 0) : value);
+
+describeSim("the catalog device runtime (TASK-1009)", () => {
+  let port: number;
+  let child: ChildProcess;
+  let client: ProcessSimClient;
+
+  beforeAll(async () => {
+    port = await freePort();
+    child = startService(port);
+    client = createProcessSimClient({ url: `http://127.0.0.1:${port}`, token: TOKEN });
+    await waitForHealth(client);
+  }, 20_000);
+  afterAll(async () => {
+    await stopService(child);
+  });
+
+  it("describes its profiles: the server's simulated types, with their signals and faults", async () => {
+    const health = await client.health();
+    expect(health).toMatchObject({ deviceContractVersion: DEVICE_SIM_CONTRACT_VERSION, factories: 0, devices: 0 });
+    expect(health.profiles).toEqual([
+      "COMPRESSOR",
+      "CONVEYOR",
+      "FAN",
+      "MIXER",
+      "MOTOR",
+      "PUMP",
+      "SENSOR",
+      "SWITCH",
+      "VALVE",
+      "VFD",
+    ]);
+    const vfd = await client.devices.profile("VFD");
+    expect(vfd.signals.map((signal) => signal.key)).toEqual([
+      "run",
+      "reverse",
+      "frequencySetpoint",
+      "faultReset",
+      "running",
+      "atSetpoint",
+      "faulted",
+      "actualFrequency",
+      "outputCurrent",
+    ]);
+    expect(vfd.faults.map((fault) => fault.code)).toEqual(["OVERCURRENT", "OVERTEMPERATURE"]);
+    await expect(client.devices.profile("BOILER")).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("gives the same values as the server's own simulator for the same configuration and inputs", async () => {
+    const reference = new FactorySimulation({ factoryId: "parity", devices: CHAIN });
+    await client.devices.load(factoryConfig("parity"));
+    await client.devices.start("parity");
+    const inputs = { run: true, frequencySetpoint: 42 };
+    reference.setInputs("vfd", inputs);
+    await client.devices.setInputs("parity", "vfd", { run: 1, frequencySetpoint: 42 });
+    reference.setInputs("xv", { open: true });
+    await client.devices.setInputs("parity", "xv", { open: 1 });
+    for (let step = 0; step < 95; step += 1) reference.step(0.1);
+    const snapshot = await client.devices.step("parity", 95);
+
+    for (const device of snapshot.devices) {
+      const expected = reference.outputs(device.deviceId);
+      for (const [key, value] of Object.entries(expected)) {
+        expect(device.outputs[key], `${device.deviceId}.${key}`).toBeCloseTo(toNumber(value), 6);
+      }
+      expect(device.status).toBe("OK");
+    }
+    expect(snapshot.devices.find((device) => device.deviceId === "ps")?.outputs.state).toBe(1);
+    expect(snapshot.devices.find((device) => device.deviceId === "xv")?.outputs.opened).toBe(1);
+  });
+
+  it("isolates factories, takes devices in and out while running, and names the rule of a refusal", async () => {
+    await client.devices.load(factoryConfig("other"));
+    expect((await client.devices.inspect("parity")).tick).toBe(95);
+    await client.devices.start("other");
+    await client.devices.step("other", 10);
+    expect((await client.devices.inspect("parity")).tick).toBe(95);
+
+    await client.devices.upsertDevice("other", { deviceId: "fan", name: "FN-01", profile: "FAN", profileVersion: 1 });
+    expect((await client.devices.inspect("other")).deviceCount).toBe(CHAIN.length + 1);
+    await expect(client.devices.removeDevice("other", "motor")).rejects.toMatchObject({
+      code: "CONFLICT",
+      details: { rule: "linked-device" },
+    });
+    await client.devices.removeDevice("other", "fan");
+    await expect(client.devices.setInputs("other", "vfd", { flow: 1 })).rejects.toMatchObject({
+      code: "VALIDATION",
+      details: { rule: "input-signal" },
+    });
+    await expect(
+      client.devices.load(
+        factoryConfig("bad", { devices: [{ deviceId: "x", name: "X", profile: "RELAY", profileVersion: 1 }] }),
+      ),
+    ).rejects.toMatchObject({ code: "VALIDATION", details: { rule: "profile" } });
+
+    const injected = await client.devices.injectFault("other", "pump", "DRY_RUN");
+    expect(injected.activeFaults).toEqual(["DRY_RUN"]);
+    await client.devices.step("other", 1);
+    expect((await client.devices.device("other", "pump")).outputs.flow).toBe(0);
+    await client.devices.clearFault("other", "pump", "DRY_RUN");
+    const forced = await client.devices.force("other", "tt", 15.5);
+    expect(forced.forced).toBe(15.5);
+    await client.devices.step("other", 1);
+    expect((await client.devices.device("other", "tt")).outputs.value).toBe(15.5);
+    await client.devices.force("other", "tt", null);
+
+    const events = await client.devices.events("other");
+    expect(events.map((event) => event.type)).toEqual(
+      expect.arrayContaining(["FAULT_INJECTED", "FAULT_CLEARED", "SIMULATED_INPUT_FORCED", "SIMULATED_INPUT_RELEASED"]),
+    );
+    const metrics = await client.metrics();
+    expect(metrics.devices).toMatchObject({ factories: 2, devices: CHAIN.length * 2, stalled: 0 });
+    expect(metrics.devices.devicesByStatus).toEqual({ OK: CHAIN.length * 2 });
+
+    const reset = await client.devices.reset("other");
+    expect(reset).toMatchObject({ status: "LOADED", tick: 0 });
+    await client.devices.unload("other");
+    await client.devices.unload("parity");
+    expect(await client.devices.list()).toEqual([]);
+  });
 });

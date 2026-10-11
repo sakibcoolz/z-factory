@@ -12,26 +12,29 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/sakibcoolz/z-factory/services/process-sim/internal/device"
 	"github.com/sakibcoolz/z-factory/services/process-sim/internal/engine"
+	"github.com/sakibcoolz/z-factory/services/process-sim/internal/runtime"
 )
 
 // Version of the service, set by the build.
 var Version = "dev"
 
-// Server wires the handlers to an engine.
+// Server wires the handlers to the process-module engine and the catalog device runtime.
 type Server struct {
 	engine  *engine.Engine
+	devices *runtime.Runtime
 	token   string
 	log     *slog.Logger
 	started time.Time
 }
 
 // New builds the server. The token must not be empty: an unauthenticated service does not start.
-func New(e *engine.Engine, token string, log *slog.Logger) (*Server, error) {
+func New(e *engine.Engine, devices *runtime.Runtime, token string, log *slog.Logger) (*Server, error) {
 	if len(token) < 16 {
 		return nil, errors.New("PROCESS_SIM_TOKEN must be set and at least 16 characters long")
 	}
-	return &Server{engine: e, token: token, log: log, started: time.Now()}, nil
+	return &Server{engine: e, devices: devices, token: token, log: log, started: time.Now()}, nil
 }
 
 // Handler returns the routes.
@@ -53,12 +56,15 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /v1/instances/{id}/overrides", auth(s.listOverrides))
 	mux.Handle("PUT /v1/instances/{id}/overrides/{signal}", auth(s.setOverride))
 	mux.Handle("DELETE /v1/instances/{id}/overrides/{signal}", auth(s.clearOverride))
+	s.deviceRoutes(mux, auth)
 	return s.logged(mux)
 }
 
 type problem struct {
 	Error string `json:"error"`
 	Code  string `json:"code"`
+	// The rule a refusal names, where the device runtime knows one (TASK-1007).
+	Rule string `json:"rule,omitempty"`
 }
 
 func (s *Server) authenticated(next http.HandlerFunc) http.Handler {
@@ -92,18 +98,32 @@ func (r *statusRecorder) WriteHeader(status int) {
 
 func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
 	metrics := s.engine.Metrics()
+	devices := s.devices.Metrics()
 	writeJSON(w, http.StatusOK, map[string]any{
-		"status":          "ok",
-		"version":         Version,
-		"contractVersion": engine.ContractVersion,
-		"uptimeS":         int64(time.Since(s.started).Seconds()),
-		"instances":       metrics.Instances,
-		"modelTypes":      metrics.ModelTypes,
+		"status":                "ok",
+		"version":               Version,
+		"contractVersion":       engine.ContractVersion,
+		"deviceContractVersion": device.ContractVersion,
+		"uptimeS":               int64(time.Since(s.started).Seconds()),
+		"instances":             metrics.Instances,
+		"modelTypes":            metrics.ModelTypes,
+		"factories":             devices.Factories,
+		"devices":               devices.Devices,
+		"profiles":              devices.Profiles,
 	})
 }
 
+// metrics: the process-module counters as before, and the device runtime's under `devices`.
 func (s *Server) metrics(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, s.engine.Metrics())
+	engineMetrics := s.engine.Metrics()
+	writeJSON(w, http.StatusOK, map[string]any{
+		"instances":      engineMetrics.Instances,
+		"byStatus":       engineMetrics.ByStatus,
+		"ticksTotal":     engineMetrics.TicksTotal,
+		"lastTickMicros": engineMetrics.LastTickMicros,
+		"modelTypes":     engineMetrics.ModelTypes,
+		"devices":        s.devices.Metrics(),
+	})
 }
 
 func (s *Server) list(w http.ResponseWriter, _ *http.Request) {
@@ -243,6 +263,10 @@ func (s *Server) clearOverride(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) fail(w http.ResponseWriter, err error) {
+	if status, body, ok := deviceProblem(err); ok {
+		writeJSON(w, status, body)
+		return
+	}
 	var configErr *engine.ConfigError
 	var stateErr *engine.StateError
 	switch {

@@ -15,7 +15,9 @@ import (
 	"time"
 
 	"github.com/sakibcoolz/z-factory/services/process-sim/internal/api"
+	"github.com/sakibcoolz/z-factory/services/process-sim/internal/device"
 	"github.com/sakibcoolz/z-factory/services/process-sim/internal/engine"
+	"github.com/sakibcoolz/z-factory/services/process-sim/internal/runtime"
 )
 
 func main() {
@@ -27,8 +29,15 @@ func main() {
 		os.Exit(2)
 	}
 
-	runtime := engine.New(log, maxInstances)
-	server, err := api.New(runtime, os.Getenv("PROCESS_SIM_TOKEN"), log)
+	maxDevices, err := strconv.Atoi(envOr("PROCESS_SIM_MAX_DEVICES", "2048"))
+	if err != nil || maxDevices < 1 {
+		log.Error("PROCESS_SIM_MAX_DEVICES must be a positive whole number")
+		os.Exit(2)
+	}
+
+	processes := engine.New(log, maxInstances)
+	devices := runtime.New(log, maxDevices, device.Options{})
+	server, err := api.New(processes, devices, os.Getenv("PROCESS_SIM_TOKEN"), log)
 	if err != nil {
 		log.Error("refusing to start", "error", err.Error())
 		os.Exit(2)
@@ -45,7 +54,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	go func() {
-		log.Info("process-sim listening", "addr", addr, "version", api.Version, "contractVersion", engine.ContractVersion, "maxInstances", maxInstances)
+		log.Info("process-sim listening", "addr", addr, "version", api.Version, "contractVersion", engine.ContractVersion, "deviceContractVersion", device.ContractVersion, "maxInstances", maxInstances, "maxDevices", maxDevices, "profiles", device.Profiles())
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Error("server stopped", "error", err.Error())
 			os.Exit(1)
@@ -55,7 +64,8 @@ func main() {
 
 	// Instances live in memory only: a restart starts empty and Z-Factory loads them again.
 	log.Info("shutting down")
-	runtime.Shutdown()
+	processes.Shutdown()
+	devices.Shutdown()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = httpServer.Shutdown(shutdownCtx)
