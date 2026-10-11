@@ -317,6 +317,26 @@ describe("topology inspector", () => {
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Name")).not.toBeInTheDocument();
   });
+
+  it("connects the selected device to another one without a drag (TASK-1008)", () => {
+    const onConnect = vi.fn();
+    render(<TopologyInspector {...base} onConnect={onConnect} selection={{ kind: "node", id: "plc" }} />);
+
+    const form = within(screen.getByRole("form", { name: "Connect PLC-01 to another device" }));
+    const picker = form.getByLabelText("Connect to") as HTMLSelectElement;
+    // Every other device of the factory, never the device itself.
+    expect([...picker.options].map((option) => option.textContent)).toEqual([
+      "XV-101 · Valve",
+      "VFD-01 · Variable-frequency drive",
+    ]);
+    fireEvent.change(picker, { target: { value: "vfd" } });
+    fireEvent.click(form.getByRole("button", { name: "Connect" }));
+    expect(onConnect).toHaveBeenCalledWith("plc", "vfd");
+
+    // Read-only, or without the callback, nothing is offered.
+    render(<TopologyInspector {...base} readOnly onConnect={onConnect} selection={{ kind: "node", id: "plc" }} />);
+    expect(screen.getAllByRole("form", { name: /Connect .* to another device/ })).toHaveLength(1);
+  });
 });
 
 describe("topology canvas", () => {
@@ -355,6 +375,29 @@ describe("topology canvas", () => {
     // Something else dropped on the canvas is ignored.
     fireEvent.drop(canvas, { clientX: 1, clientY: 1, dataTransfer: { getData: () => "" } });
     expect(place).toHaveBeenCalledTimes(1);
+  });
+
+  it("connects two devices from the inspector and asks for the relationship when several apply", async () => {
+    const link = vi.fn(async () => ({
+      ok: true as const,
+      value: {
+        status: "CHOOSE" as const,
+        options: [
+          { kind: "DRIVES", label: "VFD-01 drives MOTOR-01" },
+          { kind: "WIRE_IO", label: "Wire VFD-01 and MOTOR-01 pin by pin" },
+        ],
+      },
+    }));
+    render(<TopologyCanvas view={{ nodes, edges }} plcLinks={{}} actions={actions({ link })} />);
+    fireEvent.click(screen.getByText("VFD-01"));
+    const inspector = within(screen.getByRole("complementary", { name: "Inspector" }));
+    fireEvent.change(inspector.getByLabelText("Connect to"), { target: { value: "valve" } });
+    fireEvent.click(inspector.getByRole("button", { name: "Connect" }));
+
+    await waitFor(() => expect(link).toHaveBeenCalledWith({ fromId: "vfd", toId: "valve", kind: undefined }));
+    const dialog = within(await screen.findByRole("dialog", { name: "Choose the relationship" }));
+    fireEvent.click(dialog.getByRole("button", { name: "VFD-01 drives MOTOR-01" }));
+    await waitFor(() => expect(link).toHaveBeenCalledWith({ fromId: "vfd", toId: "valve", kind: "DRIVES" }));
   });
 
   it("is read-only without actions: nothing can be dropped or edited", () => {

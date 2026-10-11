@@ -496,6 +496,16 @@ const moduleDetail: ModulesScreenView["modules"][number] = {
         } as unknown as unknown as ModulesScreenView["modules"][number]["roles"][number]["devices"][number],
       ],
     },
+    {
+      key: "level",
+      name: "Level sensor",
+      description: null,
+      deviceCategoryCodes: ["SENSOR"],
+      required: true,
+      maxDevices: 1,
+      profiles: [],
+      devices: [],
+    },
   ],
   signals: [],
   interlocks: [],
@@ -576,6 +586,16 @@ describe("the process module contexts", () => {
             required: true,
             maxDevices: 1,
             profiles: [],
+          },
+          // Of another profile: the page does not offer it, so neither does the context (TASK-1008).
+          {
+            key: "temperature",
+            name: "Temperature sensor",
+            description: null,
+            deviceCategoryCodes: ["SENSOR"],
+            required: true,
+            maxDevices: 1,
+            profiles: ["extended"],
           },
         ],
         signals: [],
@@ -681,6 +701,10 @@ describe("the process module contexts", () => {
     expect(labels(context.decisions)).toEqual([
       "Which device for Level sensor?",
       "Which PLC tags carry the required signals?",
+    ]);
+    expect(labels(context.capacity).filter((label) => label.startsWith("Role "))).toEqual([
+      "Role Tank",
+      "Role Level sensor",
     ]);
     expect(context.navigation.find((item) => item.label === "PLC-01 I/O mapping")?.href).toBe(
       `/factories/${F}/plcs/${P}/io-mapping`,

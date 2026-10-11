@@ -89,6 +89,9 @@ All variables are read through `lib/env.ts`, which validates them with Zod and f
 | `TELEMETRY_RETENTION_HOURS` | no | `lib/services/runtime-deps.ts` | Stored telemetry older than this is deleted, 1–8760 hours (default `24`) |
 | `EVENT_RETENTION_DAYS` | no | `lib/services/runtime-deps.ts` | Recorded events and cleared alarms older than this are deleted, 1–3650 days (default `30`) |
 | `TEST_DOCKER` | no | integration tests | `1` runs the Docker lifecycle tests against the engine; they are skipped otherwise |
+| `TEST_BROWSER` | no | browser-agent test | `1` runs `test/browser-agent/browser-agent.test.ts` (TASK-1008): the production build on the test database, driven by a real Chromium; skipped otherwise |
+| `CHROME_BIN` | no | browser-agent test | The Chromium to drive; without it, the browser Playwright cached under `~/.cache/ms-playwright`, else one on the PATH |
+| `TEST_BROWSER_OUT` | no | browser-agent test | Directory for the run's screenshots and `report.md` |
 | `POSTGRES_PORT` | no | `compose.yaml` | Host port for the local database (default 5432) |
 
 A task that introduces a variable adds it to this table, to `.env.example` and to `lib/env.ts` in the same change. Variables are never exposed to the browser unless explicitly prefixed `NEXT_PUBLIC_` and documented here.
@@ -101,7 +104,7 @@ A task that introduces a variable adds it to this table, to `.env.example` and t
 | `npm run lint` | ESLint, including the design-token adherence rule |
 | `npm run format` / `npm run format:check` | Prettier write / check |
 | `npm run typecheck` | `tsc --noEmit` |
-| `npm test` | unit and component tests; database integration tests when `TEST_DATABASE_URL` is set; Docker lifecycle tests when `TEST_DOCKER=1` |
+| `npm test` | unit and component tests; database integration tests when `TEST_DATABASE_URL` is set; Docker lifecycle tests when `TEST_DOCKER=1`; the browser-agent end-to-end test when `TEST_BROWSER=1` (after `npm run build`) |
 | `make start` / `make stop` / `make restart` / `make status` | the whole local stack (see Local stack) |
 | `make serve` / `make unserve` | publish both dev servers over HTTPS on the tailnet (see Local stack) |
 | `npm run db:up` / `npm run db:down` | start / stop the local PostgreSQL container (no `PROCESS_SIM_TOKEN` needed) |
