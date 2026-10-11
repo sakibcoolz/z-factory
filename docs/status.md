@@ -142,4 +142,5 @@ Phases 00 to 05, the MVP, are done. One thing was not exercised: an external gat
 - Refactor the Go Thin Client around protocol adapters; Modbus and OPC UA workers may run concurrently in the same factory/site and emit one normalized MQTT telemetry model.
 - Route cloud command/setpoint writes through the selected adapter while retaining authorization, idempotency, expiry, type/range/access checks and ADR-0015 PLC-program authority.
 - Keep existing Modbus deployments backward compatible and prove one Modbus PLC plus one OPC UA PLC operating simultaneously through one Thin Client in E2E.
+- Add **Expose Factory**: validate the complete factory edge configuration and generate one versioned factory-level Edge Deployment JSON containing all exposed PLCs; the Thin Client reconciles that revision into protocol-specific workers.
 - Execution plan: `docs/phases/phase-11-multi-protocol-plc-connectivity/`.
