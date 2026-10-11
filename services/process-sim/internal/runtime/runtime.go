@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/sakibcoolz/z-factory/services/process-sim/internal/device"
+	"github.com/sakibcoolz/z-factory/services/process-sim/internal/modbus"
 )
 
 // ContractVersion is the version of the factory configuration contract this runtime accepts.
@@ -43,6 +44,8 @@ type Config struct {
 	TickMs          int             `json:"tickMs"`
 	Clock           Clock           `json:"clock"`
 	Devices         []device.Config `json:"devices"`
+	// ModbusTCP opens a listener for the factory's protocol devices (TASK-1013).
+	ModbusTCP *ModbusTCPConfig `json:"modbusTcp,omitempty"`
 }
 
 // Summary is one factory as listing shows it.
@@ -60,6 +63,8 @@ type Summary struct {
 	LoadedAt        time.Time             `json:"loadedAt"`
 	// A wall-clock factory that is RUNNING but has not ticked for five ticks.
 	Stalled bool `json:"stalled"`
+	// Where the factory's protocol devices are served; absent without a listener.
+	ModbusTCP *ModbusTCPStatus `json:"modbusTcp,omitempty"`
 }
 
 // Snapshot is a factory with its devices, as inspecting it shows.
@@ -96,6 +101,8 @@ type Factory struct {
 	loadedAt   time.Time
 	lastTickAt time.Time
 	log        *slog.Logger
+	listener   *modbus.Server
+	rejected   map[string]time.Time
 }
 
 // Runtime holds the factories and the counters the metrics report.
@@ -106,6 +113,7 @@ type Runtime struct {
 	options    device.Options
 	log        *slog.Logger
 	now        func() time.Time
+	modbus     ModbusOptions
 
 	ticks        uint64
 	tickDuration time.Duration
@@ -116,7 +124,7 @@ func New(log *slog.Logger, maxDevices int, options device.Options) *Runtime {
 	if options.Now == nil {
 		options.Now = time.Now
 	}
-	return &Runtime{factories: map[string]*Factory{}, maxDevices: maxDevices, options: options, log: log, now: time.Now}
+	return &Runtime{factories: map[string]*Factory{}, maxDevices: maxDevices, options: options, log: log, now: time.Now, modbus: defaultModbusOptions()}
 }
 
 // Validate checks a configuration against the contract and builds its simulation.
@@ -139,7 +147,14 @@ func (r *Runtime) Validate(config Config) (*device.Simulation, error) {
 	if len(config.Devices) > maxDevicesPerFactory {
 		return nil, &ConfigError{Rule: "device-limit", Reason: fmt.Sprintf("a factory holds at most %d devices", maxDevicesPerFactory)}
 	}
-	return device.NewSimulation(config.FactoryID, config.Devices, r.options)
+	sim, err := device.NewSimulation(config.FactoryID, config.Devices, r.options)
+	if err != nil {
+		return nil, err
+	}
+	if err := r.checkModbus(config, sim); err != nil {
+		return nil, err
+	}
+	return sim, nil
 }
 
 // Load stores a configuration as a LOADED factory. A factory of the same id is replaced:
@@ -171,6 +186,13 @@ func (r *Runtime) Load(config Config) (Snapshot, error) {
 		status:   StatusLoaded,
 		loadedAt: r.now(),
 		log:      r.log.With("factory", config.FactoryID),
+		rejected: map[string]time.Time{},
+	}
+	// The listener is opened once the previous factory of the id has released its port;
+	// if it cannot be opened the replaced factory stays gone and Z-Factory loads again.
+	if err := r.listen(factory); err != nil {
+		delete(r.factories, config.FactoryID)
+		return Snapshot{}, err
 	}
 	r.factories[config.FactoryID] = factory
 	factory.log.Info("factory loaded", "configVersion", config.ConfigVersion, "devices", sim.Count(), "tickMs", config.TickMs, "clock", config.Clock)
@@ -393,6 +415,9 @@ func (r *Runtime) Upsert(id string, config device.Config) (Snapshot, error) {
 				return &ConfigError{Rule: "device-limit", Reason: fmt.Sprintf("the runtime holds %d devices, its limit", held)}
 			}
 		}
+		if config.Protocol != nil && factory.listener == nil {
+			return &ConfigError{Rule: "modbus-listener", Reason: fmt.Sprintf("%s is a protocol device but the factory has no modbusTcp listener", config.Name)}
+		}
 		if err := factory.sim.Upsert(config); err != nil {
 			return err
 		}
@@ -534,14 +559,20 @@ func (f *Factory) run(r *Runtime, stop chan struct{}) {
 	}
 }
 
-// halt stops the ticker goroutine, if any. Safe to call more than once.
+// halt stops the ticker goroutine, if any, and closes the factory's listener. Safe to
+// call more than once.
 func (f *Factory) halt() {
 	f.mu.Lock()
 	stop := f.stop
 	f.stop = nil
+	listener := f.listener
+	f.listener = nil
 	f.mu.Unlock()
 	if stop != nil {
 		close(stop)
+	}
+	if listener != nil {
+		listener.Close()
 	}
 }
 
@@ -591,6 +622,7 @@ func (f *Factory) snapshotLocked(now time.Time) Snapshot {
 			LastEventSeq:    f.eventSeq,
 			LoadedAt:        f.loadedAt,
 			Stalled:         stalled,
+			ModbusTCP:       f.modbusStatusLocked(),
 		},
 		Devices: f.sim.Snapshot(),
 	}

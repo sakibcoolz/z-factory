@@ -26,6 +26,9 @@ type Config struct {
 	Faults         map[string]FaultOverride `json:"faults,omitempty"`
 	Links          map[string]string        `json:"links,omitempty"`
 	Inputs         Values                   `json:"inputs,omitempty"`
+	// Protocol is how the device is served to the PLC over the network, when it is a
+	// protocol-controlled device (TASK-1013): the declared register map and the unit id.
+	Protocol *ProtocolConfig `json:"protocol,omitempty"`
 }
 
 // ConfigError is a refused configuration: the rule it breaks and the reason.
@@ -87,6 +90,7 @@ type Snapshot struct {
 	Forced         *float64           `json:"forced,omitempty"`
 	Internal       map[string]float64 `json:"internal"`
 	Error          string             `json:"error,omitempty"`
+	Protocol       *ProtocolConfig    `json:"protocol,omitempty"`
 }
 
 // Options bound what one device may cost per step.
@@ -122,6 +126,9 @@ type Device struct {
 	overruns   int
 	stage      int
 	sim        *Simulation
+	// registers is the declared map of a protocol device, nil otherwise.
+	registers *RegisterMap
+	protocol  *ProtocolConfig
 }
 
 // Simulation is the device simulation of one factory: a deterministic set of coupled
@@ -217,6 +224,15 @@ func (s *Simulation) build(config Config) (*Device, error) {
 	for key, value := range config.Inputs {
 		inputs[key] = value
 	}
+	registers, err := checkProtocol(config)
+	if err != nil {
+		return nil, err
+	}
+	var protocol *ProtocolConfig
+	if config.Protocol != nil {
+		copied := *config.Protocol
+		protocol = &copied
+	}
 	return &Device{
 		ID:         config.DeviceID,
 		Name:       config.Name,
@@ -232,6 +248,8 @@ func (s *Simulation) build(config Config) (*Device, error) {
 		status:     StatusOK,
 		stage:      stageOf(behavior),
 		sim:        s,
+		registers:  registers,
+		protocol:   protocol,
 	}, nil
 }
 
@@ -291,6 +309,18 @@ func stageOf(behavior Behavior) int {
 func (s *Simulation) relink() error {
 	for _, device := range s.devices {
 		device.peers = map[string]*Device{}
+	}
+	// One unit id per factory: the PLC addresses a protocol device by it.
+	units := map[int]*Device{}
+	for _, id := range s.order {
+		device := s.devices[id]
+		if device.protocol == nil {
+			continue
+		}
+		if other := units[device.protocol.UnitID]; other != nil {
+			return &ConfigError{Rule: "unique-unit-id", Reason: fmt.Sprintf("%s and %s both use Modbus unit id %d", other.Name, device.Name, device.protocol.UnitID)}
+		}
+		units[device.protocol.UnitID] = device
 	}
 	for _, id := range s.order {
 		device, config := s.devices[id], s.configs[id]
@@ -720,6 +750,7 @@ func (d *Device) Snapshot() Snapshot {
 		Forced:         d.forced,
 		Internal:       d.behavior.Internal(),
 		Error:          d.err,
+		Protocol:       d.protocol,
 	}
 }
 

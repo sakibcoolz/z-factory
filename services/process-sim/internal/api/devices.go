@@ -14,6 +14,8 @@ import (
 func (s *Server) deviceRoutes(mux *http.ServeMux, auth func(http.HandlerFunc) http.Handler) {
 	mux.Handle("GET /v1/profiles", auth(s.profiles))
 	mux.Handle("GET /v1/profiles/{key}", auth(s.profile))
+	mux.Handle("GET /v1/register-maps", auth(s.registerMaps))
+	mux.Handle("GET /v1/register-maps/{key}", auth(s.registerMap))
 	mux.Handle("GET /v1/factories", auth(s.listFactories))
 	mux.Handle("PUT /v1/factories/{factoryId}", auth(s.loadFactory))
 	mux.Handle("GET /v1/factories/{factoryId}", auth(s.inspectFactory))
@@ -52,6 +54,27 @@ func (s *Server) profile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, description)
+}
+
+// The declared register maps (TASK-1013): what a protocol device exposes, register by register.
+func (s *Server) registerMaps(w http.ResponseWriter, _ *http.Request) {
+	maps := make([]device.RegisterMap, 0)
+	for _, key := range device.RegisterMaps() {
+		registerMap, err := device.DescribeRegisterMap(key)
+		if err == nil {
+			maps = append(maps, registerMap)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"contractVersion": device.ContractVersion, "registerMaps": maps})
+}
+
+func (s *Server) registerMap(w http.ResponseWriter, r *http.Request) {
+	registerMap, err := device.DescribeRegisterMap(r.PathValue("key"))
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, problem{Error: err.Error(), Code: "not-found"})
+		return
+	}
+	writeJSON(w, http.StatusOK, registerMap)
 }
 
 func (s *Server) listFactories(w http.ResponseWriter, _ *http.Request) {

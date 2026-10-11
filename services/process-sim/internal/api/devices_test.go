@@ -40,6 +40,34 @@ func TestDeviceRoutesNeedTheTokenAndDescribeTheProfiles(t *testing.T) {
 	if status, _ := call(t, ts, "GET", "/v1/profiles/BOILER", nil, true); status != 404 {
 		t.Fatalf("unknown profile: %d", status)
 	}
+	// The declared register maps (TASK-1013).
+	if maps, ok := health["registerMaps"].([]any); !ok || len(maps) != 1 || maps[0] != "VFD_MODBUS_TCP" {
+		t.Fatalf("health register maps: %v", health["registerMaps"])
+	}
+	status, maps := call(t, ts, "GET", "/v1/register-maps", nil, true)
+	if status != 200 || len(maps["registerMaps"].([]any)) != 1 {
+		t.Fatalf("register maps: %d %v", status, maps)
+	}
+	status, vfdMap := call(t, ts, "GET", "/v1/register-maps/VFD_MODBUS_TCP", nil, true)
+	if status != 200 || vfdMap["profile"] != "VFD" || vfdMap["protocol"] != "MODBUS_TCP" || len(vfdMap["registers"].([]any)) != 9 {
+		t.Fatalf("VFD map: %d %v", status, vfdMap)
+	}
+	if status, _ := call(t, ts, "GET", "/v1/register-maps/PUMP_MODBUS", nil, true); status != 404 {
+		t.Fatalf("unknown map: %d", status)
+	}
+	// A factory with a protocol device is served; the summary says where.
+	served := factoryConfig("served")
+	served["modbusTcp"] = map[string]any{"port": 0}
+	served["devices"].([]map[string]any)[0]["protocol"] = map[string]any{"kind": "MODBUS_TCP", "unitId": 1, "registerMap": "VFD_MODBUS_TCP", "registerMapVersion": 1}
+	status, loaded := call(t, ts, "PUT", "/v1/factories/served", served, true)
+	if status != 200 || loaded["modbusTcp"].(map[string]any)["devices"] != float64(1) || loaded["modbusTcp"].(map[string]any)["port"] == float64(0) {
+		t.Fatalf("served factory: %d %v", status, loaded)
+	}
+	served["modbusTcp"] = nil
+	if status, body := call(t, ts, "PUT", "/v1/factories/served", served, true); status != 422 || body["rule"] != "modbus-listener" {
+		t.Fatalf("without a listener: %d %v", status, body)
+	}
+	call(t, ts, "DELETE", "/v1/factories/served", nil, true)
 }
 
 func TestFactoryLifecycleOverHttp(t *testing.T) {
