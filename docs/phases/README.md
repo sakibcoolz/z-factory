@@ -11,7 +11,8 @@
 | 06 | Process Module Framework & Go Simulation Service | IN PROGRESS | Phase 02–05 foundations stable; ADR-0008 |
 | 07 | PLC-to-PLC Communication | PLANNED | Multi-PLC OpenPLC runtime + Modbus mapping stable |
 | 08 | Simulation Control, Overrides & Closed-Loop Testing | PLANNED | Go simulation + PLC bridge stable; ADR-0015 |
-| 09 | MVP 2 — Production Edge & Cloud Integration | IN PROGRESS | Thin Client Agent + closed-loop test foundations ready |\n| 10 | Agent-Ready Engineering & Full Catalog Go Simulation | PLANNED | Active engineering model + catalog/runtime foundations stable |
+| 09 | MVP 2 — Production Edge & Cloud Integration | IN PROGRESS | Thin Client Agent + closed-loop test foundations ready |\n| 10 | Agent-Ready Engineering & Full Catalog Go Simulation | IN PROGRESS | Active engineering model + catalog/runtime foundations stable |
+| 11 | Multi-Protocol PLC Connectivity (Modbus TCP + OPC UA) | PLANNED | Thin Client + PLC mapping/export foundations stable |
 
 Cross-cutting requirements now included in the roadmap:
 - PostgreSQL + Prisma domain model
@@ -84,3 +85,13 @@ Phase 10 execution units:
 - TASK-1014 Fault, failure and degraded-quality simulation
 - TASK-1015 Dynamic catalog-driven simulator instantiation
 - TASK-1016 Catalog simulation coverage report and validation
+
+
+Phase 11 execution units:
+- TASK-1101 PLC protocol capability & per-instance selection
+- TASK-1102 Versioned multi-protocol Edge Deployment JSON contract
+- TASK-1103 Thin Client protocol-adapter interface & normalized tag model
+- TASK-1104 OPC UA client/session/subscription runtime
+- TASK-1105 Mixed Modbus + OPC UA worker orchestration
+- TASK-1106 Multi-protocol command/write lifecycle & safety
+- TASK-1107 UI, observability, migration & mixed-protocol E2E validation
