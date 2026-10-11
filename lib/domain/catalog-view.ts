@@ -88,9 +88,37 @@ export type CatalogSimulation = {
   parameters: Record<string, number | string>;
   /** Model-specific behaviours declared for a vendor model, and whether each is implemented. */
   features: Array<{ key: string; label: string; implemented: boolean }>;
+  /**
+   * Where every model-specific fact of a vendor model was read (TASK-1012), by fact
+   * (`parameter:maxFrequencyHz`, `feature:S_RAMP`, `fault:OVERCURRENT`). Empty for a
+   * generic model: it states no vendor fact.
+   */
+  sources: Record<string, CatalogFactSourceView>;
   /** The sentence to show for the coverage. */
   statement: string;
 };
+
+/** One fact's source as the catalog shows it: the place in a named manufacturer document. */
+export type CatalogFactSourceView = {
+  reference: string;
+  /** The approximation in the mapping, when the vendor's meaning is not the profile's exactly. */
+  note: string | null;
+  document: { url: string; title: string; revision: string; retrievedAt: string } | null;
+};
+
+/** The source of a fact of a kind, or null when the model gives none (a generic model). */
+export function factSourceOf(
+  simulation: Pick<CatalogSimulation, "sources">,
+  kind: "parameter" | "feature" | "fault",
+  key: string,
+): CatalogFactSourceView | null {
+  return simulation.sources[`${kind}:${key}`] ?? null;
+}
+
+/** `P044 [Maximum Freq], default 60.00 Hz, page 87 (PowerFlex 520-series User Manual)` */
+export function factSourceText(source: CatalogFactSourceView): string {
+  return source.document ? `${source.reference} (${source.document.title})` : source.reference;
+}
 
 type StoredSimulation = {
   simulationCoverage: SimulationCoverage;
@@ -101,6 +129,33 @@ type StoredSimulation = {
 
 const stringList = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/** The stored fact sources, each resolved by the import to its document. */
+function factSources(value: unknown): Record<string, CatalogFactSourceView> {
+  if (!isRecord(value)) return {};
+  const sources: Record<string, CatalogFactSourceView> = {};
+  for (const [fact, raw] of Object.entries(value)) {
+    if (!isRecord(raw) || typeof raw.reference !== "string") continue;
+    const doc = isRecord(raw.document) ? raw.document : null;
+    sources[fact] = {
+      reference: raw.reference,
+      note: typeof raw.note === "string" ? raw.note : null,
+      document:
+        doc && typeof doc.url === "string" && typeof doc.title === "string"
+          ? {
+              url: doc.url,
+              title: doc.title,
+              revision: typeof doc.revision === "string" ? doc.revision : "",
+              retrievedAt: typeof doc.retrievedAt === "string" ? doc.retrievedAt : "",
+            }
+          : null,
+    };
+  }
+  return sources;
+}
 
 /** The simulation decision of a stored model, from its columns and the declared block. */
 export function summarizeSimulation(row: StoredSimulation): CatalogSimulation {
@@ -128,6 +183,7 @@ export function summarizeSimulation(row: StoredSimulation): CatalogSimulation {
     faults: stringList(block.faults),
     parameters,
     features,
+    sources: factSources(block.sources),
     statement: coverageStatement(row.simulationCoverage, profile),
   };
 }

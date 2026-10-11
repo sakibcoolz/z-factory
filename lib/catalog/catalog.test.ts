@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { loadCatalog, mergeCatalogs } from "@/lib/catalog";
 import { GENERIC_CATEGORIES } from "@/lib/catalog/generic-categories";
 import { genericModels } from "@/lib/catalog/generic-models";
-import { type CatalogInput, GENERIC_MANUFACTURER, parseCatalog } from "@/lib/catalog/schema";
+import { type CatalogInput, GENERIC_MANUFACTURER, parseCatalog, resolveFactSource } from "@/lib/catalog/schema";
 import { siemens } from "@/lib/catalog/vendor/siemens";
 import { CONTROL_CAPABILITIES, DRIVE_TYPES, signalFits, VERIFICATION_STATUSES } from "@/lib/domain/catalog";
 import { DomainError } from "@/lib/domain/errors";
@@ -38,7 +38,11 @@ const simulated = (
   faults: string[] = [],
   rest: Partial<Extract<Simulation, { coverage: "GENERIC" }>> = {},
 ): Simulation => ({ coverage: "GENERIC", profile, profileVersion: 1, faults, ...rest });
-const vendorDrive = (simulation: Simulation, verified = true): Model => ({
+const vendorDrive = (
+  simulation: Simulation,
+  verified = true,
+  capabilities: Model["capabilities"] = ["PARAMETER_CONFIGURABLE"],
+): Model => ({
   manufacturer: "Siemens",
   category: "VFD",
   family: "Test drives",
@@ -46,7 +50,7 @@ const vendorDrive = (simulation: Simulation, verified = true): Model => ({
   sku: "TEST-1",
   runtimeSupport: "DEVICE_SIM",
   controlCapability: "PARAMETER_CONFIGURED",
-  capabilities: ["PARAMETER_CONFIGURABLE"],
+  capabilities,
   verification: verified
     ? {
         status: "VERIFIED",
@@ -62,16 +66,17 @@ const vendorDrive = (simulation: Simulation, verified = true): Model => ({
   simulation,
 });
 type Feature = { key: string; label: string; implemented: boolean };
-/** A vendor model's declared features at a coverage, on the generic VFD profile. */
+/** A vendor model's declared features at a coverage, on the generic VFD profile, each with a source. */
 const withFeatures = (coverage: "PARTIAL" | "FULL", features: Feature[]): Simulation => ({
   coverage,
   profile: "VFD",
   profileVersion: 1,
   features,
+  sources: Object.fromEntries(features.map((feature) => [`feature:${feature.key}`, { reference: "test, page 1" }])),
 });
-const withDrive = (simulation: Simulation, verified = true): CatalogInput => ({
+const withDrive = (simulation: Simulation, verified = true, capabilities?: Model["capabilities"]): CatalogInput => ({
   ...siemens,
-  models: [...siemens.models, vendorDrive(simulation, verified)],
+  models: [...siemens.models, vendorDrive(simulation, verified, capabilities)],
 });
 const firstModel = (part: CatalogInput): Model => {
   const model = part.models[0];
@@ -160,15 +165,71 @@ describe("shipped catalog", () => {
   const vendorModels = catalog.models.filter((model) => model.manufacturer !== GENERIC_MANUFACTURER);
 
   it("contains the four initial PLC targets with their exact order numbers and architecture", () => {
-    expect(
-      vendorModels.map((model) => [model.manufacturer, model.modelName, model.sku, model.architectureType]),
-    ).toEqual([
+    const plcs = vendorModels.filter((model) => model.category === "PLC");
+    expect(plcs.map((model) => [model.manufacturer, model.modelName, model.sku, model.architectureType])).toEqual([
       ["Siemens", "CPU 1214C DC/DC/DC", "6ES7214-1AG40-0XB0", "COMPACT"],
       ["Siemens", "CPU 1511-1 PN", "6ES7511-1AK02-0AB0", "MODULAR"],
       ["Rockwell Automation", "5069-L306ER", "5069-L306ER", "MODULAR"],
       ["Schneider Electric", "TM241CE24T", "TM241CE24T", "COMPACT"],
     ]);
-    expect(vendorModels.every((model) => model.controlCapability === "PROGRAMMABLE")).toBe(true);
+    expect(plcs.every((model) => model.controlCapability === "PROGRAMMABLE")).toBe(true);
+  });
+
+  it("maps the two vendor drives onto the generic VFD profile with sourced factory values (TASK-1012)", () => {
+    const drives = vendorModels.filter((model) => model.category === "VFD");
+    expect(drives.map((model) => [model.manufacturer, model.modelName, model.sku, model.runtimeSupport])).toEqual([
+      ["Rockwell Automation", "PowerFlex 525 25B-D010N104", "25B-D010N104", "DEVICE_SIM"],
+      ["Schneider Electric", "ATV320U07N4C", "ATV320U07N4C", "DEVICE_SIM"],
+    ]);
+    for (const drive of drives) {
+      const { simulation } = drive;
+      expect(simulation.coverage, drive.modelName).toBe("PARTIAL");
+      if (simulation.coverage !== "PARTIAL") continue;
+      expect(simulation).toMatchObject({
+        profile: "VFD",
+        profileVersion: 1,
+        faults: ["OVERCURRENT", "OVERTEMPERATURE"],
+      });
+      // The profile implements the ramps, the reversal and the trips; the rest is declared absent.
+      expect(simulation.features.filter((f) => f.implemented).map((f) => f.key)).toEqual([
+        "LINEAR_RAMP",
+        "REVERSAL",
+        "TRIP_RESET",
+      ]);
+      expect(simulation.features.filter((f) => !f.implemented).length).toBeGreaterThanOrEqual(5);
+      // Every model-specific fact names its page; every source resolves to a manufacturer document.
+      const facts = [
+        ...Object.keys(simulation.parameters).map((key) => `parameter:${key}`),
+        ...simulation.faults.map((code) => `fault:${code}`),
+        ...simulation.features.map((feature) => `feature:${feature.key}`),
+      ];
+      expect(Object.keys(simulation.sources).sort(), drive.modelName).toEqual(facts.sort());
+      for (const [fact, source] of Object.entries(simulation.sources)) {
+        expect(source.reference, `${drive.modelName} ${fact}`).toMatch(/pages? \d+/);
+        const resolved = resolveFactSource(drive, source);
+        expect(resolved.document?.url, `${drive.modelName} ${fact}`).toBeDefined();
+        expect(MANUFACTURER_HOSTS).toContain(new URL(resolved.document?.url ?? "").host);
+      }
+      // The terminals carry the factory assignments of the manual: run, reverse and the reference at least.
+      const signals = drive.terminals.map((terminal) => terminal.simulatorSignal).filter(Boolean);
+      expect(signals, drive.modelName).toEqual(expect.arrayContaining(["run", "reverse", "frequencySetpoint"]));
+    }
+    // The factory defaults as the manuals print them.
+    const byName = Object.fromEntries(drives.map((drive) => [drive.sku, drive.simulation]));
+    expect(byName["25B-D010N104"]).toMatchObject({
+      parameters: { maxFrequencyHz: 60, accelTimeS: 10, decelTimeS: 10 },
+    });
+    expect(byName.ATV320U07N4C).toMatchObject({ parameters: { maxFrequencyHz: 50, accelTimeS: 3, decelTimeS: 3 } });
+    // The ATV320 reads its parameters from a second, named document.
+    const atv = drives.find((drive) => drive.sku === "ATV320U07N4C");
+    expect(atv?.documents.programming?.title).toContain("Programming Manual");
+    if (atv?.simulation.coverage === "PARTIAL") {
+      const source = atv.simulation.sources["parameter:accelTimeS"];
+      if (!source) throw new Error("source missing");
+      expect(source.document).toBe("programming");
+      expect(source.note).toContain("FrS");
+      expect(resolveFactSource(atv, source).document?.title).toContain("Programming Manual");
+    }
   });
 
   it("carries complete provenance from manufacturer documentation for every vendor record", () => {
@@ -266,9 +327,11 @@ describe("shipped catalog", () => {
   it("declares a simulation decision for every model: generic behaviour or the reason nothing runs", () => {
     for (const model of catalog.models) {
       const type = GENERIC_CATEGORIES.find((category) => category.code === model.category)?.simulatorType;
+      const generic = model.manufacturer === GENERIC_MANUFACTURER;
       if (model.runtimeSupport === "DEVICE_SIM") {
         expect(model.simulation, model.modelName).toMatchObject({
-          coverage: "GENERIC",
+          // A generic model claims the generic behaviour; a vendor drive declares its features (TASK-1012).
+          coverage: generic ? "GENERIC" : "PARTIAL",
           profile: type,
           profileVersion: 1,
         });
@@ -277,9 +340,9 @@ describe("shipped catalog", () => {
         expect("reason" in model.simulation && model.simulation.reason.length, model.modelName).toBeGreaterThan(10);
       }
     }
-    // Nothing in the shipped catalog claims more than the generic behaviour of its category.
+    // Nothing in the shipped catalog claims every behaviour of a vendor model.
     expect(new Set(catalog.models.map((model) => model.simulation.coverage))).toEqual(
-      new Set(["GENERIC", "NOT_SIMULATABLE"]),
+      new Set(["GENERIC", "PARTIAL", "NOT_SIMULATABLE"]),
     );
     // A programmable controller runs its program on the adapter; it is not a simulated device.
     for (const plc of catalog.models.filter((model) => model.category === "PLC")) {
@@ -398,16 +461,137 @@ describe("simulation decision rules", () => {
       /generic model has no model-specific behaviour/,
     );
     // A vendor model may run on the generic behaviour of its category without any claim …
-    expect(parseCatalog(withDrive(simulated("VFD", ["OVERCURRENT"]), false)).models).toHaveLength(3);
-    // … but a model-specific fact needs its verified provenance.
+    expect(parseCatalog(withDrive(simulated("VFD"), false)).models).toHaveLength(3);
+    // … but a model-specific fact (a value, a feature, a supported fault) needs its verified provenance.
     expectRejected(
       withDrive(simulated("VFD", [], { parameters: { maxFrequencyHz: 60 } }), false),
       /VERIFIED provenance/,
     );
+    expectRejected(withDrive(simulated("VFD", ["OVERCURRENT"]), false), /VERIFIED provenance/);
     expectRejected(withDrive(withFeatures("PARTIAL", features), false), /VERIFIED provenance/);
     expect(parseCatalog(withDrive(withFeatures("PARTIAL", features))).models[2]?.simulation).toMatchObject({
       coverage: "PARTIAL",
     });
+  });
+
+  it("wants a source for every model-specific fact of a vendor model, and no stray source (TASK-1012)", () => {
+    const source = { reference: "P044 [Maximum Freq], page 87" };
+    // A parameter value without its source.
+    expectRejected(
+      withDrive(simulated("VFD", [], { parameters: { maxFrequencyHz: 60 } })),
+      /names the manufacturer document it was read from/,
+    );
+    // A supported fault without its source.
+    expectRejected(withDrive(simulated("VFD", ["OVERCURRENT"])), /names the manufacturer document it was read from/);
+    // A declared feature without its source.
+    const features = [
+      { key: "LINEAR_RAMP", label: "Linear ramps", implemented: true },
+      { key: "PID", label: "Built-in PID", implemented: false },
+    ];
+    expectRejected(
+      withDrive({
+        coverage: "PARTIAL",
+        profile: "VFD",
+        profileVersion: 1,
+        features,
+        sources: { "feature:LINEAR_RAMP": source },
+      }),
+      /names the manufacturer document it was read from/,
+    );
+    // A source for a fact the model does not declare.
+    expectRejected(
+      withDrive(simulated("VFD", [], { sources: { "parameter:maxFrequencyHz": source } })),
+      /names a parameter, feature or fault the model does not declare/,
+    );
+    // A source naming a document the model does not list.
+    expectRejected(
+      withDrive(
+        simulated("VFD", [], {
+          parameters: { maxFrequencyHz: 60 },
+          sources: { "parameter:maxFrequencyHz": { ...source, document: "programming" } },
+        }),
+      ),
+      /names a document the model does not list/,
+    );
+    // Complete: the value, its source, and a second document for another fact.
+    const programming = {
+      url: "https://cache.industry.siemens.com/dl/files/test/test-drive-parameters.pdf",
+      title: "Test drive parameter manual",
+      revision: "A5E00000001-AA, 01/2026",
+      retrievedAt: "2026-10-05",
+    };
+    const complete = parseCatalog({
+      ...siemens,
+      models: [
+        ...siemens.models,
+        {
+          ...vendorDrive(
+            simulated("VFD", ["OVERCURRENT"], {
+              parameters: { maxFrequencyHz: 60 },
+              sources: {
+                "parameter:maxFrequencyHz": source,
+                "fault:OVERCURRENT": { document: "programming", reference: "F012, page 161", note: "one trip" },
+              },
+            }),
+          ),
+          documents: { programming },
+        },
+      ],
+    });
+    const drive = complete.models[2];
+    if (!drive || drive.simulation.coverage === "NOT_SIMULATABLE") throw new Error("drive missing");
+    const sourceOf = (fact: string) => {
+      const found = drive.simulation.coverage !== "NOT_SIMULATABLE" && drive.simulation.sources[fact];
+      if (!found) throw new Error(`no source for ${fact}`);
+      return found;
+    };
+    // Resolved: the model's own source unless a document is named.
+    expect(resolveFactSource(drive, sourceOf("parameter:maxFrequencyHz"))).toEqual({
+      reference: "P044 [Maximum Freq], page 87",
+      note: null,
+      document: expect.objectContaining({ title: "Test drive operating instructions" }),
+    });
+    expect(resolveFactSource(drive, sourceOf("fault:OVERCURRENT"))).toEqual({
+      reference: "F012, page 161",
+      note: "one trip",
+      document: programming,
+    });
+  });
+
+  it("lets a generic model state no vendor fact: no sources, no documents, no firmware", () => {
+    expectRejected(
+      withModel(genericModels, (model) => ({
+        ...model,
+        simulation: simulated("VFD", [], { sources: { "parameter:maxFrequencyHz": { reference: "nowhere" } } }),
+      })),
+      /names no source for one/,
+    );
+    expectRejected(
+      withModel(genericModels, (model) => ({
+        ...model,
+        documents: {
+          manual: {
+            url: "https://cache.industry.siemens.com/dl/files/test/x.pdf",
+            title: "A vendor manual",
+            revision: "1",
+            retrievedAt: "2026-10-05",
+          },
+        },
+      })),
+      /A generic model has no manufacturer documents/,
+    );
+    // Nothing deploys firmware to a behaviour model, vendor or generic.
+    expectRejected(
+      withModel(genericModels, (model) => ({
+        ...model,
+        capabilities: [...(model.capabilities ?? []), "FIRMWARE_DEPLOYABLE"],
+      })),
+      /no firmware is deployed to it/,
+    );
+    expectRejected(
+      withDrive(simulated("VFD"), true, ["PARAMETER_CONFIGURABLE", "FIRMWARE_DEPLOYABLE"]),
+      /no firmware is deployed to it/,
+    );
   });
 
   it("makes the coverage match the declared features", () => {

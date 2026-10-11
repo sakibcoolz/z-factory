@@ -127,6 +127,24 @@ const featureSchema = z.strictObject({
   implemented: z.boolean(),
 });
 
+/**
+ * Where one model-specific behaviour fact of a vendor model was read (TASK-1012): the
+ * document, by the key it has in the model's `documents` (the model's own source when
+ * omitted), the place in it, and how the fact maps onto the profile when that needs saying.
+ */
+const factSourceSchema = z.strictObject({
+  document: text.optional(),
+  /** Parameter, table or page as printed: `P044 [Maximum Freq], default 60.00 Hz, page 87`. */
+  reference: text,
+  /** The approximation in the mapping, when the profile's meaning is not the vendor's exactly. */
+  note: z.string().trim().min(1).max(400).optional(),
+});
+
+/** The kinds of model-specific fact a source may be given for, and how they are keyed. */
+export const FACT_KINDS = ["parameter", "feature", "fault"] as const;
+export type FactKind = (typeof FACT_KINDS)[number];
+export const factKey = (kind: FactKind, key: string) => `${kind}:${key}`;
+
 const simulatedSchema = {
   /** The behaviour profile of `lib/domain/behavior-contract.ts` the model runs on, and its version. */
   profile: text,
@@ -135,6 +153,12 @@ const simulatedSchema = {
   faults: z.array(text).default([]),
   /** Parameter values of the profile for this model; the others keep the profile's generic defaults. */
   parameters: z.record(z.string(), z.union([z.number(), z.string()])).default({}),
+  /**
+   * The source of every model-specific fact, keyed `parameter:<key>`, `feature:<KEY>` or
+   * `fault:<CODE>`. A vendor model names one per parameter value, declared feature and
+   * supported fault; a generic model has none.
+   */
+  sources: z.record(z.string(), factSourceSchema).default({}),
 };
 
 /**
@@ -165,6 +189,8 @@ const modelSchema = z.strictObject({
   capabilities: z.array(z.enum(DEVICE_CAPABILITIES)).default([]),
   lifecycleStatus: z.enum(["ACTIVE", "PHASED_OUT", "DISCONTINUED", "UNKNOWN"]).default("UNKNOWN"),
   verification: verificationSchema,
+  /** Further manufacturer documents of a vendor model, by key, for facts not in its verification source. */
+  documents: z.record(z.string(), sourceSchema).default({}),
   electrical: electricalSchema.optional(),
   ports: z.array(portSchema).default([]),
   builtInChannels: z.array(channelGroupSchema).default([]),
@@ -221,6 +247,8 @@ export type Catalog = z.infer<typeof catalogSchema>;
 export type CatalogModel = Catalog["models"][number];
 export type CatalogModule = Catalog["modules"][number];
 export type CatalogSimulation = CatalogModel["simulation"];
+export type CatalogSource = CatalogModel["documents"][string];
+export type CatalogFactSource = z.infer<typeof factSourceSchema>;
 export type SimulatedCatalogModel = CatalogModel & {
   simulation: Exclude<CatalogSimulation, { coverage: "NOT_SIMULATABLE" }>;
 };
@@ -248,11 +276,18 @@ function checkModel(model: CatalogModel, manufacturers: ReadonlySet<string>): vo
   // A generic profile makes no vendor claim, so it has nothing a vendor would identify it by.
   if (generic && model.sku) throw fail("A generic model has no vendor order number.", where);
   if (!generic && !model.sku) throw fail("A vendor model needs its exact order number.", where);
+  if (generic && Object.keys(model.documents).length > 0) {
+    throw fail("A generic model has no manufacturer documents.", where);
+  }
 
   // Capabilities are stated, and they agree with the other facts of the model.
   const has = (capability: (typeof DEVICE_CAPABILITIES)[number]) => model.capabilities.includes(capability);
   if (new Set(model.capabilities).size !== model.capabilities.length)
     throw fail("A capability is listed twice.", where);
+  // Nothing of Z-Factory runs or ships vendor firmware: a behaviour model deploys none (TASK-1012).
+  if (model.runtimeSupport === "DEVICE_SIM" && has("FIRMWARE_DEPLOYABLE")) {
+    throw fail("A model the device simulator executes is a behaviour model; no firmware is deployed to it.", where);
+  }
   if ((model.controlCapability === "PROGRAMMABLE") !== has("PROGRAMMABLE")) {
     throw fail("A programmable model lists the PROGRAMMABLE capability, and only such a model does.", where);
   }
@@ -288,7 +323,8 @@ function checkModel(model: CatalogModel, manufacturers: ReadonlySet<string>): vo
  * The simulation decision of a model against the behaviour contract (TASK-1010): the
  * profile is one of its category, the runtime agrees with the coverage, the faults,
  * parameters and terminal signals are the profile's, model-specific facts have their
- * provenance, and the coverage matches the declared features.
+ * provenance (the model's verified source, and since TASK-1012 a source per fact), and
+ * the coverage matches the declared features.
  */
 function checkSimulation(model: CatalogModel, generic: boolean, where: Record<string, unknown>): void {
   const { simulation } = model;
@@ -339,10 +375,14 @@ function checkSimulation(model: CatalogModel, generic: boolean, where: Record<st
   if (generic && model.simulation.coverage !== "GENERIC") {
     throw fail("A generic model has no model-specific behaviour: its coverage is GENERIC or NOT_SIMULATABLE.", where);
   }
-  const modelSpecific = model.simulation.coverage !== "GENERIC" || Object.keys(parameters).length > 0;
+  if (generic && Object.keys(model.simulation.sources).length > 0) {
+    throw fail("A generic model states no vendor fact, so it names no source for one.", where);
+  }
+  const modelSpecific =
+    model.simulation.coverage !== "GENERIC" || Object.keys(parameters).length > 0 || model.simulation.faults.length > 0;
   if (!generic && modelSpecific && model.verification.status !== "VERIFIED") {
     throw fail(
-      "Model-specific behaviour of a vendor model (PARTIAL or FULL coverage, parameter values) needs its VERIFIED provenance.",
+      "Model-specific behaviour of a vendor model (PARTIAL or FULL coverage, parameter values, supported faults) needs its VERIFIED provenance.",
       { ...where, coverage: model.simulation.coverage },
     );
   }
@@ -364,6 +404,54 @@ function checkSimulation(model: CatalogModel, generic: boolean, where: Record<st
     }
   }
   checkProfileUse(model, profile, where);
+  if (!generic) checkFactSources(model, where);
+}
+
+/**
+ * Every model-specific fact of a vendor model names where it was read (TASK-1012): each
+ * parameter value, declared feature and supported fault has a source, every source points
+ * at a fact the model declares, and a named document is one of the model's.
+ */
+function checkFactSources(model: SimulatedCatalogModel, where: Record<string, unknown>) {
+  const { sources, parameters, faults } = model.simulation;
+  const declared = new Set<string>([
+    ...Object.keys(parameters).map((key) => factKey("parameter", key)),
+    ...faults.map((code) => factKey("fault", code)),
+    ...("features" in model.simulation ? model.simulation.features.map((f) => factKey("feature", f.key)) : []),
+  ]);
+  for (const fact of declared) {
+    if (!sources[fact]) {
+      throw fail("A model-specific fact of a vendor model names the manufacturer document it was read from.", {
+        ...where,
+        fact,
+      });
+    }
+  }
+  for (const [fact, source] of Object.entries(sources)) {
+    if (!declared.has(fact)) {
+      throw fail("A fact source names a parameter, feature or fault the model does not declare.", { ...where, fact });
+    }
+    if (source.document !== undefined && !model.documents[source.document]) {
+      throw fail("A fact source names a document the model does not list.", {
+        ...where,
+        fact,
+        document: source.document,
+      });
+    }
+  }
+}
+
+/**
+ * The source of one fact of a model, resolved to its document: the named one, else the
+ * model's verification source. Null for a generic model (it has no vendor facts).
+ */
+export function resolveFactSource(
+  model: Pick<CatalogModel, "documents" | "verification">,
+  source: CatalogFactSource,
+): { reference: string; note: string | null; document: CatalogSource | null } {
+  const own = model.verification.status === "GENERIC" ? undefined : model.verification.source;
+  const document = source.document !== undefined ? model.documents[source.document] : own;
+  return { reference: source.reference, note: source.note ?? null, document: document ?? null };
 }
 
 function checkProfileUse(model: SimulatedCatalogModel, profile: BehaviorProfile, where: Record<string, unknown>) {

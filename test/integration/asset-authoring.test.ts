@@ -644,8 +644,8 @@ describeDb("authoring catalog 3D assets", () => {
   it("plans the whole catalog: a prompt and a space for every model, and what it has", async () => {
     await importCatalogAsset({ db, storage }, { deviceModelId: models.motor }, makeBoxGlb());
     const plan = await listAssetPlan(db);
-    expect(plan).toHaveLength(32);
-    expect(new Set(plan.map((entry) => entry.prompt.shapeKey)).size).toBe(28);
+    expect(plan).toHaveLength(34);
+    expect(new Set(plan.map((entry) => entry.prompt.shapeKey)).size).toBe(29);
     expect(plan.filter((entry) => entry.active).map((entry) => entry.modelName)).toEqual(["Generic three-phase motor"]);
     const plc = plan.find((entry) => entry.deviceModelId === models.plcOther);
     expect(plc).toMatchObject({ categoryCode: "PLC", space: [0.8, 1.6, 0.5], active: null, latest: null });
@@ -687,7 +687,7 @@ describeDb("authoring catalog 3D assets", () => {
       (await getCatalogOverview(db)).manufacturers
         .flatMap((manufacturer) => manufacturer.families.flatMap((family) => family.models))
         .find((model) => model.id === deviceModelId)?.asset;
-    expect((await getCatalogOverview(db)).totals).toMatchObject({ models: 32, withAsset: 0 });
+    expect((await getCatalogOverview(db)).totals).toMatchObject({ models: 34, withAsset: 0 });
     expect(await summary(models.motor)).toEqual({ state: "NONE", activeVersion: null });
     expect(await getCatalogModel(db, models.motor)).toMatchObject({ placeholderKind: "motor", assetVersions: [] });
 

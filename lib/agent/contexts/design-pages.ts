@@ -1,7 +1,12 @@
 import { createLlmContext, type LlmContextDocument, type LlmContextItem } from "@/lib/agent/llm-context";
 import { routePattern } from "@/lib/agent/llm-index";
 import { SIMULATION_COVERAGE_LABELS } from "@/lib/domain/behavior-contract";
-import type { CatalogModelDetail, CatalogOverview, PeripheralCompatibility } from "@/lib/domain/catalog-view";
+import {
+  type CatalogModelDetail,
+  type CatalogOverview,
+  factSourceOf,
+  type PeripheralCompatibility,
+} from "@/lib/domain/catalog-view";
 import type { DeviceSection } from "@/lib/domain/device-capabilities";
 import type { DeviceDetailView } from "@/lib/domain/device-detail-view";
 import type { FactoryDeviceView, PlcModelOption } from "@/lib/domain/plc-config-view";
@@ -10,6 +15,17 @@ import type { FactorySceneView } from "@/lib/domain/scene-view";
 import type { TopologyView } from "@/lib/domain/topology-view";
 import { routes } from "@/lib/navigation/routes";
 import type { FactoryView } from "@/lib/services/factory-service";
+
+/** ` (P044 [Maximum Freq], page 87; PowerFlex 520-series User Manual)` for a sourced fact, else nothing. */
+function sourceText(
+  simulation: Pick<CatalogModelDetail["simulation"], "sources">,
+  kind: "parameter" | "feature" | "fault",
+  key: string,
+): string {
+  const source = factSourceOf(simulation, kind, key);
+  if (!source) return "";
+  return ` (${source.reference}${source.document ? `; ${source.document.title}` : ""}${source.note ? `; ${source.note}` : ""})`;
+}
 
 /**
  * The LLM Contexts of the design screens (TASK-1003, PR C): designer and topology, the 3D
@@ -186,7 +202,8 @@ export function buildTopologyContext({ factory, view, mode }: TopologyContextInp
             confirm: "required" as const,
             enforced: "A device is created from a catalog model and keeps its facts.",
           },
-          detail: "Vendor models are hardware profiles with sources; generic ones are simulated. Ask before placing.",
+          detail:
+            "Vendor models are hardware profiles with sources and run, at most, the generic behaviour profile of their category with documented values; generic ones are simulated. Ask before placing.",
         },
         {
           label: "Which relationship, when the canvas asks?",
@@ -710,12 +727,21 @@ export function buildCatalogContext({ overview, model, peripherals, type }: Cata
                   model.simulation.statement,
                   model.simulation.reason,
                   model.simulation.faults.length > 0 ? `faults ${model.simulation.faults.join(", ")}` : null,
+                  Object.keys(model.simulation.parameters).length > 0
+                    ? `parameters ${Object.entries(model.simulation.parameters)
+                        .map(([key, value]) => `${key} = ${value}${sourceText(model.simulation, "parameter", key)}`)
+                        .join(", ")}`
+                    : null,
                   model.simulation.features.length > 0
                     ? `features ${model.simulation.features
                         .map(
-                          (feature) => `${feature.label} (${feature.implemented ? "implemented" : "not implemented"})`,
+                          (feature) =>
+                            `${feature.label} (${feature.implemented ? "implemented" : "not implemented"}${sourceText(model.simulation, "feature", feature.key)})`,
                         )
                         .join(", ")}`
+                    : null,
+                  Object.keys(model.simulation.sources).length > 0
+                    ? "every model-specific value names the manufacturer document it was read from"
                     : null,
                 ]
                   .filter(Boolean)
@@ -810,6 +836,11 @@ export function buildCatalogContext({ overview, model, peripherals, type }: Cata
           label: "A vendor PLC runs on OpenPLC",
           detail: "Its catalog record is a hardware profile, not a firmware emulator.",
         },
+        {
+          label: "Vendor fidelity is never overstated",
+          detail:
+            "A vendor device runs the generic behaviour profile of its category; its coverage, parameter values, features and faults each name the manufacturer document they were read from, and no vendor firmware runs (TASK-1012).",
+        },
       ],
       decisions: [
         {
@@ -820,7 +851,7 @@ export function buildCatalogContext({ overview, model, peripherals, type }: Cata
             enforced: "Vendor facts come with sources and are never invented.",
           },
           detail:
-            "A vendor model brings documented I/O and sources; a generic one is simulated with documented behaviour. The user chooses.",
+            "A vendor model brings documented I/O and sources and, when simulated, documented values on its category's generic behaviour profile; a generic one is simulated with documented behaviour. The user chooses.",
         },
       ],
       navigation: [
