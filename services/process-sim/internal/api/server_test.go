@@ -10,7 +10,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sakibcoolz/z-factory/services/process-sim/internal/device"
 	"github.com/sakibcoolz/z-factory/services/process-sim/internal/engine"
+	"github.com/sakibcoolz/z-factory/services/process-sim/internal/runtime"
 )
 
 const token = "test-token-0123456789abcdef"
@@ -18,7 +20,7 @@ const token = "test-token-0123456789abcdef"
 func newServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	server, err := New(engine.New(log, 8), token, log)
+	server, err := New(engine.New(log, 8), runtime.New(log, 64, device.Options{}), token, log)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +70,7 @@ func TestEverythingButHealthNeedsTheToken(t *testing.T) {
 			t.Errorf("%s %s without token: %d", route[0], route[1], status)
 		}
 	}
-	if _, err := New(engine.New(slog.New(slog.NewTextHandler(io.Discard, nil)), 1), "short", nil); err == nil {
+	if _, err := New(engine.New(slog.New(slog.NewTextHandler(io.Discard, nil)), 1), nil, "short", nil); err == nil {
 		t.Fatal("a short token must not start the server")
 	}
 }

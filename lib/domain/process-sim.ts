@@ -99,9 +99,14 @@ export type ProcessSimHealth = {
   status: "ok";
   version: string;
   contractVersion: number;
+  /** The device runtime's contract (TASK-1009). */
+  deviceContractVersion: number;
   uptimeS: number;
   instances: number;
   modelTypes: string[];
+  factories: number;
+  devices: number;
+  profiles: string[];
 };
 
 export type ProcessSimMetrics = {
@@ -110,10 +115,153 @@ export type ProcessSimMetrics = {
   ticksTotal: number;
   lastTickMicros: number;
   modelTypes: string[];
+  /** The device runtime's counters (TASK-1009). */
+  devices: DeviceSimMetrics;
 };
 
 /** The models the service ships, by the module type each one simulates (docs/process-simulation.md). */
 export const PROCESS_SIM_MODELS: Readonly<Record<string, { modelType: string; modelVersion: number }>> = {
   PUMP_HOUSE: { modelType: "PUMP_HOUSE", modelVersion: 1 },
   TANK: { modelType: "TANK", modelVersion: 1 },
+};
+
+// ----- The catalog device runtime (TASK-1009) ---------------------------------------------
+
+/** The version of the device configuration contract the service's runtime speaks. */
+export const DEVICE_SIM_CONTRACT_VERSION = 1;
+
+export type DeviceSimStatus = "LOADED" | "RUNNING" | "STOPPED";
+
+/** A device in the runtime: OK, FAULTED (its behaviour failed in a step) or QUARANTINED (it overran its step budget). */
+export type DeviceSimDeviceStatus = "OK" | "FAULTED" | "QUARANTINED";
+
+export type DeviceSimSignal = {
+  key: string;
+  direction: "IN" | "OUT";
+  kind: "BOOL" | "NUMBER";
+  label: string;
+  unit?: string;
+};
+
+export type DeviceSimFault = {
+  code: string;
+  name: string;
+  severity: "INFO" | "WARNING" | "CRITICAL";
+  latching: boolean;
+  silent?: boolean;
+};
+
+/** What a behaviour profile declares about itself: the stable contract the catalog reads. */
+export type DeviceSimProfile = {
+  key: string;
+  version: number;
+  summary: string;
+  signals: DeviceSimSignal[];
+  faults: DeviceSimFault[];
+  links?: Array<{ role: string; accepts?: string[]; meaning: string }>;
+  parameters: unknown;
+  states: string[];
+  forcible: boolean;
+  forcedKind?: "BOOL" | "NUMBER";
+};
+
+/** One device as the runtime takes it. Values are numbers; a BOOL travels as 0 or 1. */
+export type DeviceSimDeviceConfig = {
+  deviceId: string;
+  name: string;
+  /** The behaviour profile, from the catalog's simulation metadata (`DEVICE_PROFILES`). */
+  profile: string;
+  profileVersion: number;
+  /** The profile's parameters; absent ones take the generic defaults. */
+  parameters?: unknown;
+  /** The catalog's overrides of the profile's generic faults. */
+  faults?: Record<string, { severity?: DeviceSimFault["severity"]; latching?: boolean }>;
+  /** Links to other devices of the factory by role: `drive`, `motor`, `measures`. */
+  links?: Record<string, string>;
+  inputs?: Record<string, number>;
+};
+
+export type DeviceSimConfig = {
+  contractVersion: typeof DEVICE_SIM_CONTRACT_VERSION;
+  factoryId: string;
+  configVersion: number;
+  tickMs: number;
+  clock: ProcessSimClock;
+  devices: DeviceSimDeviceConfig[];
+};
+
+export type DeviceSimDeviceSnapshot = {
+  deviceId: string;
+  name: string;
+  profile: string;
+  profileVersion: number;
+  status: DeviceSimDeviceStatus;
+  state: string;
+  faulted: boolean;
+  tripped: boolean;
+  activeFaults: string[];
+  quality: "GOOD" | "BAD";
+  inputs: Record<string, number>;
+  outputs: Record<string, number>;
+  forced?: number;
+  internal: Record<string, number>;
+  error?: string;
+};
+
+export type DeviceSimSummary = {
+  factoryId: string;
+  configVersion: number;
+  tickMs: number;
+  clock: ProcessSimClock;
+  status: DeviceSimStatus;
+  tick: number;
+  timeS: number;
+  deviceCount: number;
+  devicesByStatus: Partial<Record<DeviceSimDeviceStatus, number>>;
+  lastEventSeq: number;
+  loadedAt: string;
+  /** A wall-clock factory that is RUNNING but has not ticked for five ticks. */
+  stalled: boolean;
+};
+
+export type DeviceSimSnapshot = DeviceSimSummary & { devices: DeviceSimDeviceSnapshot[] };
+
+export type DeviceSimEvent = {
+  seq: number;
+  tick: number;
+  timeS: number;
+  type: string;
+  deviceId: string;
+  severity: DeviceSimFault["severity"];
+  payload?: Record<string, unknown>;
+};
+
+export type DeviceSimMetrics = {
+  factories: number;
+  factoriesByStatus: Partial<Record<DeviceSimStatus, number>>;
+  devices: number;
+  devicesByStatus: Partial<Record<DeviceSimDeviceStatus, number>>;
+  maxDevices: number;
+  ticksTotal: number;
+  lastTickMicros: number;
+  stalled: number;
+  profiles: string[];
+};
+
+/**
+ * The behaviour profile of each simulated catalog type (`SimulatorType`): the catalog's
+ * simulation metadata selects the behaviour, never a condition in the UI. The keys are
+ * the same on both sides, so the mapping is the identity, stated once.
+ */
+export const DEVICE_PROFILES: Readonly<Record<string, { profile: string; profileVersion: number }>> = {
+  VFD: { profile: "VFD", profileVersion: 1 },
+  MOTOR: { profile: "MOTOR", profileVersion: 1 },
+  PUMP: { profile: "PUMP", profileVersion: 1 },
+  FAN: { profile: "FAN", profileVersion: 1 },
+  CONVEYOR: { profile: "CONVEYOR", profileVersion: 1 },
+  MIXER: { profile: "MIXER", profileVersion: 1 },
+  COMPRESSOR: { profile: "COMPRESSOR", profileVersion: 1 },
+  VALVE: { profile: "VALVE", profileVersion: 1 },
+  SENSOR: { profile: "SENSOR", profileVersion: 1 },
+  SWITCH: { profile: "SWITCH", profileVersion: 1 },
 };
