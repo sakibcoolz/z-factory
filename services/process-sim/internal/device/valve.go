@@ -36,7 +36,10 @@ func init() {
 				{Key: "closed", Direction: Out, Kind: Bool, Label: "Closed limit switch"},
 				faulted,
 			},
-			Faults:     []Fault{stuck},
+			Faults: []Fault{stuck},
+			Links: []Link{
+				{Role: "controller", Accepts: []string{"PID_CONTROLLER"}, Meaning: "the controller whose output is the position setpoint while it is enabled; the PLC's commands apply otherwise"},
+			},
 			Parameters: mustJSON(defaultValveParams()),
 			ParameterSchema: []ParameterSpec{
 				secondsParam("travelTimeS", "Travel time", 5, "Time for a full stroke."),
@@ -83,7 +86,10 @@ func stateOfPosition(position float64) string {
 func (v *Valve) Step(dt float64, ctx *Context) {
 	inputs := ctx.Inputs
 	target := v.position
+	controller, controlled := peerBehavior[*Controller](ctx, "controller")
 	switch {
+	case controlled && controller.enabled:
+		target = clamp(controller.share()*100, 0, 100)
 	case inputs.Has("positionSetpoint"):
 		target = clamp(inputs["positionSetpoint"], 0, 100)
 	case inputs.Has("close"):

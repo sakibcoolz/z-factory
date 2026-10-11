@@ -542,6 +542,11 @@ export const RULE_EXPLANATIONS: Readonly<Record<string, RuleExplanation>> = {
     "No parameters are defined for the model yet.",
   ),
   "parameters-field": devices("fixable", "The parameter exists for the model.", "Use the fields the form shows."),
+  "simulation-params": devices(
+    "fixable",
+    "A parameter value lies within the bounds of the behaviour profile.",
+    "Use a value within the limits the form shows.",
+  ),
 
   // --- export and edge (plc-export-service.ts, edge-deployment-service.ts, catalog-service.ts)
   "export-redaction": exportArea(

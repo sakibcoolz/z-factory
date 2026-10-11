@@ -10,6 +10,7 @@ import {
 } from "@/lib/domain/device-capabilities";
 import type { DeviceDetailView, DeviceParametersView, DeviceRegisterView } from "@/lib/domain/device-detail-view";
 import { type ParameterField, parameterFieldsFor, parameterValues } from "@/lib/domain/device-parameters";
+import { checkParameterValue, findBehaviorProfile } from "@/lib/domain/behavior-contract";
 import { DomainError } from "@/lib/domain/errors";
 import { isSimulatedType } from "@/lib/domain/simulation";
 import type { Prisma, PrismaClient } from "@/lib/generated/prisma/client";
@@ -168,6 +169,31 @@ function parseWithFieldNames<T>(fields: readonly ParameterField[], parse: () => 
   }
 }
 
+/**
+ * A profile the server's simulator does not run (the runtime's library, TASK-1011) has
+ * no zod schema here; its values are checked against the behaviour contract's bounds.
+ */
+function checkAgainstContract(
+  simulatorType: string,
+  fields: readonly ParameterField[],
+  merged: Record<string, unknown>,
+  deviceName: string,
+): Record<string, unknown> {
+  const profile = findBehaviorProfile(simulatorType);
+  for (const field of fields) {
+    const parameter = profile?.parameters.find((candidate) => candidate.key === field.key);
+    const reason = parameter ? checkParameterValue(parameter, merged[field.key]) : null;
+    if (reason) {
+      throw new DomainError("VALIDATION", `${field.label}: ${reason}.`, {
+        rule: "simulation-params",
+        device: deviceName,
+        issues: [{ path: field.key, message: reason }],
+      });
+    }
+  }
+  return merged;
+}
+
 const parameterInputSchema = z.record(z.string().regex(/^[a-z][A-Za-z0-9]{0,63}$/), z.coerce.number().finite());
 
 /**
@@ -210,7 +236,7 @@ export async function saveDeviceParameters(
     ? parseWithFieldNames(fields, () =>
         parseParams(paramsSchemaFor(simulatorType) as z.ZodType<Record<string, unknown>>, merged, device.name),
       )
-    : merged;
+    : checkAgainstContract(simulatorType, fields, merged, device.name);
 
   await db.$transaction(async (transaction) => {
     const latest = await transaction.configurationVersion.findFirst({

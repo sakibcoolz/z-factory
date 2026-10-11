@@ -82,7 +82,8 @@ describeDb("capability-driven device screens", () => {
     ]);
     expect(await sections(sensor)).toEqual(["overview", "connections", "runtime"]);
     expect(await sections(supply)).toEqual(["overview", "connections"]);
-    expect(await sections(controller)).toEqual(["overview", "connections", "parameters"]);
+    // Since TASK-1011 the temperature controller's category has a behaviour profile (PID_CONTROLLER).
+    expect(await sections(controller)).toEqual(["overview", "connections", "parameters", "runtime"]);
 
     const detail = await getDeviceDetail(db, alice, modbusDrive);
     expect(detail).toMatchObject({
@@ -94,8 +95,18 @@ describeDb("capability-driven device screens", () => {
       ports: [{ name: "Ethernet", protocols: ["MODBUS_TCP"], maxConnections: 16 }],
       registers: [],
     });
-    // A controller without a behaviour model is configurable in principle, but has no parameter set yet.
-    expect((await getDeviceDetail(db, alice, controller)).parameters).toMatchObject({ fields: [], applied: false });
+    // The controller shows the PID profile's parameters; nothing applies them until TASK-1015.
+    const controllerParameters = (await getDeviceDetail(db, alice, controller)).parameters;
+    expect(controllerParameters?.applied).toBe(false);
+    expect(controllerParameters?.fields.map((field) => field.key)).toEqual([
+      "kp",
+      "ki",
+      "kd",
+      "outputMin",
+      "outputMax",
+      "setpoint",
+      "deadband",
+    ]);
     await refused(getDeviceDetail(db, bob, drive), "NOT_FOUND");
     await refused(getDeviceDetail(db, alice, "not-an-id"), "NOT_FOUND");
   });
@@ -161,7 +172,10 @@ describeDb("capability-driven device screens", () => {
     await refused(saveDeviceParameters(db, alice, drive, { ratedFlow: 3 }), "VALIDATION", "parameters-field");
     await refused(saveDeviceParameters(db, alice, drive, { accelTimeS: "soon" }), "VALIDATION");
     await refused(saveDeviceParameters(db, alice, sensor, { accelTimeS: 1 }), "INCOMPATIBLE", "parameters-capability");
-    await refused(saveDeviceParameters(db, alice, controller, { gain: 1 }), "INCOMPATIBLE", "parameters-undefined");
+    // The temperature controller has the PID profile's parameters (TASK-1011): checked
+    // against the behaviour contract, since the server's simulator does not run it.
+    await refused(saveDeviceParameters(db, alice, controller, { gain: 1 }), "VALIDATION", "parameters-field");
+    await refused(saveDeviceParameters(db, alice, controller, { kp: -1 }), "VALIDATION", "simulation-params");
     await refused(saveDeviceParameters(db, bob, drive, { accelTimeS: 1 }), "NOT_FOUND");
     expect(await db.configurationVersion.count({ where: { factoryId } })).toBe(0);
     expect(await db.simulationProfile.count({ where: { deviceInstanceId: drive } })).toBe(0);

@@ -36,7 +36,19 @@ const parameter = (key: string, name: string): BehaviorParameter => {
 describe("the behaviour contract", () => {
   it("describes every profile once, under its own key and version 1, and says where it runs", () => {
     expect(ported.map((item) => item.key).sort()).toEqual([...SIMULATED_TYPES].sort());
-    expect(library.map((item) => item.key).sort()).toEqual(["HEATER", "INDICATOR", "RELAY"]);
+    expect(library.map((item) => item.key).sort()).toEqual([
+      "ACTUATOR",
+      "ENCODER",
+      "HEATER",
+      "INDICATOR",
+      "MOTOR_STARTER",
+      "PID_CONTROLLER",
+      "RELAY",
+      "SERVO_DRIVE",
+      "SERVO_MOTOR",
+      "SIGNAL_CONDITIONER",
+      "SOFT_STARTER",
+    ]);
     for (const item of profiles) {
       expect(item.key).toBe(item.simulatorType);
       expect(BEHAVIOR_PROFILES[item.key]).toBe(item);
@@ -103,7 +115,12 @@ describe("the behaviour contract", () => {
 
   it("names the relationships its links are made from, and whether they are required", () => {
     expect(profile("MOTOR").links).toEqual([
-      expect.objectContaining({ role: "drive", required: false, accepts: ["VFD", "RELAY"], relationship: "DRIVES" }),
+      expect.objectContaining({
+        role: "drive",
+        required: false,
+        accepts: ["VFD", "RELAY", "SOFT_STARTER", "MOTOR_STARTER"],
+        relationship: "DRIVES",
+      }),
     ]);
     for (const type of ["PUMP", "FAN", "CONVEYOR", "MIXER", "COMPRESSOR"]) {
       expect(profile(type).links).toEqual([
@@ -123,7 +140,19 @@ describe("the behaviour contract", () => {
     }
     expect(profile("HEATER").links).toEqual([
       expect.objectContaining({ role: "contactor", required: false, accepts: ["RELAY"], relationship: "CONTROLS" }),
+      expect.objectContaining({ role: "controller", accepts: ["PID_CONTROLLER"], relationship: "CONTROLS" }),
     ]);
+    expect(profile("VALVE").links.map((link) => link.role)).toEqual(["controller"]);
+    expect(profile("SERVO_MOTOR").links).toEqual([
+      expect.objectContaining({ role: "drive", required: true, accepts: ["SERVO_DRIVE"], relationship: "DRIVES" }),
+    ]);
+    for (const type of ["ENCODER", "PID_CONTROLLER", "SIGNAL_CONDITIONER"]) {
+      expect(profile(type).links[0], type).toMatchObject({
+        role: "measures",
+        required: true,
+        relationship: "MEASURES",
+      });
+    }
     // A link accepts profiles that exist.
     for (const item of profiles) {
       for (const link of item.links) {
@@ -132,6 +161,13 @@ describe("the behaviour contract", () => {
     }
     expect(profile("VFD").links).toEqual([]);
     expect(profile("VFD").forcible).toBe(false);
+    // Only sensors and switches are forcible (ADR-0015).
+    expect(
+      profiles
+        .filter((item) => item.forcible)
+        .map((item) => item.key)
+        .sort(),
+    ).toEqual(["SENSOR", "SWITCH"]);
   });
 
   it("keeps every default inside its own bounds, and agrees with the server simulator's parameter schemas", () => {

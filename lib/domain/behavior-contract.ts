@@ -225,6 +225,16 @@ function faultsOf(type: SimulatedType, effects: Record<string, { effect: string;
 const BOTH = { server: true, runtime: true } as const;
 const RUNTIME_ONLY = { server: false, runtime: true } as const;
 
+/** The controller whose output a heater or a valve takes (TASK-1011). */
+const CONTROLLER_LINK = (meaning: string): BehaviorLink => ({
+  role: "controller",
+  required: false,
+  accepts: ["PID_CONTROLLER"],
+  relationship: "CONTROLS",
+  peerIs: "SOURCE",
+  meaning,
+});
+
 const NON_NEGATIVE = { min: 0 } as const;
 const PERCENT = { min: 0, max: 100 } as const;
 
@@ -327,11 +337,11 @@ const MOTOR: BehaviorProfile = {
     {
       role: "drive",
       required: false,
-      accepts: ["VFD", "RELAY"],
+      accepts: ["VFD", "RELAY", "SOFT_STARTER", "MOTOR_STARTER"],
       relationship: "DRIVES",
       peerIs: "SOURCE",
       meaning:
-        "the drive, relay or contactor that supplies the motor; one supplies one motor; without one, the run command is a contactor",
+        "the drive, relay, contactor or starter that supplies the motor; one supplies one motor; without one, the run command is a contactor",
     },
   ],
   protocol: "NONE",
@@ -423,7 +433,11 @@ const VALVE: BehaviorProfile = {
   states: ["CLOSED", "OPENING", "OPEN", "CLOSING", "STOPPED", "FAULTED"],
   faults: faultsOf("VALVE", { STUCK: { effect: "does not move; not reported on faulted" } }),
   badQualityOnFaults: [],
-  links: [],
+  links: [
+    CONTROLLER_LINK(
+      "the controller whose output is the position setpoint while it is enabled; the PLC's commands apply otherwise",
+    ),
+  ],
   protocol: "NONE",
   forcible: false,
   fidelity: {
@@ -686,6 +700,9 @@ const HEATER: BehaviorProfile = {
       peerIs: "SOURCE",
       meaning: "the relay or contactor that switches the element; without one, the on command energizes it",
     },
+    CONTROLLER_LINK(
+      "the controller whose output is the power share; the element is energized while it is enabled, and the PLC's on and power are ignored",
+    ),
   ],
   protocol: "NONE",
   forcible: false,
@@ -740,6 +757,498 @@ const INDICATOR: BehaviorProfile = {
   },
 };
 
+// ----- Starters and servo (TASK-1011 PR B) -----------------------------------------------
+
+const RUNNING = signal("running", "OUT", "BOOL", "Running");
+
+const SOFT_STARTER: BehaviorProfile = {
+  key: "SOFT_STARTER",
+  version: 1,
+  simulatorType: "SOFT_STARTER",
+  runsOn: RUNTIME_ONLY,
+  summary:
+    "A reduced-voltage starter: ramps its output voltage from the initial voltage to full over the ramp time and closes its bypass, ramps down on stop, and limits the motor's speed to the voltage share while it ramps; a trip removes the output at once.",
+  signals: [
+    signal("run", "IN", "BOOL", "Run command"),
+    FAULT_RESET,
+    RUNNING,
+    signal("bypassed", "OUT", "BOOL", "Bypass closed (full voltage)"),
+    FAULTED,
+    signal("outputVoltage", "OUT", "NUMBER", "Output voltage", "%", PERCENT),
+    signal("outputCurrent", "OUT", "NUMBER", "Output current", "A", NON_NEGATIVE),
+  ],
+  parameters: [
+    number("initialVoltagePct", "Initial voltage", "RATING", 30, {
+      unit: "%",
+      min: 0,
+      max: 100,
+      minInclusive: true,
+      maxInclusive: true,
+      description: "Output voltage at the start of the ramp.",
+    }),
+    seconds("rampTimeS", "Ramp time", 5, "Time from the initial voltage to full voltage."),
+    number("rampDownTimeS", "Ramp-down time", "TIMING", 0, {
+      unit: "s",
+      min: 0,
+      max: 3600,
+      minInclusive: true,
+      maxInclusive: true,
+      description: "Time from full voltage to zero on stop; zero stops at once.",
+    }),
+  ],
+  states: ["STOPPED", "RAMPING_UP", "BYPASSED", "RAMPING_DOWN", "FAULTED"],
+  faults: [
+    fault("OVERCURRENT", "Overcurrent trip", "CRITICAL", {
+      latching: true,
+      effect: "output removed at once; the motor coasts",
+    }),
+    fault("OVERTEMPERATURE", "Overtemperature trip", "CRITICAL", {
+      latching: true,
+      effect: "output removed at once; the motor coasts",
+    }),
+  ],
+  badQualityOnFaults: [],
+  links: [],
+  protocol: "NONE",
+  forcible: false,
+  fidelity: {
+    approximations: ["a linear voltage ramp", "the motor's speed limited to the voltage share while ramping"],
+    notModelled: ["torque curve", "current limit", "kick start", "braking"],
+  },
+};
+
+const MOTOR_STARTER: BehaviorProfile = {
+  key: "MOTOR_STARTER",
+  version: 1,
+  simulatorType: "MOTOR_STARTER",
+  runsOn: RUNTIME_ONLY,
+  summary:
+    "A direct-on-line starter with an overload relay: the run command closes its contactor and the motor runs at line frequency; the relay's thermal image grows while the motor's current exceeds the setting, trips the starter when it reaches its limit, and cools below the setting.",
+  signals: [
+    signal("run", "IN", "BOOL", "Run command"),
+    FAULT_RESET,
+    RUNNING,
+    FAULTED,
+    signal("current", "OUT", "NUMBER", "Motor current", "A", NON_NEGATIVE),
+    signal("thermalLoad", "OUT", "NUMBER", "Overload relay thermal load", "%", PERCENT),
+  ],
+  parameters: [
+    rating("overloadSettingA", "Overload setting", 10, "A", "Current setting of the overload relay."),
+    number("tripClass", "Trip class", "TIMING", 10, {
+      unit: "s",
+      min: 0,
+      max: 60,
+      maxInclusive: true,
+      description: "Seconds to trip from cold at 7.2 times the setting (class 10, 20, 30).",
+    }),
+    seconds(
+      "coolingTimeS",
+      "Cooling time constant",
+      120,
+      "Time constant of the thermal image cooling below the setting.",
+    ),
+  ],
+  states: ["STOPPED", "RUNNING", "FAULTED"],
+  faults: [
+    fault("OVERLOAD", "Overload trip", "CRITICAL", {
+      latching: true,
+      effect: "contactor opened; raised by the relay's own thermal image or injected",
+    }),
+  ],
+  badQualityOnFaults: [],
+  links: [],
+  protocol: "NONE",
+  forcible: false,
+  fidelity: {
+    approximations: ["a single thermal image whose time to trip follows the trip class at 7.2 times the setting"],
+    notModelled: ["phase loss", "earth fault", "contactor delay"],
+  },
+};
+
+const SERVO_DRIVE: BehaviorProfile = {
+  key: "SERVO_DRIVE",
+  version: 1,
+  simulatorType: "SERVO_DRIVE",
+  runsOn: RUNTIME_ONLY,
+  summary:
+    "A servo drive: enabled, it moves its motor to the position setpoint with a trapezoidal profile under its velocity, acceleration and deceleration limits and reports position, velocity and in-position; disabled, the shaft holds; a trip disables it at once.",
+  signals: [
+    signal("enable", "IN", "BOOL", "Enable"),
+    signal("positionSetpoint", "IN", "NUMBER", "Position setpoint", "units"),
+    FAULT_RESET,
+    signal("enabled", "OUT", "BOOL", "Enabled"),
+    signal("inPosition", "OUT", "BOOL", "In position"),
+    signal("moving", "OUT", "BOOL", "Moving"),
+    FAULTED,
+    signal("actualPosition", "OUT", "NUMBER", "Actual position", "units"),
+    signal("actualVelocity", "OUT", "NUMBER", "Actual velocity", "units/s"),
+  ],
+  parameters: [
+    rating("maxVelocity", "Maximum velocity", 1000, "units/s"),
+    rating("acceleration", "Acceleration", 5000, "units/s²"),
+    rating("deceleration", "Deceleration", 5000, "units/s²"),
+    rating(
+      "inPositionWindow",
+      "In-position window",
+      1,
+      "units",
+      "Distance from the setpoint within which the drive reports in position.",
+    ),
+    number("initialPosition", "Initial position", "INITIAL", 0, { unit: "units" }),
+  ],
+  states: ["DISABLED", "HOLDING", "MOVING", "FAULTED"],
+  faults: [
+    fault("FOLLOWING_ERROR", "Following error", "CRITICAL", {
+      latching: true,
+      effect: "disabled at once; the shaft holds",
+    }),
+    fault("OVERCURRENT", "Overcurrent trip", "CRITICAL", {
+      latching: true,
+      effect: "disabled at once; the shaft holds",
+    }),
+  ],
+  badQualityOnFaults: [],
+  links: [],
+  protocol: "NONE",
+  forcible: false,
+  fidelity: {
+    approximations: ["an ideal trapezoidal profile with no following error of its own", "generic position units"],
+    notModelled: ["current loop", "torque limit", "homing", "load inertia"],
+  },
+};
+
+const SERVO_MOTOR: BehaviorProfile = {
+  key: "SERVO_MOTOR",
+  version: 1,
+  simulatorType: "SERVO_MOTOR",
+  runsOn: RUNTIME_ONLY,
+  summary:
+    "A servo motor: its shaft follows its servo drive's profile and its current is a holding share plus a share proportional to the velocity; without a drive it stands still.",
+  signals: [
+    FAULT_RESET,
+    RUNNING,
+    FAULTED,
+    signal("actualPosition", "OUT", "NUMBER", "Shaft position", "units"),
+    signal("actualVelocity", "OUT", "NUMBER", "Shaft velocity", "units/s"),
+    signal("current", "OUT", "NUMBER", "Current", "A", NON_NEGATIVE),
+  ],
+  parameters: [
+    rating("ratedCurrentA", "Rated current", 5, "A"),
+    number("holdingCurrentRatio", "Holding current ratio", "RATING", 0.1, {
+      min: 0,
+      max: 1,
+      minInclusive: true,
+      maxInclusive: true,
+      description: "Share of the rated current drawn while holding position.",
+    }),
+    rating("ratedVelocity", "Rated velocity", 1000, "units/s", "Velocity at which the current reaches the rating."),
+  ],
+  states: ["STOPPED", "HOLDING", "MOVING", "FAULTED"],
+  faults: [
+    fault("OVERTEMPERATURE", "Overtemperature trip", "CRITICAL", {
+      latching: true,
+      effect: "de-energized; the shaft stops",
+    }),
+  ],
+  badQualityOnFaults: [],
+  links: [
+    {
+      role: "drive",
+      required: true,
+      accepts: ["SERVO_DRIVE"],
+      relationship: "DRIVES",
+      peerIs: "SOURCE",
+      meaning: "the servo drive that positions the motor; one drive positions one motor",
+    },
+  ],
+  protocol: "NONE",
+  forcible: false,
+  fidelity: {
+    approximations: ["the shaft follows the drive exactly", "current from a holding share and the velocity"],
+    notModelled: ["inertia", "torque", "a thermal model beyond the injected trip"],
+  },
+};
+
+const ENCODER: BehaviorProfile = {
+  key: "ENCODER",
+  version: 1,
+  simulatorType: "ENCODER",
+  runsOn: RUNTIME_ONLY,
+  summary:
+    "An encoder on a shaft: counts pulses from a motor's speed or a servo motor's position, accumulating (incremental) or within one revolution (absolute single-turn), and reports the speed; a lost signal freezes the count with bad quality.",
+  signals: [
+    signal("count", "OUT", "NUMBER", "Pulse count", "pulses"),
+    signal("speed", "OUT", "NUMBER", "Shaft speed", "rpm"),
+  ],
+  parameters: [
+    {
+      kind: "CHOICE",
+      key: "kind",
+      label: "Kind",
+      role: "SHAPE",
+      default: "INCREMENTAL",
+      choices: ["INCREMENTAL", "ABSOLUTE"],
+      description: "Incremental counts accumulate; absolute reports the position within one revolution.",
+    },
+    number("pulsesPerRevolution", "Pulses per revolution", "RATING", 1024, {
+      unit: "pulses",
+      min: 0,
+      max: 1000000,
+      maxInclusive: true,
+    }),
+    rating(
+      "unitsPerRevolution",
+      "Units per revolution",
+      1,
+      "units",
+      "How many position units of a servo motor make one revolution.",
+    ),
+  ],
+  states: ["GOOD", "BAD"],
+  faults: [
+    fault("SIGNAL_LOSS", "Signal lost", "WARNING", {
+      silent: true,
+      quality: "BAD",
+      effect: "count frozen, speed zero, quality BAD; not reported",
+    }),
+  ],
+  badQualityOnFaults: ["SIGNAL_LOSS"],
+  links: [
+    {
+      role: "measures",
+      required: true,
+      accepts: ["MOTOR", "SERVO_MOTOR"],
+      relationship: "MEASURES",
+      peerIs: "TARGET",
+      meaning: "the motor or servo motor whose shaft the encoder is on",
+    },
+  ],
+  protocol: "NONE",
+  forcible: false,
+  fidelity: {
+    approximations: ["counts from a motor's speed or a servo motor's position", "an absolute encoder is single-turn"],
+    notModelled: ["quadrature", "index pulse", "multi-turn", "resolution loss"],
+  },
+};
+
+// ----- Controllers and the signal path (TASK-1011 PR B) ----------------------------------
+
+const MEASURED_KINDS = { MEASURED: ["signal", "gain", "offset"] } as const;
+
+const PID_CONTROLLER: BehaviorProfile = {
+  key: "PID_CONTROLLER",
+  version: 1,
+  simulatorType: "PID_CONTROLLER",
+  runsOn: RUNTIME_ONLY,
+  summary:
+    "A PID process or temperature controller: measures its process value from the device it is linked to, follows the PLC's setpoint or its own, and while enabled computes an output share with proportional, integral and derivative action within its output range; in manual it passes the PLC's manual output through; the devices it controls take its output.",
+  signals: [
+    signal("enable", "IN", "BOOL", "Enable (automatic control)"),
+    signal("setpoint", "IN", "NUMBER", "Remote setpoint"),
+    signal("manual", "IN", "BOOL", "Manual mode"),
+    signal("manualOutput", "IN", "NUMBER", "Manual output", "%"),
+    FAULT_RESET,
+    signal("output", "OUT", "NUMBER", "Control output", "%", { minParameter: "outputMin", maxParameter: "outputMax" }),
+    signal("processValue", "OUT", "NUMBER", "Process value"),
+    signal("error", "OUT", "NUMBER", "Control error (setpoint minus process value)"),
+    signal("atSetpoint", "OUT", "BOOL", "At setpoint"),
+    signal("alarmHigh", "OUT", "BOOL", "Process value high"),
+    signal("alarmLow", "OUT", "BOOL", "Process value low"),
+    FAULTED,
+  ],
+  parameters: [
+    {
+      kind: "STRUCTURED",
+      key: "source",
+      label: "Process value source",
+      role: "SOURCE",
+      default: { kind: "MEASURED", signal: "value" },
+      kinds: MEASURED_KINDS,
+      description: "The output signal of the measured device that is the process value, scaled by gain and offset.",
+    },
+    number("kp", "Proportional gain", "RATING", 1, {
+      unit: "%/unit",
+      min: 0,
+      max: 1000000,
+      minInclusive: true,
+      maxInclusive: true,
+    }),
+    number("ki", "Integral gain", "TIMING", 0.1, {
+      unit: "%/(unit·s)",
+      min: 0,
+      max: 1000000,
+      minInclusive: true,
+      maxInclusive: true,
+    }),
+    number("kd", "Derivative gain", "TIMING", 0, {
+      unit: "%·s/unit",
+      min: 0,
+      max: 1000000,
+      minInclusive: true,
+      maxInclusive: true,
+    }),
+    number("outputMin", "Output minimum", "LIMIT", 0, { unit: "%" }),
+    number("outputMax", "Output maximum", "LIMIT", 100, { unit: "%", description: "Above the output minimum." }),
+    number("setpoint", "Local setpoint", "INITIAL", 0, { description: "Used when the PLC gives no setpoint." }),
+    {
+      kind: "CHOICE",
+      key: "action",
+      label: "Action",
+      role: "SHAPE",
+      default: "REVERSE",
+      choices: ["REVERSE", "DIRECT"],
+      description:
+        "REVERSE: the output rises when the process value is below the setpoint (heating); DIRECT: when it is above (cooling).",
+    },
+    number("deadband", "At-setpoint deadband", "LIMIT", 1, {
+      min: 0,
+      max: 1000000,
+      minInclusive: true,
+      maxInclusive: true,
+    }),
+    number("alarmHigh", "High alarm", "LIMIT", null, {
+      description: "Process value at or above it raises the high alarm.",
+    }),
+    number("alarmLow", "Low alarm", "LIMIT", null, {
+      description: "Process value at or below it raises the low alarm.",
+    }),
+  ],
+  states: ["OFF", "AUTO", "MANUAL", "FAULTED"],
+  faults: [
+    fault("INPUT_FAILURE", "Process input failure", "CRITICAL", {
+      effect: "output at its minimum, control suspended; reported",
+    }),
+  ],
+  badQualityOnFaults: [],
+  links: [
+    {
+      role: "measures",
+      required: true,
+      accepts: null,
+      relationship: "MEASURES",
+      peerIs: "TARGET",
+      meaning: "the device whose output signal is the process value; required",
+    },
+  ],
+  protocol: "NONE",
+  forcible: false,
+  fidelity: {
+    approximations: [
+      "an ideal parallel PID on a fixed step, derivative on the measurement, integral clamped against windup",
+      "the integral resets when the controller is enabled",
+    ],
+    notModelled: ["auto-tuning", "setpoint ramps", "bumpless transfer", "output rate limits"],
+  },
+};
+
+const SIGNAL_CONDITIONER: BehaviorProfile = {
+  key: "SIGNAL_CONDITIONER",
+  version: 1,
+  simulatorType: "SIGNAL_CONDITIONER",
+  runsOn: RUNTIME_ONLY,
+  summary:
+    "A signal conditioner or isolator: maps one output signal of the device it is linked to from its input range onto its output range, clamped; an open input reads the bottom of the output range with bad quality.",
+  signals: [
+    signal("value", "OUT", "NUMBER", "Conditioned value", undefined, {
+      minParameter: "outputMin",
+      maxParameter: "outputMax",
+    }),
+    FAULTED,
+  ],
+  parameters: [
+    {
+      kind: "STRUCTURED",
+      key: "source",
+      label: "Input signal",
+      role: "SOURCE",
+      default: { kind: "MEASURED", signal: "value" },
+      kinds: MEASURED_KINDS,
+      description: "The output signal of the measured device, scaled by gain and offset before the range mapping.",
+    },
+    number("inputMin", "Input range minimum", "LIMIT", 0),
+    number("inputMax", "Input range maximum", "LIMIT", 100, { description: "Above the input range minimum." }),
+    number("outputMin", "Output range minimum", "LIMIT", 0),
+    number("outputMax", "Output range maximum", "LIMIT", 100, { description: "Above the output range minimum." }),
+  ],
+  states: ["GOOD", "BAD"],
+  faults: [
+    fault("OPEN_INPUT", "Open input", "WARNING", {
+      quality: "BAD",
+      effect: "reads the bottom of the output range, quality BAD; reported",
+    }),
+  ],
+  badQualityOnFaults: ["OPEN_INPUT"],
+  links: [
+    {
+      role: "measures",
+      required: true,
+      accepts: null,
+      relationship: "MEASURES",
+      peerIs: "TARGET",
+      meaning: "the device whose output signal is conditioned; required",
+    },
+  ],
+  protocol: "NONE",
+  forcible: false,
+  fidelity: {
+    approximations: ["linear range mapping, clamped"],
+    notModelled: ["lag", "noise", "isolation errors", "calibration drift"],
+  },
+};
+
+const ACTUATOR: BehaviorProfile = {
+  key: "ACTUATOR",
+  version: 1,
+  simulatorType: "ACTUATOR",
+  runsOn: RUNTIME_ONLY,
+  summary:
+    "A pneumatic cylinder: the extend and retract commands move the rod over its stroke at the extend and retract times and the end sensors report the ends; single-acting springs back when extend drops, double-acting holds with no command; lost air stops it (or springs it back) and stuck it does not move, neither reported.",
+  signals: [
+    signal("extend", "IN", "BOOL", "Extend command"),
+    signal("retract", "IN", "BOOL", "Retract command (double-acting)"),
+    signal("extended", "OUT", "BOOL", "Extended end sensor"),
+    signal("retracted", "OUT", "BOOL", "Retracted end sensor"),
+    signal("moving", "OUT", "BOOL", "Moving"),
+    signal("position", "OUT", "NUMBER", "Rod position", "%", PERCENT),
+  ],
+  parameters: [
+    {
+      kind: "CHOICE",
+      key: "kind",
+      label: "Kind",
+      role: "SHAPE",
+      default: "DOUBLE_ACTING",
+      choices: ["DOUBLE_ACTING", "SINGLE_ACTING"],
+      description: "Double-acting holds with no command; single-acting springs back when extend drops.",
+    },
+    seconds("extendTimeS", "Extend time", 1, "Time for the full stroke out."),
+    seconds("retractTimeS", "Retract time", 1, "Time for the full stroke back."),
+    number("initialPosition", "Initial position", "INITIAL", 0, {
+      unit: "%",
+      min: 0,
+      max: 100,
+      minInclusive: true,
+      maxInclusive: true,
+    }),
+  ],
+  states: ["RETRACTED", "EXTENDING", "EXTENDED", "RETRACTING", "STOPPED"],
+  faults: [
+    fault("STUCK", "Stuck", "WARNING", { silent: true, effect: "does not move; not reported" }),
+    fault("AIR_LOSS", "Air supply lost", "CRITICAL", {
+      silent: true,
+      effect: "a double-acting cylinder stops where it is, a single-acting one springs back; not reported",
+    }),
+  ],
+  badQualityOnFaults: [],
+  links: [],
+  protocol: "NONE",
+  forcible: false,
+  fidelity: {
+    approximations: ["constant rod speed each way"],
+    notModelled: ["cushioning", "pressure and flow", "load", "leakage"],
+  },
+};
+
 /**
  * Every behaviour profile, by key. The keys are catalog simulator types: the ten the
  * server's simulator runs (`SIMULATED_TYPES`) and the runtime-only profiles of TASK-1011.
@@ -758,6 +1267,14 @@ export const BEHAVIOR_PROFILES: Readonly<Record<string, BehaviorProfile>> = {
   RELAY,
   HEATER,
   INDICATOR,
+  SOFT_STARTER,
+  MOTOR_STARTER,
+  SERVO_DRIVE,
+  SERVO_MOTOR,
+  ENCODER,
+  PID_CONTROLLER,
+  SIGNAL_CONDITIONER,
+  ACTUATOR,
 };
 
 export function findBehaviorProfile(key: string): BehaviorProfile | undefined {

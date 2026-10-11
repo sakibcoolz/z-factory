@@ -50,7 +50,7 @@ func init() {
 			},
 			Faults: []Fault{{Code: "OVERLOAD", Name: "Overload trip", Severity: Critical, Latching: true}},
 			Links: []Link{
-				{Role: "drive", Accepts: []string{"VFD", "RELAY"}, Meaning: "the drive, relay or contactor that supplies the motor; one supplies one motor; without one, the run command is a contactor"},
+				{Role: "drive", Accepts: []string{"VFD", "RELAY", "SOFT_STARTER", "MOTOR_STARTER"}, Meaning: "the drive, relay, contactor or starter that supplies the motor; one supplies one motor; without one, the run command is a contactor"},
 			},
 			Parameters: mustJSON(defaultMotorParams()),
 			ParameterSchema: []ParameterSpec{

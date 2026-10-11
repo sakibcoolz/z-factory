@@ -6,7 +6,8 @@ import (
 )
 
 // Heater is an electric heating element with a thermal mass: on (through its contactor
-// when it has one, else the PLC's on command) and an optional power share, it warms with
+// when it has one, else the PLC's on command) and an optional power share (its
+// controller's output when it has one), it warms with
 // a first-order lag towards ambient plus its rise at that power, and cools the same way
 // when off. A thermostat cutout removes power above the maximum temperature until the
 // element has cooled by the hysteresis. Approximation: one lumped mass, one time
@@ -63,6 +64,7 @@ func init() {
 			},
 			Links: []Link{
 				{Role: "contactor", Accepts: []string{"RELAY"}, Meaning: "the relay or contactor that switches the element; without one, the on command energizes it"},
+				{Role: "controller", Accepts: []string{"PID_CONTROLLER"}, Meaning: "the controller whose output is the power share; the element is energized while it is enabled, and the PLC's on and power are ignored"},
 			},
 			Parameters: mustJSON(defaultHeaterParams()),
 			ParameterSchema: []ParameterSpec{
@@ -127,16 +129,23 @@ func (h *Heater) Configure(raw json.RawMessage) error {
 func (h *Heater) Step(dt float64, ctx *Context) {
 	p := h.params
 	energized := false
-	if !ctx.Tripped {
-		if contactor, ok := peerBehavior[*Relay](ctx, "contactor"); ok {
-			energized = contactor.Closed()
-		} else {
-			energized = ctx.Inputs.On("on")
-		}
-	}
 	share := 1.0
 	if ctx.Inputs.Has("power") {
 		share = clamp(ctx.Inputs["power"], 0, 100) / 100
+	}
+	controller, controlled := peerBehavior[*Controller](ctx, "controller")
+	if controlled {
+		share = clamp(controller.share(), 0, 1)
+	}
+	if !ctx.Tripped {
+		switch contactor, switched := peerBehavior[*Relay](ctx, "contactor"); {
+		case switched:
+			energized = contactor.Closed()
+		case controlled:
+			energized = controller.enabled
+		default:
+			energized = ctx.Inputs.On("on")
+		}
 	}
 	// The thermostat cuts out above the maximum and returns after the hysteresis.
 	if h.temperature >= p.MaxTemperatureC {

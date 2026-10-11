@@ -213,3 +213,369 @@ func TestIndicatorLampsFlashAndFail(t *testing.T) {
 		t.Fatalf("the snapshot should show the active fault")
 	}
 }
+
+// Starters and servo (PR B).
+
+func TestSoftStarterRampsAndLimitsTheMotor(t *testing.T) {
+	s := simulate(t,
+		config("q1", "Q1", "SOFT_STARTER", map[string]any{"initialVoltagePct": 40, "rampTimeS": 3, "rampDownTimeS": 1}, nil),
+		config("m", "M", "MOTOR", map[string]any{"timeConstantS": 0.05}, map[string]string{"drive": "q1"}),
+	)
+	inputs(t, s, "q1", Values{"run": 1})
+	run(t, s, 1)
+	out := outputs(t, s, "q1")
+	near(t, out["outputVoltage"], 60, 1.5, "voltage after a third of the ramp")
+	if out["running"] != 1 || out["bypassed"] != 0 || s.devices["q1"].state != "RAMPING_UP" {
+		t.Fatalf("ramping: %v %s", out, s.devices["q1"].state)
+	}
+	// The motor's speed is held to the voltage share meanwhile.
+	near(t, outputs(t, s, "m")["actualSpeed"], 1450*0.6, 1450*0.03, "speed limited to the voltage share")
+	run(t, s, 2.5)
+	out = outputs(t, s, "q1")
+	if out["bypassed"] != 1 || s.devices["q1"].state != "BYPASSED" {
+		t.Fatalf("bypassed: %v %s", out, s.devices["q1"].state)
+	}
+	near(t, outputs(t, s, "m")["actualSpeed"], 1450, 5, "full speed at the bypass")
+	near(t, out["outputCurrent"], outputs(t, s, "m")["current"], 1e-9, "the starter reports the motor's current")
+	inputs(t, s, "q1", Values{"run": 0})
+	run(t, s, 0.5)
+	if s.devices["q1"].state != "RAMPING_DOWN" || outputs(t, s, "q1")["running"] != 1 {
+		t.Fatalf("ramping down: %v %s", outputs(t, s, "q1"), s.devices["q1"].state)
+	}
+	run(t, s, 0.6)
+	if s.devices["q1"].state != "STOPPED" || outputs(t, s, "m")["running"] != 0 {
+		t.Fatalf("stopped: %v %v", outputs(t, s, "q1"), outputs(t, s, "m"))
+	}
+	// A trip removes the output at once and latches.
+	inputs(t, s, "q1", Values{"run": 1})
+	run(t, s, 4)
+	if _, err := s.InjectFault("q1", "OVERTEMPERATURE"); err != nil {
+		t.Fatal(err)
+	}
+	run(t, s, tick)
+	if out := outputs(t, s, "q1"); out["outputVoltage"] != 0 || out["faulted"] != 1 || s.devices["q1"].state != "FAULTED" {
+		t.Fatalf("tripped: %v", out)
+	}
+}
+
+func TestMotorStarterTripsOnThermalOverloadFromItsOwnModel(t *testing.T) {
+	// The setting is below the motor's current under load, so the relay heats up.
+	s := simulate(t,
+		config("f1", "F1", "MOTOR_STARTER", map[string]any{"overloadSettingA": 4, "tripClass": 10}, nil),
+		config("m", "M", "MOTOR", map[string]any{"ratedCurrentA": 10, "timeConstantS": 0.05}, map[string]string{"drive": "f1"}),
+		config("p", "P", "PUMP", nil, map[string]string{"motor": "m"}),
+	)
+	inputs(t, s, "f1", Values{"run": 1})
+	run(t, s, 1)
+	out := outputs(t, s, "f1")
+	if out["running"] != 1 || out["current"] <= 4 || out["thermalLoad"] <= 0 || out["thermalLoad"] >= 100 {
+		t.Fatalf("heating up: %v", out)
+	}
+	// Time to trip at this overload: tripClass × (7.2² − 1) / ((I/Iset)² − 1).
+	ratio := out["current"] / 4
+	expected := 10 * (7.2*7.2 - 1) / (ratio*ratio - 1)
+	var events []Event
+	tripped := 0.0
+	for tripped == 0 && s.elapsedS < expected*2 {
+		stepped, err := s.Step(tick)
+		if err != nil {
+			t.Fatal(err)
+		}
+		events = append(events, stepped...)
+		if s.devices["f1"].tripped {
+			tripped = s.elapsedS
+		}
+	}
+	if tripped == 0 {
+		t.Fatalf("the relay never tripped")
+	}
+	near(t, tripped, expected+1, 1.5, "time to trip")
+	raised := false
+	for _, event := range events {
+		if event.Type == "FAULT_RAISED" && event.DeviceID == "f1" && event.Payload["code"] == "OVERLOAD" {
+			raised = true
+		}
+	}
+	if !raised {
+		t.Fatalf("no FAULT_RAISED event: %v", events)
+	}
+	run(t, s, tick)
+	if out := outputs(t, s, "f1"); out["running"] != 0 || out["faulted"] != 1 || outputs(t, s, "m")["running"] != 0 {
+		t.Fatalf("after the trip: %v %v", out, outputs(t, s, "m"))
+	}
+	// The model's fault stays until cleared like an injected one; the trip latches.
+	if _, err := s.ClearFault("f1", "OVERLOAD"); err != nil {
+		t.Fatal(err)
+	}
+	run(t, s, tick)
+	if !s.devices["f1"].tripped {
+		t.Fatalf("the trip did not latch")
+	}
+	inputs(t, s, "f1", Values{"run": 1, "faultReset": 1})
+	run(t, s, tick)
+	if outputs(t, s, "f1")["running"] != 1 {
+		t.Fatalf("after reset: %v", outputs(t, s, "f1"))
+	}
+}
+
+func TestServoDriveMovesTheServoMotorWithATrapezoidalProfile(t *testing.T) {
+	s := simulate(t,
+		config("sd", "SD", "SERVO_DRIVE", map[string]any{"maxVelocity": 100, "acceleration": 200, "deceleration": 200, "inPositionWindow": 0.5}, nil),
+		config("sm", "SM", "SERVO_MOTOR", map[string]any{"ratedVelocity": 100}, map[string]string{"drive": "sd"}),
+		config("enc", "ENC", "ENCODER", map[string]any{"pulsesPerRevolution": 100, "unitsPerRevolution": 10}, map[string]string{"measures": "sm"}),
+	)
+	// Disabled: nothing moves, the motor draws nothing.
+	inputs(t, s, "sd", Values{"positionSetpoint": 100})
+	run(t, s, 1)
+	if out := outputs(t, s, "sd"); out["actualPosition"] != 0 || out["enabled"] != 0 || outputs(t, s, "sm")["current"] != 0 {
+		t.Fatalf("disabled: %v %v", out, outputs(t, s, "sm"))
+	}
+	inputs(t, s, "sd", Values{"enable": 1, "positionSetpoint": 100})
+	run(t, s, 0.3)
+	out := outputs(t, s, "sd")
+	near(t, out["actualVelocity"], 60, 1e-6, "accelerating at 200 units/s²")
+	if out["moving"] != 1 || s.devices["sd"].state != "MOVING" || s.devices["sm"].state != "MOVING" {
+		t.Fatalf("moving: %v %s %s", out, s.devices["sd"].state, s.devices["sm"].state)
+	}
+	// Accelerate 0.5 s (25 units), cruise, decelerate 0.5 s (25 units): 100 units in 1.5 s.
+	run(t, s, 1.3)
+	out = outputs(t, s, "sd")
+	near(t, out["actualPosition"], 100, 1e-6, "arrived")
+	if out["inPosition"] != 1 || out["actualVelocity"] != 0 || s.devices["sd"].state != "HOLDING" {
+		t.Fatalf("holding: %v %s", out, s.devices["sd"].state)
+	}
+	motor := outputs(t, s, "sm")
+	near(t, motor["actualPosition"], 100, 1e-6, "the motor follows the drive")
+	near(t, motor["current"], 5*0.1, 1e-9, "holding current")
+	// The encoder counted ten revolutions.
+	near(t, outputs(t, s, "enc")["count"], 1000, 1e-9, "encoder count")
+	// Back to zero, then a trip holds everything.
+	inputs(t, s, "sd", Values{"enable": 1, "positionSetpoint": 0})
+	run(t, s, 0.5)
+	if outputs(t, s, "sd")["actualVelocity"] >= 0 {
+		t.Fatalf("not moving back: %v", outputs(t, s, "sd"))
+	}
+	if _, err := s.InjectFault("sd", "FOLLOWING_ERROR"); err != nil {
+		t.Fatal(err)
+	}
+	run(t, s, tick)
+	if out := outputs(t, s, "sd"); out["enabled"] != 0 || out["faulted"] != 1 || out["actualVelocity"] != 0 {
+		t.Fatalf("tripped: %v", out)
+	}
+	// A servo motor needs a servo drive; a plain motor cannot be on a servo drive.
+	_, err := NewSimulation("f", []Config{
+		config("vfd", "VFD", "VFD", nil, nil),
+		config("sm", "SM", "SERVO_MOTOR", nil, map[string]string{"drive": "vfd"}),
+	}, Options{})
+	expectRule(t, err, "drive")
+	_, err = NewSimulation("f", []Config{
+		config("sd", "SD", "SERVO_DRIVE", nil, nil),
+		config("m", "M", "MOTOR", nil, map[string]string{"drive": "sd"}),
+	}, Options{})
+	expectRule(t, err, "drive")
+}
+
+func TestEncoderCountsAMotorShaftAndLosesItsSignal(t *testing.T) {
+	s := simulate(t,
+		config("k", "K", "RELAY", map[string]any{"kind": "SOLID_STATE"}, nil),
+		config("m", "M", "MOTOR", map[string]any{"ratedSpeedRpm": 600, "timeConstantS": 0.01}, map[string]string{"drive": "k"}),
+		config("inc", "INC", "ENCODER", map[string]any{"pulsesPerRevolution": 60}, map[string]string{"measures": "m"}),
+		config("abs", "ABS", "ENCODER", map[string]any{"kind": "ABSOLUTE", "pulsesPerRevolution": 60}, map[string]string{"measures": "m"}),
+	)
+	inputs(t, s, "k", Values{"coil": 1})
+	run(t, s, 2)
+	// 600 rpm = 10 rev/s: about 20 revolutions, 1200 pulses; the absolute one wraps each revolution.
+	inc, abs := outputs(t, s, "inc"), outputs(t, s, "abs")
+	near(t, inc["speed"], 600, 1e-6, "speed")
+	near(t, inc["count"], 1200, 70, "incremental count")
+	if abs["count"] < 0 || abs["count"] >= 60 {
+		t.Fatalf("absolute count %g", abs["count"])
+	}
+	if _, err := s.InjectFault("inc", "SIGNAL_LOSS"); err != nil {
+		t.Fatal(err)
+	}
+	run(t, s, 1)
+	after := outputs(t, s, "inc")
+	if after["count"] != inc["count"] || after["speed"] != 0 || s.devices["inc"].quality() != "BAD" || s.devices["inc"].Snapshot().Outputs["count"] != inc["count"] {
+		t.Fatalf("signal loss: %v quality %s", after, s.devices["inc"].quality())
+	}
+	_, err := NewSimulation("f", []Config{
+		config("v", "V", "VALVE", nil, nil),
+		config("e", "E", "ENCODER", nil, map[string]string{"measures": "v"}),
+	}, Options{})
+	expectRule(t, err, "measured-signal")
+	_, err = NewSimulation("f", []Config{config("e", "E", "ENCODER", nil, nil)}, Options{})
+	expectRule(t, err, "measured-device")
+}
+
+// Controllers and the signal path (PR B).
+
+func TestControllerClosesALoopOnAHeater(t *testing.T) {
+	heater := map[string]any{"ambientC": 20, "riseAtFullPowerC": 100, "timeConstantS": 5, "maxTemperatureC": 500}
+	controller := map[string]any{"source": map[string]any{"kind": "MEASURED", "signal": "value"}, "kp": 5, "ki": 0.5, "setpoint": 60, "deadband": 1}
+	s := simulate(t,
+		config("tt", "TT", "SENSOR", map[string]any{"source": map[string]any{"kind": "MEASURED", "signal": "temperature"}}, map[string]string{"measures": "h"}),
+		config("tic", "TIC", "PID_CONTROLLER", controller, map[string]string{"measures": "tt"}),
+		config("h", "H", "HEATER", heater, map[string]string{"controller": "tic"}),
+	)
+	if s.devices["tic"].state != "OFF" || outputs(t, s, "h")["heating"] != 0 {
+		t.Fatalf("off: %s %v", s.devices["tic"].state, outputs(t, s, "h"))
+	}
+	// The PLC's on command is ignored while a controller is linked.
+	inputs(t, s, "h", Values{"on": 1})
+	run(t, s, 1)
+	if outputs(t, s, "h")["heating"] != 0 {
+		t.Fatalf("heater ignored its controller: %v", outputs(t, s, "h"))
+	}
+	inputs(t, s, "tic", Values{"enable": 1})
+	run(t, s, tick)
+	out := outputs(t, s, "tic")
+	if s.devices["tic"].state != "AUTO" || out["output"] != 100 || outputs(t, s, "h")["heating"] != 1 {
+		t.Fatalf("full output far from the setpoint: %v %v", out, outputs(t, s, "h"))
+	}
+	run(t, s, 60)
+	out = outputs(t, s, "tic")
+	near(t, out["processValue"], 60, 1.5, "settled at the setpoint")
+	if out["atSetpoint"] != 1 {
+		t.Fatalf("not at setpoint: %v", out)
+	}
+	near(t, outputs(t, s, "h")["temperature"], 60, 1.5, "the heater holds the setpoint")
+	// A remote setpoint from the PLC takes over; direct action and alarms.
+	inputs(t, s, "tic", Values{"enable": 1, "setpoint": 80})
+	run(t, s, 60)
+	near(t, outputs(t, s, "tic")["processValue"], 80, 1.5, "remote setpoint")
+	// Manual passes the manual output through.
+	inputs(t, s, "tic", Values{"enable": 1, "manual": 1, "manualOutput": 25})
+	run(t, s, tick)
+	if out := outputs(t, s, "tic"); out["output"] != 25 || s.devices["tic"].state != "MANUAL" {
+		t.Fatalf("manual: %v %s", out, s.devices["tic"].state)
+	}
+	near(t, outputs(t, s, "h")["powerOutput"], 5*0.25, 1e-9, "a quarter of rated power")
+	// An input failure drops the output to its minimum and is reported.
+	if _, err := s.InjectFault("tic", "INPUT_FAILURE"); err != nil {
+		t.Fatal(err)
+	}
+	run(t, s, tick)
+	if out := outputs(t, s, "tic"); out["output"] != 0 || out["faulted"] != 1 || s.devices["tic"].state != "FAULTED" {
+		t.Fatalf("input failure: %v", out)
+	}
+	_, err := NewSimulation("f", []Config{config("tic", "TIC", "PID_CONTROLLER", nil, nil)}, Options{})
+	expectRule(t, err, "measured-device")
+	_, err = NewSimulation("f", []Config{
+		config("v", "V", "VALVE", nil, nil),
+		config("h", "H", "HEATER", nil, map[string]string{"controller": "v"}),
+	}, Options{})
+	expectRule(t, err, "controller")
+}
+
+func TestControllerPositionsAValveWithDirectAction(t *testing.T) {
+	// A level controller: the more level above the setpoint, the more the drain valve opens.
+	s := simulate(t,
+		config("lt", "LT", "SENSOR", map[string]any{"source": map[string]any{"kind": "CONSTANT", "value": 70}}, nil),
+		config("lic", "LIC", "PID_CONTROLLER", map[string]any{"kp": 2, "ki": 0, "setpoint": 50, "action": "DIRECT", "alarmHigh": 65.0}, map[string]string{"measures": "lt"}),
+		config("xv", "XV", "VALVE", map[string]any{"travelTimeS": 1}, map[string]string{"controller": "lic"}),
+	)
+	inputs(t, s, "lic", Values{"enable": 1})
+	run(t, s, 2)
+	out := outputs(t, s, "lic")
+	near(t, out["output"], 40, 1e-9, "2 × (70 − 50) with direct action")
+	if out["alarmHigh"] != 1 || out["alarmLow"] != 0 {
+		t.Fatalf("alarms: %v", out)
+	}
+	near(t, outputs(t, s, "xv")["position"], 40, 1e-6, "the valve went to the controller's output")
+	// Disabled, the valve follows the PLC again (no command: closes).
+	inputs(t, s, "lic", Values{"enable": 0})
+	run(t, s, 2)
+	if outputs(t, s, "xv")["closed"] != 1 {
+		t.Fatalf("valve did not return to the PLC's command: %v", outputs(t, s, "xv"))
+	}
+}
+
+func TestSignalConditionerScalesAndReportsAnOpenInput(t *testing.T) {
+	s := simulate(t,
+		config("pt", "PT", "SENSOR", map[string]any{"source": map[string]any{"kind": "CONSTANT", "value": 6}}, nil),
+		config("iso", "ISO", "SIGNAL_CONDITIONER", map[string]any{"inputMin": 4, "inputMax": 20, "outputMin": 0, "outputMax": 10}, map[string]string{"measures": "pt"}),
+	)
+	run(t, s, tick)
+	near(t, outputs(t, s, "iso")["value"], 1.25, 1e-9, "4–20 mA onto 0–10 V")
+	if s.devices["iso"].quality() != "GOOD" {
+		t.Fatalf("quality %s", s.devices["iso"].quality())
+	}
+	if _, err := s.Force("pt", f64(30)); err != nil {
+		t.Fatal(err)
+	}
+	run(t, s, tick)
+	near(t, outputs(t, s, "iso")["value"], 10, 1e-9, "clamped at the output maximum")
+	if _, err := s.InjectFault("iso", "OPEN_INPUT"); err != nil {
+		t.Fatal(err)
+	}
+	run(t, s, tick)
+	if out := outputs(t, s, "iso"); out["value"] != 0 || out["faulted"] != 1 || s.devices["iso"].quality() != "BAD" {
+		t.Fatalf("open input: %v %s", out, s.devices["iso"].quality())
+	}
+	_, err := NewSimulation("f", []Config{
+		config("sw", "SW", "SWITCH", nil, nil),
+		config("iso", "ISO", "SIGNAL_CONDITIONER", map[string]any{"source": map[string]any{"kind": "MEASURED", "signal": "state"}}, map[string]string{"measures": "sw"}),
+	}, Options{})
+	expectRule(t, err, "measured-signal")
+}
+
+func TestActuatorStrokesSpringsBackAndLosesAir(t *testing.T) {
+	s := simulate(t,
+		config("cyl", "CYL", "ACTUATOR", map[string]any{"extendTimeS": 1, "retractTimeS": 2}, nil),
+		config("spring", "SPRING", "ACTUATOR", map[string]any{"kind": "SINGLE_ACTING", "extendTimeS": 1, "retractTimeS": 1}, nil),
+	)
+	if out := outputs(t, s, "cyl"); out["retracted"] != 1 || s.devices["cyl"].state != "RETRACTED" {
+		t.Fatalf("at rest: %v", out)
+	}
+	inputs(t, s, "cyl", Values{"extend": 1})
+	inputs(t, s, "spring", Values{"extend": 1})
+	run(t, s, 0.5)
+	if out := outputs(t, s, "cyl"); out["moving"] != 1 || s.devices["cyl"].state != "EXTENDING" || out["retracted"] != 0 {
+		t.Fatalf("extending: %v %s", out, s.devices["cyl"].state)
+	}
+	run(t, s, 0.6)
+	if out := outputs(t, s, "cyl"); out["extended"] != 1 || s.devices["cyl"].state != "EXTENDED" {
+		t.Fatalf("extended: %v %s", out, s.devices["cyl"].state)
+	}
+	// Double-acting holds with no command; single-acting springs back.
+	inputs(t, s, "cyl", Values{})
+	inputs(t, s, "spring", Values{})
+	run(t, s, 1.1)
+	if outputs(t, s, "cyl")["extended"] != 1 || outputs(t, s, "spring")["retracted"] != 1 {
+		t.Fatalf("hold vs spring: %v %v", outputs(t, s, "cyl"), outputs(t, s, "spring"))
+	}
+	inputs(t, s, "cyl", Values{"retract": 1})
+	run(t, s, 1)
+	near(t, outputs(t, s, "cyl")["position"], 50, 1e-6, "halfway back at the retract time")
+	if s.devices["cyl"].state != "RETRACTING" {
+		t.Fatalf("state %s", s.devices["cyl"].state)
+	}
+	// Air loss stops the double-acting cylinder where it is, and springs the single-acting one back.
+	if _, err := s.InjectFault("cyl", "AIR_LOSS"); err != nil {
+		t.Fatal(err)
+	}
+	run(t, s, 1)
+	if out := outputs(t, s, "cyl"); out["position"] != 50 || s.devices["cyl"].state != "STOPPED" || out["moving"] != 0 {
+		t.Fatalf("air loss: %v %s", out, s.devices["cyl"].state)
+	}
+	inputs(t, s, "spring", Values{"extend": 1})
+	if _, err := s.InjectFault("spring", "AIR_LOSS"); err != nil {
+		t.Fatal(err)
+	}
+	run(t, s, 1.1)
+	if outputs(t, s, "spring")["retracted"] != 1 {
+		t.Fatalf("spring return on air loss: %v", outputs(t, s, "spring"))
+	}
+	// Stuck: nothing moves, nothing reported.
+	if _, err := s.ClearFault("cyl", "AIR_LOSS"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.InjectFault("cyl", "STUCK"); err != nil {
+		t.Fatal(err)
+	}
+	run(t, s, 1)
+	if outputs(t, s, "cyl")["position"] != 50 || s.devices["cyl"].Snapshot().Faulted != true {
+		t.Fatalf("stuck: %v", outputs(t, s, "cyl"))
+	}
+}
