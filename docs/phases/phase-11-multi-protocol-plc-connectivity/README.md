@@ -79,6 +79,7 @@ ADR-0015 remains mandatory: cloud/edge never bypass PLC program authority or wri
 | TASK-1105 | PLANNED | Mixed Modbus + OPC UA worker orchestration in one agent |
 | TASK-1106 | PLANNED | Multi-protocol command/write lifecycle and safety validation |
 | TASK-1107 | PLANNED | Mixed-protocol factory UI, observability, migration and E2E validation |
+| TASK-1108 | PLANNED | Expose Factory & generate versioned factory-level Edge Deployment JSON |
 
 ## Acceptance boundary
 
@@ -92,3 +93,4 @@ ADR-0015 remains mandatory: cloud/edge never bypass PLC program authority or wri
 - One PLC/protocol failure does not stop workers for other PLCs.
 - Health/status clearly identifies protocol, connection/session state and last successful data exchange.
 - E2E proves one Modbus PLC and one OPC UA PLC operate simultaneously through one Thin Client.
+- **Expose Factory** validates the complete edge configuration and generates one versioned deployment JSON containing all exposed PLCs for that factory.
