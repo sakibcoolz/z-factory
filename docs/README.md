@@ -29,6 +29,7 @@ The repository is documentation-first. Coding starts only through an approved ph
 - [AI Agent Checklist](./ai-agent-checklist.md)
 - [Architecture Decisions](./adr/)
 - [Phases & Tasks](./phases/README.md)
+- [Phase 12 — Functional Safety Engineering & Verification](./phases/phase-12-functional-safety-engineering/README.md)
 
 ## AI instruction entry points
 - Root `AGENTS.md`: shared contract and primary instruction source.
