@@ -13,6 +13,7 @@
 | 08 | Simulation Control, Overrides & Closed-Loop Testing | PLANNED | Go simulation + PLC bridge stable; ADR-0015 |
 | 09 | MVP 2 — Production Edge & Cloud Integration | IN PROGRESS | Thin Client Agent + closed-loop test foundations ready |\n| 10 | Agent-Ready Engineering & Full Catalog Go Simulation | IN PROGRESS | Active engineering model + catalog/runtime foundations stable |
 | 11 | Multi-Protocol PLC Connectivity (Modbus TCP + OPC UA) | PLANNED | Thin Client + PLC mapping/export foundations stable |
+| 12 | Functional Safety Engineering & Verification | PLANNED | Review existing safety-related capabilities and reconcile roadmap statuses |
 
 Cross-cutting requirements now included in the roadmap:
 - PostgreSQL + Prisma domain model
@@ -96,3 +97,18 @@ Phase 11 execution units:
 - TASK-1106 Multi-protocol command/write lifecycle & safety
 - TASK-1107 UI, observability, migration & mixed-protocol E2E validation
 - TASK-1108 Expose Factory & factory-level Edge Deployment JSON generation
+
+
+Phase 12 execution units:
+- [TASK-1201](./phase-12-functional-safety-engineering/tasks/TASK-1201.md)
+- [TASK-1202](./phase-12-functional-safety-engineering/tasks/TASK-1202.md)
+- [TASK-1203](./phase-12-functional-safety-engineering/tasks/TASK-1203.md)
+- [TASK-1204](./phase-12-functional-safety-engineering/tasks/TASK-1204.md)
+- [TASK-1205](./phase-12-functional-safety-engineering/tasks/TASK-1205.md)
+- [TASK-1206](./phase-12-functional-safety-engineering/tasks/TASK-1206.md)
+- [TASK-1207](./phase-12-functional-safety-engineering/tasks/TASK-1207.md)
+- [TASK-1208](./phase-12-functional-safety-engineering/tasks/TASK-1208.md)
+- [TASK-1209](./phase-12-functional-safety-engineering/tasks/TASK-1209.md)
+- [TASK-1210](./phase-12-functional-safety-engineering/tasks/TASK-1210.md)
+
+See [Phase 12 plan](./phase-12-functional-safety-engineering/README.md). This is simulator engineering and assessment preparation, **not a claim of SIL/PL achievement or certification**.
